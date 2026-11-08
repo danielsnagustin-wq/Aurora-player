@@ -1,0 +1,44 @@
+name: Android CI
+
+# Aurora Player — CI Etapa 1.
+# OJO (skill android_github_actions_delivery): los archivos de workflow
+# solo se suben por navegador (la API / el conector no tiene permiso
+# de workflow). Este archivo va en el push SOLO si se sube por navegador.
+# Job: tests unitarios + build debug APK + artefacto.
+# NO hay release firmado en Etapa 1 (eso es un paso posterior, con keystore
+# en GitHub Secrets, como en Child of Light).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: "temurin"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: aurora-player-apks
+          path: app/build/outputs/apk/debug/*.apk
+          retention-days: 90
