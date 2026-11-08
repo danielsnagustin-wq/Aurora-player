@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Aurora Player</string>
+    <string name="library_title">Biblioteca</string>
+    <string name="playlists_title">Playlists</string>
+    <string name="settings_title">Ajustes</string>
+    <string name="no_permission">Aurora Player necesita permiso para leer tus archivos de audio.</string>
+    <string name="no_songs">No hay canciones. Añade archivos de música al teléfono y vuelve a escanear.</string>
+    <string name="sleep_timer">Temporizador</string>
+    <string name="equalizer_unavailable">Ecualizador no disponible en este dispositivo</string>
+    <string name="no_lyrics">Sin letra disponible</string>
+</resources>

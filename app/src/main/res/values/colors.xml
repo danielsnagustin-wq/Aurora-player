@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Aurora Player — paleta limpia, sin dorado/amarillo -->
+    <color name="ice_blue">#8CCBEB</color>
+    <color name="lavender_blue">#6578B8</color>
+    <color name="lavender">#A99ACD</color>
+    <color name="turquoise">#75D6CE</color>
+    <color name="silver">#DCE8F5</color>
+    <color name="amoled_background">#000000</color>
+    <color name="amoled_surface">#111111</color>
+</resources>
