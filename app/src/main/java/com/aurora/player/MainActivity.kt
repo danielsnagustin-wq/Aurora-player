@@ -21,9 +21,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,7 +32,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -68,7 +64,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -137,9 +132,15 @@ class MainActivity : ComponentActivity() {
 
     private var hasAudioPermission by mutableStateOf(false)
 
+    /** Permiso de notificaciones (Android 13+): sin él no sale el aviso de reproducción. */
+    private var hasNotificationPermission by mutableStateOf(false)
+
     /** Ya se pidió el permiso al menos una vez (para saber si la
      * denegación es permanente). */
     private var permissionAsked = false
+
+    /** Ya se pidió el permiso de notificaciones al menos una vez. */
+    private var notificationAsked = false
 
     private val audioPermissionName: String
         get() = if (Build.VERSION.SDK_INT >= 33) {
@@ -154,6 +155,15 @@ class MainActivity : ComponentActivity() {
         // Solo el permiso de audio decide si hay biblioteca. Negar la
         // notificación no debe dejar la app sin música.
         hasAudioPermission = grants[audioPermissionName] == true
+        if (Build.VERSION.SDK_INT >= 33) {
+            hasNotificationPermission = grants[Manifest.permission.POST_NOTIFICATIONS] == true
+        }
+    }
+
+    private val notificationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        hasNotificationPermission = granted
     }
 
     /** Acción del widget pendiente de aplicar cuando el reproductor esté listo. */
@@ -211,56 +221,14 @@ class MainActivity : ComponentActivity() {
         ErrorLog.log(this, "BOOT: insets", null)
         handleWidgetAction(intent)
         hasAudioPermission = audioPermissionGranted()
+        hasNotificationPermission = notificationsGranted()
         ErrorLog.log(this, "BOOT: setContent", null)
         setContent {
-            ErrorLog.log(applicationContext, "BOOT: compose", null)
-            // DIAGNÓSTICO DE CIERRE (2026-11-09): si la última vez la
-            // app se cerró con un crash, el registro queda en el
-            // teléfono y esta pantalla lo muestra ANTES que nada (sin
-            // reproductor, sin biblioteca, sin tema: nada de lo que
-            // pudo tumbarla). El usuario lo comparte y entra borrándolo.
-            // También se muestra si el arranque anterior se quedó a
-            // medias (hay marcas BOOT: sin un BOOT: OK detrás): eso es
-            // un cierre sin excepción, que no deja stack trace.
-            val crashLogFile = ErrorLog.file(applicationContext)
-            val crashLogText = remember {
-                try {
-                    crashLogFile.takeIf { it.exists() }?.readText().orEmpty()
-                } catch (_: Exception) {
-                    ""
-                }
-            }
-            val lastBootIdx = crashLogText.lastIndexOf("BOOT:")
-            val diedMidBoot = lastBootIdx >= 0 &&
-                !crashLogText.substring(lastBootIdx).startsWith("BOOT: OK")
-            var showCrashReport by remember {
-                mutableStateOf(crashLogText.contains("CRASH") || diedMidBoot)
-            }
-            if (showCrashReport) {
-                CrashReportScreen(
-                    logText = crashLogText,
-                    onShare = { text ->
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "Aurora Player — registro de cierre")
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
-                        startActivity(Intent.createChooser(intent, "Compartir registro"))
-                    },
-                    onDismiss = {
-                        try {
-                            crashLogFile.delete()
-                        } catch (_: Exception) {
-                        }
-                        showCrashReport = false
-                    },
-                )
-            } else {
-                // Marca de arranque completo: si la próxima apertura ve
-                // marcas BOOT: sin este OK, el arranque anterior murió.
-                LaunchedEffect(Unit) {
-                    ErrorLog.log(applicationContext, "BOOT: OK", null)
-                }
+            // RONDA PULIDO (2026-11-09): la pantalla del reporte de
+            // cierre ya no se muestra al abrir (el usuario la pidió
+            // fuera), y el registro BOOT: en cada composición
+            // escribía en disco en cada redibujado y hacía lenta la
+            // interfaz: fuera también.
                 val themeStore = ThemeSettingsStore(applicationContext)
                 val themeSettings by themeStore.settingsFlow.collectAsState(
                     initial = ThemeSettings.DEFAULT,
@@ -334,6 +302,8 @@ class MainActivity : ComponentActivity() {
                             hasAudioPermission = hasAudioPermission,
                             widgetAction = pendingWidgetAction,
                             onWidgetActionHandled = { pendingWidgetAction = null },
+                            notificationsGranted = hasNotificationPermission,
+                            onRequestNotificationPermission = { requestNotificationPermission() },
                         )
                     } else {
                         WelcomeScreen(
@@ -341,8 +311,17 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-            }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // RONDA PULIDO (2026-11-09): si el permiso de música se
+        // concedió en Ajustes del sistema (denegación permanente), al
+        // volver a la app no se volvía a comprobar y la biblioteca no
+        // cargaba hasta cerrar y reabrir. Ahora se comprueba siempre.
+        hasAudioPermission = audioPermissionGranted()
+        hasNotificationPermission = notificationsGranted()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -370,10 +349,7 @@ class MainActivity : ComponentActivity() {
         if (permissionAsked &&
             !shouldShowRequestPermissionRationale(audioPermissionName)
         ) {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", packageName, null)
-            }
-            startActivity(intent)
+            openAppSettings()
             return
         }
         permissionAsked = true
@@ -382,6 +358,39 @@ class MainActivity : ComponentActivity() {
             perms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
         permissionLauncher.launch(perms.toTypedArray())
+    }
+
+    /** Abre la pantalla de Ajustes del sistema de la app. */
+    private fun openAppSettings() {
+        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.fromParts("package", packageName, null)
+        }
+        startActivity(intent)
+    }
+
+    private fun notificationsGranted(): Boolean {
+        if (Build.VERSION.SDK_INT < 33) return true
+        return ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * RONDA PULIDO (2026-11-09): permiso de notificaciones. Sin él,
+     * en Android 13+ no sale el aviso de reproducción con los
+     * controles. Si se denegó para siempre, abre Ajustes del sistema.
+     */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return
+        if (notificationAsked &&
+            !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+        ) {
+            openAppSettings()
+            return
+        }
+        notificationAsked = true
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     private fun audioPermissionGranted(): Boolean {
@@ -419,30 +428,12 @@ private fun WelcomeScreen(onGrant: () -> Unit) {
             contentDescription = "Aurora Player",
             modifier = Modifier.size(128.dp).clip(RoundedCornerShape(28.dp)),
         )
+        // RONDA PULIDO (2026-11-09): bienvenida mínima: solo el
+        // icono, el nombre y el botón del permiso. Nada de lemas,
+        // listas de funciones ni "Gratis siempre".
         Text(
             "Aurora Player",
             style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(top = 24.dp),
-        )
-        Text(
-            "El amor por la música no tiene que tener precio",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.primary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Column(
-            modifier = Modifier.padding(top = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            FeatureRow("Toda tu música local, todos los formatos")
-            FeatureRow("Sin anuncios, sin cuentas, sin internet")
-            FeatureRow("Todo queda en tu teléfono, nada se sube")
-        }
-        Text(
-            "Para mostrar tus canciones necesitamos acceso a los archivos de audio de tu teléfono.",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 24.dp),
         )
         Button(
@@ -450,80 +441,6 @@ private fun WelcomeScreen(onGrant: () -> Unit) {
             modifier = Modifier.fillMaxWidth().padding(top = 32.dp),
         ) {
             Text("Permitir acceso a la música")
-        }
-        Text(
-            "Gratis siempre",
-            style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 16.dp),
-        )
-    }
-}
-
-@Composable
-private fun FeatureRow(text: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Icon(
-            Icons.Filled.Check,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(20.dp),
-        )
-        Text(text, modifier = Modifier.padding(start = 8.dp))
-    }
-}
-
-/**
- * DIAGNÓSTICO DE CIERRE (2026-11-09): pantalla mínima que se muestra
- * al abrir si la última vez hubo un crash. No usa el tema propio, ni
- * el reproductor, ni la biblioteca: solo texto plano con el registro
- * (ya sanitizado: sin rutas, sin nombres de canciones) y dos botones:
- * compartirlo y borrarlo para entrar. Sin esta pantalla, un crash al
- * abrir no se puede diagnosticar desde el teléfono.
- */
-@Composable
-private fun CrashReportScreen(
-    logText: String,
-    onShare: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    Column(
-        modifier = Modifier.fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-    ) {
-        Text(
-            "Aurora Player se cerró la última vez",
-            style = MaterialTheme.typography.titleLarge,
-        )
-        Text(
-            "Este es el registro del cierre. Compártelo con Aurora para que lo arregle. No lleva tus datos personales: las rutas y los nombres van sanitizados.",
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Box(
-            modifier = Modifier.weight(1f)
-                .padding(top = 12.dp)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            SelectionContainer {
-                Text(
-                    logText.ifBlank { "(registro vacío)" },
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = { onShare(logText) },
-                modifier = Modifier.weight(1f),
-            ) { Text("Compartir") }
-            OutlinedButton(
-                onClick = onDismiss,
-                modifier = Modifier.weight(1f),
-            ) { Text("Borrar y entrar") }
         }
     }
 }
@@ -533,6 +450,8 @@ private fun AuroraApp(
     hasAudioPermission: Boolean,
     widgetAction: String? = null,
     onWidgetActionHandled: () -> Unit = {},
+    notificationsGranted: Boolean = false,
+    onRequestNotificationPermission: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
@@ -1301,7 +1220,12 @@ private fun AuroraApp(
                 hasAudioPermission = hasAudioPermission,
                 modifier = Modifier.padding(padding),
             )
-            Tab.SETTINGS -> SettingsScreen(modifier = Modifier.padding(padding))
+            Tab.SETTINGS -> SettingsScreen(
+                modifier = Modifier.padding(padding),
+                notificationsGranted = notificationsGranted,
+                onRequestNotificationPermission = onRequestNotificationPermission,
+                onOpenEq = { showEq = true },
+            )
         }
     }
 }
