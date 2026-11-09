@@ -659,7 +659,7 @@ private fun AuroraApp(
         lyrics = emptyList()
         lyricsOffsetMs = offsetStore.offsetFor(id)
         lyrics = loadLyricsForPath(currentSongPath ?: "")
-        if (lyrics.isEmpty() && playerSettings.onlineLyrics) {
+        if (lyrics.isEmpty() && playerSettings.onlineMode) {
             val meta = controller?.currentMediaItem?.mediaMetadata
             val track = meta?.title?.toString().orEmpty()
             val artist = meta?.artist?.toString().orEmpty()

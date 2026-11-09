@@ -38,6 +38,18 @@ import com.aurora.player.lyrics.fetchLyricsFirst
 import com.aurora.player.lyrics.parseLrclibResponse
 import com.aurora.player.lyrics.plainToLrcLines
 import com.aurora.player.lyrics.resolveLyrics
+import com.aurora.player.online.AudioFormat
+import com.aurora.player.online.JsonParseException
+import com.aurora.player.online.JsonParser
+import com.aurora.player.online.PLAYER_CLIENTS
+import com.aurora.player.online.SEARCH_CLIENT
+import com.aurora.player.online.buildPlayerBody
+import com.aurora.player.online.buildSearchBody
+import com.aurora.player.online.jsonEscape
+import com.aurora.player.online.parseDurationToSec
+import com.aurora.player.online.parsePlayerFormats
+import com.aurora.player.online.parseSearchResults
+import com.aurora.player.online.selectAudioFormat
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -467,5 +479,106 @@ class AuroraPlayerTest {
                 "Blue", "Eiffel 65", null, 0,
             ),
         )
+    }
+
+    // 002-online-youtube: JSON mínimo + InnerTube.
+
+    @Test
+    fun jsonParserLeeObjetosAnidadosYEscapes() {
+        val parsed = JsonParser.parse(
+            """{"a":{"b":[1,2.5,"x\ny","é"],"c":true,"d":null},"e":"A"}""",
+        )
+        assertEquals("x\ny", parsed.obj("a")?.obj("b")?.arr()?.get(2)?.str())
+        assertEquals("é", parsed.obj("a")?.obj("b")?.arr()?.get(3)?.str())
+        assertEquals(2.5, parsed.obj("a")?.obj("b")?.arr()?.get(1)?.long()?.toDouble() ?: 0.0, 0.001)
+        assertEquals(true, parsed.obj("a")?.obj("c")?.bool())
+        assertEquals(null, parsed.obj("a")?.obj("d")?.str())
+        assertEquals("A", parsed.obj("e")?.str())
+    }
+
+    @Test(expected = JsonParseException::class)
+    fun jsonParserRechazaJsonRoto() {
+        JsonParser.parse("""{"a": [1, 2}""")
+    }
+
+    @Test
+    fun jsonEscapeEscapaComillasYBarra() {
+        assertEquals("a\\\"b\\\\c", jsonEscape("a\"b\\c"))
+        assertEquals("línea1\\nlínea2", jsonEscape("línea1\nlínea2"))
+    }
+
+    @Test
+    fun buildSearchBodyLlevaQueryYClienteWebRemix() {
+        val body = buildSearchBody("Blue \"Eiffel\" 65")
+        assertEquals(true, body.contains("WEB_REMIX"))
+        assertEquals(true, body.contains("Blue \\\"Eiffel\\\" 65"))
+        assertEquals(true, body.contains("EgWKAQIIAWoQEAMQBBAJEAoQGAgAEEAMQBg%3D%3D"))
+    }
+
+    @Test
+    fun buildPlayerBodyLlevaVideoIdYCliente() {
+        val body = buildPlayerBody(PLAYER_CLIENTS.first(), "abc123")
+        assertEquals(true, body.contains("\"videoId\":\"abc123\""))
+        assertEquals(true, body.contains("ANDROID_VR"))
+        assertEquals(true, body.contains("contentCheckOk"))
+    }
+
+    @Test
+    fun parseDurationToSecConvierte() {
+        assertEquals(204L, parseDurationToSec("3:24"))
+        assertEquals(3723L, parseDurationToSec("1:02:03"))
+        assertNull(parseDurationToSec("hola"))
+        assertNull(parseDurationToSec("3"))
+        assertNull(parseDurationToSec(""))
+    }
+
+    @Test
+    fun parseSearchResultsExtraeCanciones() {
+        val json = """{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Blue"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Eiffel 65"},{"text":" • "},{"text":"Europop"},{"text":" • "},{"text":"3:24"}]}}}],"playlistItemData":{"videoId":"abc123"},"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/small"},{"url":"https://i.ytimg.com/big"}]}}}}}]}}]}}}}]}}}"""
+        val results = parseSearchResults(json)
+        assertEquals(1, results.size)
+        val track = results.first()
+        assertEquals("abc123", track.videoId)
+        assertEquals("Blue", track.title)
+        assertEquals("Eiffel 65", track.artist)
+        assertEquals("Europop", track.album)
+        assertEquals(204L, track.durationSec)
+        assertEquals("https://i.ytimg.com/big", track.thumbnailUrl)
+        assertEquals(emptyList<com.aurora.player.online.OnlineTrack>(), parseSearchResults("no es json"))
+        assertEquals(emptyList<com.aurora.player.online.OnlineTrack>(), parseSearchResults("""{"contents":{}}"""))
+    }
+
+    @Test
+    fun parsePlayerFormatsDescartaCifradosYVideo() {
+        val json = """{"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[{"itag":251,"mimeType":"audio/webm; codecs=\"opus\"","signatureCipher":"s=xxx","bitrate":160000},{"itag":140,"mimeType":"audio/mp4; codecs=\"mp4a.40.2\"","url":"https://example.com/140","bitrate":128000},{"itag":22,"mimeType":"video/mp4; codecs=\"avc1.64001F, mp4a.40.2\"","url":"https://example.com/22","bitrate":2000000}]}}"""
+        val formats = parsePlayerFormats(json)
+        assertEquals(listOf(140L), formats?.map { it.itag })
+        assertEquals("https://example.com/140", formats?.first()?.url)
+        assertEquals(emptyList<AudioFormat>(), parsePlayerFormats("""{"playabilityStatus":{"status":"OK"},"streamingData":{"adaptiveFormats":[{"itag":251,"mimeType":"audio/webm","signatureCipher":"s=xxx","bitrate":160000}]}}"""))
+        assertNull(parsePlayerFormats("""{"playabilityStatus":{"status":"ERROR","reason":"No disponible"}}"""))
+    }
+
+    @Test
+    fun selectAudioFormatPrefiereOpusLuegoAac() {
+        val opus = AudioFormat(251, "audio/webm", "https://x/251", 160000)
+        val aac = AudioFormat(140, "audio/mp4", "https://x/140", 128000)
+        val low = AudioFormat(139, "audio/mp4", "https://x/139", 48000)
+        assertEquals(opus, selectAudioFormat(listOf(aac, opus, low)))
+        assertEquals(aac, selectAudioFormat(listOf(low, aac)))
+        assertEquals(low, selectAudioFormat(listOf(low)))
+        assertNull(selectAudioFormat(emptyList()))
+    }
+
+    @Test
+    fun playerClientsEnOrdenYCompletos() {
+        assertEquals("WEB_REMIX", SEARCH_CLIENT.name)
+        assertEquals("67", SEARCH_CLIENT.id)
+        assertEquals("ANDROID_VR", PLAYER_CLIENTS.first().name)
+        for (client in PLAYER_CLIENTS) {
+            assertEquals(true, client.name.isNotBlank())
+            assertEquals(true, client.id.isNotBlank())
+            assertEquals(true, client.version.isNotBlank())
+            assertEquals(true, client.host.isNotBlank())
+        }
     }
 }
