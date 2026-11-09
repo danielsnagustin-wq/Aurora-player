@@ -87,9 +87,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
+import com.aurora.player.model.FolderEntry
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
+import com.aurora.player.model.childFolders
+import com.aurora.player.model.commonFolderPrefix
+import com.aurora.player.model.isDirectlyInFolder
+import com.aurora.player.model.parentPath
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.start.StartScreen
@@ -234,7 +239,7 @@ fun LibraryScreen(
                 }
             }
         }
-        // 6 pestañas con Online: TabRow las aplastaría; con scroll
+        // 7 pestañas con Online: TabRow las aplastaría; con scroll
         // caben todas sin recortar los nombres.
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Canciones") })
@@ -242,11 +247,12 @@ fun LibraryScreen(
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Álbumes") })
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
             Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Géneros") })
-            Tab(selected = tab == 5, onClick = { tab = 5 }, text = { Text("Online") })
+            Tab(selected = tab == 5, onClick = { tab = 5 }, text = { Text("Carpetas") })
+            Tab(selected = tab == 6, onClick = { tab = 6 }, text = { Text("Online") })
         }
         // 002-online-youtube: la pestaña Online no depende de la
         // biblioteca local (funciona hasta sin canciones en el teléfono).
-        if (tab == 5) {
+        if (tab == 6) {
             OnlineScreen(
                 onlineMode = onlineMode,
                 onPlayTrack = onPlayOnlineTrack,
@@ -320,6 +326,14 @@ fun LibraryScreen(
                             viewModel.filterByGenre(it)
                             tab = 0
                         },
+                    )
+                    5 -> FoldersTab(
+                        songs = state.songs,
+                        favoriteIds = favoriteIds,
+                        onToggleFavorite = { viewModel.toggleFavorite(it) },
+                        onSongClick = onSongClick,
+                        onDetails = { detailsSong = it },
+                        onExcludeFolder = { viewModel.excludeFolder(it) },
                     )
                 }
             }
@@ -629,6 +643,121 @@ private fun GenresTab(
                 )
             }
         }
+    }
+}
+
+/**
+ * SPEC 005 FR-006: pestaña Carpetas. Navegación jerárquica por la
+ * ruta real de los archivos: la raíz es la carpeta común de todas
+ * las canciones; tocar una carpeta baja a ella, "Atrás" sube.
+ * Mantener pulsada una carpeta la excluye de toda la biblioteca
+ * (con confirmación); se vuelve a incluir en Ajustes.
+ */
+@Composable
+private fun FoldersTab(
+    songs: List<Song>,
+    favoriteIds: Set<Long>,
+    onToggleFavorite: (Long) -> Unit,
+    onSongClick: (Song, List<Song>) -> Unit,
+    onDetails: (Song) -> Unit,
+    onExcludeFolder: (String) -> Unit,
+) {
+    if (songs.isEmpty()) {
+        Text(
+            "No hay canciones aquí todavía.",
+            modifier = Modifier.padding(16.dp),
+        )
+        return
+    }
+    val root = remember(songs) {
+        commonFolderPrefix(songs.map { it.path }).ifEmpty { "/" }
+    }
+    var current by remember(songs) { mutableStateOf(root) }
+    var excludeTarget by remember { mutableStateOf<FolderEntry?>(null) }
+    val folders = remember(songs, current) {
+        childFolders(songs.map { it.path }, current)
+    }
+    val here = remember(songs, current) {
+        songs.filter { isDirectlyInFolder(it.path, current) }
+            .sortedBy { it.title.lowercase() }
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (current != root) {
+                OutlinedButton(onClick = { current = parentPath(current) }) {
+                    Text("↑ Atrás")
+                }
+            }
+            Column {
+                Text(
+                    if (current == root) "Todas las carpetas" else current.substringAfterLast('/'),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    current,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(folders, key = { it.path }) { folder ->
+                ListItem(
+                    headlineContent = { Text(folder.name) },
+                    supportingContent = {
+                        Text(
+                            "${folder.songCount} canciones",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.combinedClickable(
+                        onClick = { current = folder.path },
+                        onLongClick = { excludeTarget = folder },
+                    ),
+                )
+                Divider()
+            }
+            items(here, key = { it.id }) { song ->
+                SongRow(
+                    song = song,
+                    isFavorite = song.id in favoriteIds,
+                    onToggleFavorite = { onToggleFavorite(song.id) },
+                    onClick = { onSongClick(song, here) },
+                    onDetails = onDetails,
+                )
+                Divider()
+            }
+        }
+    }
+    if (excludeTarget != null) {
+        val folder = excludeTarget!!
+        AlertDialog(
+            onDismissRequest = { excludeTarget = null },
+            title = { Text("Excluir carpeta") },
+            text = {
+                Text(
+                    "«${folder.name}» y sus ${folder.songCount} canciones saldrán de todas las pestañas, " +
+                        "de la búsqueda y de la cola. Puedes volver a incluirla en Ajustes, en Carpetas excluidas.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    excludeTarget = null
+                    onExcludeFolder(folder.path)
+                }) { Text("Excluir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { excludeTarget = null }) { Text("Cancelar") }
+            },
+        )
     }
 }
 
