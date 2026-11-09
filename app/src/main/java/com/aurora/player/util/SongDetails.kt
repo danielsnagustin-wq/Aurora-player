@@ -19,7 +19,22 @@ data class SongDetails(
     val bitrateKbps: Int?,
     val sampleRateHz: Int?,
     val mimeType: String,
+    /** Canales de audio (1 = mono, 2 = estéreo), null si no se pudo leer. */
+    val channelCount: Int? = null,
 )
+
+/** Nombre legible del códec ("audio/flac" -> "FLAC"). Función pura, testeable. */
+fun codecDisplayName(mimeType: String): String = when (mimeType.lowercase()) {
+    "audio/flac", "audio/x-flac" -> "FLAC"
+    "audio/mpeg", "audio/mp3" -> "MP3"
+    "audio/mp4", "audio/x-m4a", "audio/aac" -> "AAC"
+    "audio/x-wav", "audio/wav" -> "WAV"
+    "audio/ogg" -> "OGG"
+    "audio/opus" -> "Opus"
+    "audio/x-ms-wma" -> "WMA"
+    "audio/alac" -> "ALAC"
+    else -> mimeType.ifBlank { "—" }
+}
 
 suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
     withContext(Dispatchers.IO) {
@@ -40,7 +55,37 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
         } catch (_: Exception) {
             // Sin detalles del extractor: se muestran los de MediaStore.
         }
-        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType)
+        // RONDA 6: el número de canales no lo da MediaMetadataRetriever;
+        // se lee del formato de la pista de audio con MediaExtractor
+        // (descriptor de archivo, válido en todas las API: la ruta
+        // directa del archivo está bloqueada por el almacenamiento
+        // con ámbito en Android 10+). Si falla, es null y se muestra "—".
+        var channels: Int? = null
+        try {
+            context.contentResolver.openFileDescriptor(song.uri, "r")?.use { pfd ->
+                val extractor = android.media.MediaExtractor()
+                try {
+                    extractor.setDataSource(pfd.fileDescriptor)
+                    for (i in 0 until extractor.trackCount) {
+                        val format = extractor.getTrackFormat(i)
+                        val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
+                        if (mime.startsWith("audio/")) {
+                            channels = try {
+                                format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
+                            } catch (_: Exception) {
+                                null
+                            }
+                            break
+                        }
+                    }
+                } finally {
+                    extractor.release()
+                }
+            }
+        } catch (_: Exception) {
+            channels = null
+        }
+        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType, channels)
     }
 
 /**
