@@ -64,6 +64,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -79,6 +80,7 @@ import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService
 import com.aurora.player.playback.PlayerControls
+import com.aurora.player.online.OnlineTrack
 import com.aurora.player.playback.songToMediaItem
 import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.ArtworkImage
@@ -359,6 +361,10 @@ private fun AuroraApp(
     // ETAPA 5: letras del .lrc de la canción actual y temporizador.
     var currentSongId by remember { mutableStateOf<Long?>(null) }
     var currentSongPath by remember { mutableStateOf<String?>(null) }
+    // 002-online-youtube: el mediaId tal cual (las pistas online son
+    // "yt:<videoId>" y no tienen id numérico; las letras y la cola
+    // las distinguen por este prefijo).
+    var currentMediaId by remember { mutableStateOf<String?>(null) }
     val songUri = currentSongId?.let {
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
@@ -539,6 +545,7 @@ private fun AuroraApp(
                 }
                 queueIndex = c.currentMediaItemIndex
                 currentSongId = c.currentMediaItem?.mediaId?.toLongOrNull()
+                currentMediaId = c.currentMediaItem?.mediaId
                 // La ruta de la canción actual, para las letras (.lrc).
                 currentSongPath = meta?.extras?.getString("aurora_path")
                 // Cola persistente: se guarda en cada cambio de pista.
@@ -651,12 +658,32 @@ private fun AuroraApp(
     // Letras (ETAPA 5): al cambiar de canción se busca su .lrc por su
     // ruta y su ajuste de sincronización guardado. Ya no se escanea
     // toda la biblioteca para encontrar la ruta (AUDITORÍA 2026-11-09).
-    // RONDA 7 P2: sin .lrc y con "Letras online" encendido, se busca
-    // en LRCLIB (título/artista/álbum/duración del MediaItem actual);
-    // el .lrc local siempre manda y apagado no se toca la red.
-    LaunchedEffect(currentSongId) {
-        val id = currentSongId ?: return@LaunchedEffect
+    // RONDA 7 P2: sin .lrc y con modo online encendido, se busca en
+    // LRCLIB (título/artista/álbum/duración del MediaItem actual); el
+    // .lrc local siempre manda y apagado no se toca la red.
+    // 002-online-youtube: las pistas "yt:" no tienen .lrc ni id
+    // numérico: su letra solo puede ser online, con sus metadatos.
+    LaunchedEffect(currentMediaId) {
+        val mediaId = currentMediaId
         lyrics = emptyList()
+        if (mediaId == null) return@LaunchedEffect
+        if (mediaId.startsWith("yt:")) {
+            lyricsOffsetMs = 0
+            if (playerSettings.onlineMode) {
+                val meta = controller?.currentMediaItem?.mediaMetadata
+                val track = meta?.title?.toString().orEmpty()
+                val artist = meta?.artist?.toString().orEmpty()
+                val album = meta?.albumTitle?.toString()
+                val durationSec = (controller?.duration ?: 0L).let {
+                    if (it > 0) it / 1000 else 0L
+                }
+                if (track.isNotBlank() && artist.isNotBlank()) {
+                    lyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec)
+                }
+            }
+            return@LaunchedEffect
+        }
+        val id = mediaId.toLongOrNull() ?: return@LaunchedEffect
         lyricsOffsetMs = offsetStore.offsetFor(id)
         lyrics = loadLyricsForPath(currentSongPath ?: "")
         if (lyrics.isEmpty() && playerSettings.onlineMode) {
@@ -668,7 +695,7 @@ private fun AuroraApp(
                 if (it > 0) it / 1000 else 0L
             }
             if (track.isNotBlank() && artist.isNotBlank()) {
-                lyrics = loadOnlineLyrics(context, id, track, artist, album, durationSec)
+                lyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec)
             }
         }
     }
@@ -742,6 +769,29 @@ private fun AuroraApp(
         // reproductor.
         val safeIndex = startIndex.coerceIn(0, songs.size - 1)
         c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
+        c.prepare()
+        c.play()
+    }
+
+    /** 002-online-youtube: suena una pista de YouTube con su URL ya
+     * resuelta (las URLs caducan: se resuelven al tocar, nunca se
+     * guardan). El mediaId "yt:<videoId>" la marca como online: no
+     * entra en el historial ni en la cola persistente local. */
+    fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
+        val c = controller ?: return
+        val item = MediaItem.Builder()
+            .setUri(streamUrl)
+            .setMediaId("yt:${track.videoId}")
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setTitle(track.title)
+                    .setArtist(track.artist)
+                    .setAlbumTitle(track.album)
+                    .setExtras(Bundle().apply { putBoolean("aurora_online", true) })
+                    .build(),
+            )
+            .build()
+        c.setMediaItems(listOf(item))
         c.prepare()
         c.play()
     }
@@ -902,6 +952,8 @@ private fun AuroraApp(
                         playSongs(songs.shuffled(), 0)
                     }
                 },
+                onlineMode = playerSettings.onlineMode,
+                onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
                 showStart = showStart,
                 onStartFinished = { showStart = false },
                 modifier = Modifier.padding(padding),

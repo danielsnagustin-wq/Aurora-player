@@ -208,14 +208,14 @@ class LrclibProvider : LyricsProvider {
  */
 suspend fun loadOnlineLyrics(
     context: Context,
-    songId: Long,
+    cacheKey: String,
     track: String,
     artist: String,
     album: String?,
     durationSec: Long,
     providers: List<LyricsProvider> = listOf(LrclibProvider()),
 ): List<LrcLine> = withContext(Dispatchers.IO) {
-    LyricsCache.read(context, songId)?.let { cached ->
+    LyricsCache.read(context, cacheKey)?.let { cached ->
         if (cached.isNotBlank()) {
             val parsed = LrcParser.parse(cached)
             if (parsed.isNotEmpty()) return@withContext parsed
@@ -228,13 +228,13 @@ suspend fun loadOnlineLyrics(
     if (!synced.isNullOrBlank()) {
         val parsed = LrcParser.parse(synced)
         if (parsed.isNotEmpty()) {
-            LyricsCache.write(context, songId, synced)
+            LyricsCache.write(context, cacheKey, synced)
             return@withContext parsed
         }
     }
     val plain = found.plainText
     if (!plain.isNullOrBlank()) {
-        LyricsCache.write(context, songId, plain)
+        LyricsCache.write(context, cacheKey, plain)
         return@withContext plainToLrcLines(plain)
     }
     emptyList()

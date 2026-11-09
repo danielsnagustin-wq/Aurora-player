@@ -50,6 +50,7 @@ import com.aurora.player.online.parseDurationToSec
 import com.aurora.player.online.parsePlayerFormats
 import com.aurora.player.online.parseSearchResults
 import com.aurora.player.online.selectAudioFormat
+import com.aurora.player.ui.online.formatOnlineDuration
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -580,5 +581,12 @@ class AuroraPlayerTest {
             assertEquals(true, client.version.isNotBlank())
             assertEquals(true, client.host.isNotBlank())
         }
+    }
+
+    @Test
+    fun formatOnlineDurationFormatea() {
+        assertEquals("3:24", formatOnlineDuration(204))
+        assertEquals("1:02:03", formatOnlineDuration(3723))
+        assertEquals("0:05", formatOnlineDuration(5))
     }
 }
