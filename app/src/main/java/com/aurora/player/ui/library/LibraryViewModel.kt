@@ -100,7 +100,16 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val filteredSongs: StateFlow<List<Song>> =
         combine(
             _uiState, _query, _sortOrder, _artistFilter, _albumFilter, _idFilter,
-        ) { state, q, sort, artist, albumId, ids ->
+        ) { values ->
+            // Forma de array (el overload de 6 flujos no resolvía en
+            // este Kotlin: el compilador pedía la función de 1 parámetro).
+            @Suppress("UNCHECKED_CAST")
+            val state = values[0] as LibraryUiState
+            val q = values[1] as String
+            val sort = values[2] as LibrarySort
+            val artist = values[3] as String?
+            val albumId = values[4] as Long?
+            val ids = values[5] as Set<Long>?
             var songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
             if (ids != null) songs = songs.filter { it.id in ids }
             if (artist != null) songs = songs.filter { it.artist == artist }
