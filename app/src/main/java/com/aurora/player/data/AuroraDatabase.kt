@@ -79,6 +79,10 @@ interface PlaylistDao {
         setSongs(songs)
     }
 
+    /** Playlist por nombre (Tu año: no duplicar "Tu año 2026"). */
+    @Query("SELECT * FROM playlists WHERE name = :name LIMIT 1")
+    suspend fun playlistByName(name: String): PlaylistEntity?
+
     /** Borrar una playlist con sus canciones, también en transacción. */
     @Transaction
     suspend fun deletePlaylistWithSongs(id: Long) {
@@ -138,6 +142,10 @@ interface LibraryDao {
     /** Marcas de tiempo de las reproducciones (gráfico semanal). */
     @Query("SELECT playedAt FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun historyPlayedAt(): List<Long>
+
+    /** Reproducciones de un año (Tu año): solo escuchas de 30 s o más. */
+    @Query("SELECT * FROM play_history WHERE durationListenedMs >= 30000 AND playedAt >= :startMs AND playedAt < :endMs")
+    suspend fun historyInYear(startMs: Long, endMs: Long): List<PlayHistoryEntity>
 
     /** Última reproducción de una canción (ETAPA 5: Detalles).
      * RONDA 6: solo escuchas de 30 s o más, como playCountFor: un
