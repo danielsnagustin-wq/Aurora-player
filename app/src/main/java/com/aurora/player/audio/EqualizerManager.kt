@@ -135,7 +135,8 @@ class EqualizerManager(audioSessionId: Int) {
     /** Fuerza actual del refuerzo de graves, 0..1000 (0 si no disponible). */
     fun getBassBoostStrength(): Short {
         return try {
-            bassBoost?.strength ?: 0
+            // BassBoost no tiene getStrength(): solo getRoundedStrength().
+            bassBoost?.roundedStrength ?: 0
         } catch (_: Exception) {
             0
         }
@@ -144,7 +145,8 @@ class EqualizerManager(audioSessionId: Int) {
     /** Fuerza actual del virtualizador, 0..1000 (0 si no disponible). */
     fun getVirtualizerStrength(): Short {
         return try {
-            virtualizer?.strength ?: 0
+            // Virtualizer no tiene getStrength(): solo getRoundedStrength().
+            virtualizer?.roundedStrength ?: 0
         } catch (_: Exception) {
             0
         }
