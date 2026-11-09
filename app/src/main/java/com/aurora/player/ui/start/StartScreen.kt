@@ -32,6 +32,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aurora.player.R
+import kotlin.math.PI
 import kotlin.math.sin
 import kotlin.random.Random
 
@@ -196,7 +197,8 @@ fun StartScreen(onFinished: () -> Unit = {}) {
                         start = Offset(x, y),
                         end = Offset(x + 140f, y),
                         strokeWidth = 2f,
-                        alpha = 0.18f * wind * (1f - wind * 0.6f),
+                        // Aparecen con el viento y se apagan al final.
+                        alpha = 0.2f * sin(wind * PI.toFloat()),
                     )
                 }
             }
