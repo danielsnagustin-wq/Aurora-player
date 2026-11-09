@@ -88,6 +88,14 @@ interface LibraryDao {
     @Query("SELECT COALESCE(SUM(durationListenedMs), 0) FROM play_history")
     suspend fun totalListenedMs(): Long
 
+    /** Reproducciones de una canción (ETAPA 5: pantalla Detalles). */
+    @Query("SELECT COUNT(*) FROM play_history WHERE songId = :songId AND durationListenedMs >= 30000")
+    suspend fun playCountFor(songId: Long): Int
+
+    /** Última reproducción de una canción (ETAPA 5: Detalles). */
+    @Query("SELECT MAX(playedAt) FROM play_history WHERE songId = :songId")
+    suspend fun lastPlayedAt(songId: Long): Long?
+
     @Query("DELETE FROM play_history")
     suspend fun clearHistory()
 }

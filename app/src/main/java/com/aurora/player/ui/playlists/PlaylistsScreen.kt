@@ -53,11 +53,14 @@ fun PlaylistsScreen(
 ) {
     val viewModel: PlaylistsViewModel = viewModel()
     val playlists by viewModel.playlists.collectAsState()
+    val smartPlaylists by viewModel.smartPlaylists.collectAsState()
     val allSongs by viewModel.allSongs.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
     val selectedSongs by viewModel.selectedSongs.collectAsState()
     var newName by remember { mutableStateOf("") }
     var picking by remember { mutableStateOf(false) }
+    // ETAPA 5: playlist inteligente seleccionada (solo lectura).
+    var smartSelected by remember { mutableStateOf<SmartPlaylist?>(null) }
 
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
@@ -85,6 +88,20 @@ fun PlaylistsScreen(
             onSongClick = onSongClick,
             onRemoveSong = { viewModel.removeSongFromPlaylist(selected.id, it.id) },
             onAddSongs = { picking = true },
+            modifier = modifier,
+        )
+        return
+    }
+    val smart = smartSelected
+    if (smart != null) {
+        PlaylistDetail(
+            name = smart.name,
+            songs = smart.songs,
+            onBack = { smartSelected = null },
+            onSongClick = onSongClick,
+            onRemoveSong = {},
+            onAddSongs = {},
+            readOnly = true,
             modifier = modifier,
         )
         return
@@ -119,6 +136,26 @@ fun PlaylistsScreen(
                 modifier = Modifier.padding(start = 8.dp),
             ) {
                 Text("Crear")
+            }
+        }
+        if (smartPlaylists.isNotEmpty()) {
+            Text("Inteligentes", modifier = Modifier.padding(top = 16.dp))
+            for (smart in smartPlaylists) {
+                ListItem(
+                    headlineContent = {
+                        Text(smart.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    supportingContent = {
+                        Text(
+                            "${smart.description} · ${smart.songs.size} canciones",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.clickable { smartSelected = smart },
+                )
+                Divider()
             }
         }
         if (playlists.isEmpty()) {
@@ -167,6 +204,7 @@ private fun PlaylistDetail(
     onSongClick: (Song, List<Song>) -> Unit,
     onRemoveSong: (Song) -> Unit,
     onAddSongs: () -> Unit,
+    readOnly: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -197,7 +235,9 @@ private fun PlaylistDetail(
             Text(name, modifier = Modifier.weight(1f))
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Button(onClick = onAddSongs) { Text("Añadir canciones") }
+            if (!readOnly) {
+                Button(onClick = onAddSongs) { Text("Añadir canciones") }
+            }
             OutlinedButton(
                 onClick = { exportLauncher.launch("$name.m3u") },
                 modifier = Modifier.padding(start = 8.dp),
@@ -235,8 +275,10 @@ private fun PlaylistDetail(
                                     TimeFormat.formatDuration(song.durationMs),
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                IconButton(onClick = { onRemoveSong(song) }) {
-                                    Icon(Icons.Filled.Delete, contentDescription = "Quitar ${song.title}")
+                                if (!readOnly) {
+                                    IconButton(onClick = { onRemoveSong(song) }) {
+                                        Icon(Icons.Filled.Delete, contentDescription = "Quitar ${song.title}")
+                                    }
                                 }
                             }
                         },

@@ -3,6 +3,7 @@ package com.aurora.player.ui.player
 import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
@@ -24,6 +26,9 @@ import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -32,6 +37,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
 import com.aurora.player.ui.library.ArtworkImage
+import com.aurora.player.util.LrcLine
+import com.aurora.player.util.LrcParser
 import com.aurora.player.util.TimeFormat
 
 /**
@@ -52,6 +60,17 @@ import com.aurora.player.util.TimeFormat
  * Letras sincronizadas elegantes + visualizador sutil: Fase 1b
  * (apagados por defecto, no se fingen aquí).
  */
+
+/** Temporizador de apagado (ETAPA 5): OFF por defecto, nunca se activa solo. */
+enum class SleepTimerOption(val label: String, val minutes: Int) {
+    OFF("Apagado", 0),
+    MIN_15("15 minutos", 15),
+    MIN_30("30 minutos", 30),
+    MIN_45("45 minutos", 45),
+    MIN_60("60 minutos", 60),
+    END_OF_SONG("Al terminar la canción", -1),
+}
+
 @Composable
 fun PlayerScreen(
     title: String?,
@@ -76,9 +95,21 @@ fun PlayerScreen(
     queueTitles: List<String> = emptyList(),
     queueIndex: Int = 0,
     onQueueClick: (Int) -> Unit = {},
+    lyrics: List<LrcLine> = emptyList(),
+    sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
+    onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var showQueue by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(false) }
+    var sleepMenuOpen by remember { mutableStateOf(false) }
+    val lyricsListState = rememberLazyListState()
+    val currentLine = LrcParser.currentLineIndex(lyrics, positionMs)
+    LaunchedEffect(showLyrics, currentLine) {
+        if (showLyrics && currentLine >= 0) {
+            lyricsListState.animateScrollToItem(currentLine)
+        }
+    }
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -91,8 +122,41 @@ fun PlayerScreen(
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Cerrar")
             }
-            IconButton(onClick = onOpenEq) {
-                Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box {
+                    IconButton(onClick = { sleepMenuOpen = true }) {
+                        Icon(
+                            Icons.Filled.Timer,
+                            contentDescription = "Temporizador de apagado",
+                            tint = if (sleepTimer == SleepTimerOption.OFF) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = sleepMenuOpen,
+                        onDismissRequest = { sleepMenuOpen = false },
+                    ) {
+                        SleepTimerOption.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (option == sleepTimer) "✓ ${option.label}" else option.label,
+                                    )
+                                },
+                                onClick = {
+                                    onSleepTimerSelected(option)
+                                    sleepMenuOpen = false
+                                },
+                            )
+                        }
+                    }
+                }
+                IconButton(onClick = onOpenEq) {
+                    Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
+                }
             }
         }
         if (title == null) {
@@ -218,6 +282,43 @@ fun PlayerScreen(
                         },
                         modifier = Modifier.clickable { onQueueClick(index) },
                     )
+                }
+            }
+        }
+        // ETAPA 5: letras sincronizadas del .lrc de la canción.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = { showLyrics = !showLyrics }) {
+                Text(if (showLyrics) "Ocultar letras" else "Letras")
+            }
+        }
+        if (showLyrics) {
+            if (lyrics.isEmpty()) {
+                Text(
+                    "Sin letras para esta canción.",
+                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                LazyColumn(
+                    state = lyricsListState,
+                    modifier = Modifier.fillMaxWidth().height(240.dp),
+                ) {
+                    itemsIndexed(lyrics) { index, line ->
+                        val isCurrent = index == currentLine
+                        Text(
+                            line.text,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            textAlign = TextAlign.Center,
+                            color = if (isCurrent) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = if (isCurrent) MaterialTheme.typography.titleMedium
+                            else MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
         }

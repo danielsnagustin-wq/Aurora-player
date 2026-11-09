@@ -20,6 +20,14 @@ import kotlinx.coroutines.withContext
  * La base se crea aquí (Room.databaseBuilder); el DAO ya existía pero
  * nadie lo instanciaba. Todo corre en IO, nunca en el hilo de UI.
  */
+
+/** Playlist inteligente: una regla sobre datos locales, no una lista fija. */
+data class SmartPlaylist(
+    val name: String,
+    val description: String,
+    val songs: List<Song>,
+)
+
 class PlaylistsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = Room.databaseBuilder(
@@ -28,10 +36,15 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         "aurora-player.db",
     ).build()
     private val dao = db.playlistDao()
+    private val libraryDao = db.libraryDao()
     private val repository = MusicRepository(application)
 
     private val _playlists = MutableStateFlow<List<PlaylistEntity>>(emptyList())
     val playlists: StateFlow<List<PlaylistEntity>> = _playlists
+
+    /** Playlists inteligentes (ETAPA 5): reglas sobre datos locales. */
+    private val _smartPlaylists = MutableStateFlow<List<SmartPlaylist>>(emptyList())
+    val smartPlaylists: StateFlow<List<SmartPlaylist>> = _smartPlaylists
 
     private val _allSongs = MutableStateFlow<List<Song>>(emptyList())
     val allSongs: StateFlow<List<Song>> = _allSongs
@@ -51,6 +64,27 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
             withContext(Dispatchers.IO) {
                 _allSongs.value = if (hasAudioPermission) repository.loadSongs() else emptyList()
                 _playlists.value = dao.allPlaylists()
+                // Playlists inteligentes: solo con datos reales locales.
+                val songs = _allSongs.value
+                val byId = songs.associateBy { it.id }
+                val favorites = libraryDao.favoriteIds().toSet()
+                _smartPlaylists.value = listOf(
+                    SmartPlaylist(
+                        "Más escuchadas",
+                        "Tus canciones con más reproducciones (30 s o más)",
+                        libraryDao.mostPlayed().take(25).mapNotNull { byId[it.songId] },
+                    ),
+                    SmartPlaylist(
+                        "Añadidas recientemente",
+                        "Lo último que llegó a tu biblioteca",
+                        songs.sortedByDescending { it.dateAdded }.take(25),
+                    ),
+                    SmartPlaylist(
+                        "Favoritas",
+                        "Tus canciones con corazón",
+                        songs.filter { it.id in favorites }.sortedBy { it.title.lowercase() },
+                    ),
+                ).filter { it.songs.isNotEmpty() }
             }
         }
     }

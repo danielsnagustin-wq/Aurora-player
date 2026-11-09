@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -69,9 +70,13 @@ import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.LibraryScreen
 import com.aurora.player.ui.player.PlayerScreen
+import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
+import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
+import com.aurora.player.util.LrcLine
+import com.aurora.player.util.loadLyricsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -142,6 +147,7 @@ class MainActivity : ComponentActivity() {
 private enum class Tab(val label: String) {
     LIBRARY("Biblioteca"),
     PLAYLISTS("Playlists"),
+    STATS("Estadísticas"),
     SETTINGS("Ajustes"),
 }
 
@@ -237,6 +243,23 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
     var historyDone by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var queueRestored by remember { mutableStateOf(false) }
 
+    // ETAPA 5: letras del .lrc de la canción actual y temporizador.
+    var currentSongId by remember { mutableStateOf<Long?>(null) }
+    var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
+    var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
+    var sleepAtSongEnd by remember { mutableStateOf(false) }
+
+    fun onSleepTimerSelected(option: SleepTimerOption) {
+        sleepTimer = option
+        sleepAtSongEnd = option == SleepTimerOption.END_OF_SONG
+        sleepUntilMs = if (option.minutes > 0) {
+            System.currentTimeMillis() + option.minutes * 60_000L
+        } else {
+            null
+        }
+    }
+
     /** Historial real: una pista cuenta cuando suena 30 s o más. */
     fun finalizeHistory() {
         val id = listenedId ?: return
@@ -270,6 +293,7 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                     c.getMediaItemAt(it).mediaMetadata.title?.toString() ?: ""
                 }
                 queueIndex = c.currentMediaItemIndex
+                currentSongId = c.currentMediaItem?.mediaId?.toLongOrNull()
                 // Cola persistente: se guarda en cada cambio de pista.
                 scope.launch {
                     queueStore.save(
@@ -339,8 +363,32 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                     listenedMs += 500L
                 }
             }
+            // Temporizador de apagado (ETAPA 5): por minutos o al final
+            // de la canción. Nunca se activa solo.
+            val until = sleepUntilMs
+            if (until != null && System.currentTimeMillis() >= until) {
+                c.pause()
+                sleepUntilMs = null
+                sleepTimer = SleepTimerOption.OFF
+            }
+            if (sleepAtSongEnd && c.isPlaying && c.duration > 0 &&
+                c.duration - c.currentPosition < 1000
+            ) {
+                c.pause()
+                sleepAtSongEnd = false
+                sleepTimer = SleepTimerOption.OFF
+            }
             delay(500)
         }
+    }
+
+    // Letras (ETAPA 5): al cambiar de canción se busca su .lrc.
+    LaunchedEffect(currentSongId) {
+        val id = currentSongId ?: return@LaunchedEffect
+        lyrics = emptyList()
+        val songs = withContext(Dispatchers.IO) { MusicRepository(context).loadSongs() }
+        val song = songs.firstOrNull { it.id == id } ?: return@LaunchedEffect
+        lyrics = loadLyricsFor(song)
     }
 
     // Velocidad real (ETAPA 4): se aplica al controlador cuando cambia
@@ -430,6 +478,9 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
             onQueueClick = { index ->
                 controller?.let { it.seekTo(index, 0); it.play() }
             },
+            lyrics = lyrics,
+            sleepTimer = sleepTimer,
+            onSleepTimerSelected = { onSleepTimerSelected(it) },
         )
         return
     }
@@ -493,6 +544,12 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                         label = { Text("Playlists") },
                     )
                     NavigationBarItem(
+                        selected = tab == Tab.STATS,
+                        onClick = { tab = Tab.STATS },
+                        icon = { Icon(Icons.Filled.BarChart, contentDescription = null) },
+                        label = { Text("Estadísticas") },
+                    )
+                    NavigationBarItem(
                         selected = tab == Tab.SETTINGS,
                         onClick = { tab = Tab.SETTINGS },
                         icon = { Icon(Icons.Filled.Settings, contentDescription = null) },
@@ -511,6 +568,10 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
             Tab.PLAYLISTS -> PlaylistsScreen(
                 hasAudioPermission = hasAudioPermission,
                 onSongClick = { song, songs -> playSongs(songs, songs.indexOf(song)) },
+                modifier = Modifier.padding(padding),
+            )
+            Tab.STATS -> StatsScreen(
+                hasAudioPermission = hasAudioPermission,
                 modifier = Modifier.padding(padding),
             )
             Tab.SETTINGS -> SettingsScreen(modifier = Modifier.padding(padding))

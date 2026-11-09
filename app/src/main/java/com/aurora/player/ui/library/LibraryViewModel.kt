@@ -224,6 +224,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    /** Reproducciones y última escucha de una canción (ETAPA 5: Detalles). */
+    suspend fun songStats(songId: Long): Pair<Int, Long?> = withContext(Dispatchers.IO) {
+        db.libraryDao().playCountFor(songId) to db.libraryDao().lastPlayedAt(songId)
+    }
+
     fun refresh() {
         loaded = false
         load(hasPermission)

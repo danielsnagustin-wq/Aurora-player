@@ -1,6 +1,7 @@
 package com.aurora.player
 
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
 import org.junit.Assert.assertEquals
@@ -66,5 +67,24 @@ class AuroraPlayerTest {
         assertTrue(EqualizerManager.PRESETS.all { it.levelsDb[0] == 0f }.not())
         assertEquals(listOf(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f),
             EqualizerManager.PRESETS.first { it.name == "Plano" }.levelsDb)
+    }
+
+    @Test
+    fun `LRC parsea lineas con tiempo e ignora etiquetas`() {
+        val lines = LrcParser.parse("[ti:Título]\n[00:01.00]Primera\n[00:05.50]Segunda\n[ar:Artista]\n")
+        assertEquals(2, lines.size)
+        assertEquals(1000L, lines[0].timeMs)
+        assertEquals("Primera", lines[0].text)
+        assertEquals(5500L, lines[1].timeMs)
+        assertEquals("Segunda", lines[1].text)
+    }
+
+    @Test
+    fun `LRC ordena por tiempo y la linea actual es la ultima pasada`() {
+        val lines = LrcParser.parse("[00:10.00]Diez\n[00:02.00]Dos\n[00:05.00]Cinco\n")
+        assertEquals("Dos", lines[0].text)
+        assertEquals(0, LrcParser.currentLineIndex(lines, 3000))
+        assertEquals(1, LrcParser.currentLineIndex(lines, 7000))
+        assertEquals(-1, LrcParser.currentLineIndex(lines, 1000))
     }
 }

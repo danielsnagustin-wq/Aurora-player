@@ -1,12 +1,22 @@
 package com.aurora.player.ui.library
 
+import android.app.Activity
+import android.app.RecoverableSecurityException
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.os.Build
+import android.provider.MediaStore
 import android.util.LruCache
 import android.util.Size
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,6 +54,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,9 +69,15 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
+import com.aurora.player.util.SongDetails
 import com.aurora.player.util.TimeFormat
+import com.aurora.player.util.loadSongDetails
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Aurora Player — Biblioteca (Etapa 1 cableada, ETAPA 3 renovación).
@@ -93,6 +110,8 @@ fun LibraryScreen(
     val duplicateGroups by viewModel.duplicateGroups.collectAsState()
     var tab by remember { mutableStateOf(0) }
     var showDuplicates by remember { mutableStateOf(false) }
+    // ETAPA 5: mantener pulsado una canción abre sus Detalles.
+    var detailsSong by remember { mutableStateOf<Song?>(null) }
 
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
@@ -151,6 +170,7 @@ fun LibraryScreen(
                         albums = state.albums,
                         onSongClick = onSongClick,
                         onShowDuplicates = { showDuplicates = true },
+                        onDetails = { detailsSong = it },
                     )
                     1 -> ArtistsTab(
                         artists = state.artists,
@@ -172,6 +192,7 @@ fun LibraryScreen(
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { viewModel.toggleFavorite(it) },
                         onSongClick = onSongClick,
+                        onDetails = { detailsSong = it },
                     )
                 }
             }
@@ -186,6 +207,14 @@ fun LibraryScreen(
                 tab = 0
             },
             onDismiss = { showDuplicates = false },
+        )
+    }
+    detailsSong?.let { song ->
+        SongDetailsDialog(
+            song = song,
+            viewModel = viewModel,
+            onDismiss = { detailsSong = null },
+            onLibraryChanged = { viewModel.refresh() },
         )
     }
 }
@@ -203,6 +232,7 @@ private fun SongsTab(
     albums: List<Album>,
     onSongClick: (Song, List<Song>) -> Unit,
     onShowDuplicates: () -> Unit,
+    onDetails: (Song) -> Unit,
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -278,6 +308,7 @@ private fun SongsTab(
                     isFavorite = song.id in favoriteIds,
                     onToggleFavorite = { viewModel.toggleFavorite(song.id) },
                     onClick = { onSongClick(song, songs) },
+                    onDetails = onDetails,
                 )
                 Divider()
             }
@@ -356,6 +387,7 @@ private fun FavoritesTab(
     favoriteIds: Set<Long>,
     onToggleFavorite: (Long) -> Unit,
     onSongClick: (Song, List<Song>) -> Unit,
+    onDetails: (Song) -> Unit,
 ) {
     if (songs.isEmpty()) {
         Text(
@@ -371,6 +403,7 @@ private fun FavoritesTab(
                 isFavorite = song.id in favoriteIds,
                 onToggleFavorite = { onToggleFavorite(song.id) },
                 onClick = { onSongClick(song, songs) },
+                onDetails = onDetails,
             )
             Divider()
         }
@@ -383,6 +416,7 @@ private fun SongRow(
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
+    onDetails: (Song) -> Unit = {},
 ) {
     ListItem(
         headlineContent = {
@@ -413,7 +447,10 @@ private fun SongRow(
             }
         },
         leadingContent = { AlbumCover(song, size = 56.dp) },
-        modifier = Modifier.clickable { onClick() },
+        modifier = Modifier.combinedClickable(
+            onClick = onClick,
+            onLongClick = { onDetails(song) },
+        ),
     )
 }
 
@@ -462,6 +499,158 @@ private fun DuplicatesDialog(
         },
     )
 }
+
+/**
+ * Detalles reales de una canción (ETAPA 5): todos los campos que
+ * existen, "—" donde no hay dato, nunca inventado. "Editar" cambia
+ * título/artista/álbum en MediaStore (en Android 10+ el sistema pide
+ * permiso al usuario con su propio diálogo).
+ */
+@Composable
+private fun SongDetailsDialog(
+    song: Song,
+    viewModel: LibraryViewModel,
+    onDismiss: () -> Unit,
+    onLibraryChanged: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var details by remember(song) { mutableStateOf<SongDetails?>(null) }
+    var playCount by remember(song) { mutableStateOf<Int?>(null) }
+    var lastPlayed by remember(song) { mutableStateOf<Long?>(null) }
+    var editing by remember(song) { mutableStateOf(false) }
+    var editTitle by remember(song) { mutableStateOf(song.title) }
+    var editArtist by remember(song) { mutableStateOf(song.artist) }
+    var editAlbum by remember(song) { mutableStateOf(song.album) }
+    var saveError by remember { mutableStateOf<String?>(null) }
+    // El sistema pide permiso para editar metadatos (Android 10+):
+    // se guarda la petición y se lanza desde un efecto, para no
+    // crear una referencia circular entre save() y el launcher.
+    var pendingConsent by remember { mutableStateOf<IntentSenderRequest?>(null) }
+
+    LaunchedEffect(song) {
+        details = loadSongDetails(context, song)
+        val (count, last) = viewModel.songStats(song.id)
+        playCount = count
+        lastPlayed = last
+    }
+
+    val save: () -> Unit = {
+        scope.launch(Dispatchers.IO) {
+            val values = ContentValues().apply {
+                put(MediaStore.Audio.Media.TITLE, editTitle.trim())
+                put(MediaStore.Audio.Media.ARTIST, editArtist.trim())
+                put(MediaStore.Audio.Media.ALBUM, editAlbum.trim())
+            }
+            try {
+                context.contentResolver.update(song.uri, values, null, null)
+                withContext(Dispatchers.Main) {
+                    editing = false
+                    onLibraryChanged()
+                }
+            } catch (e: RecoverableSecurityException) {
+                val request = IntentSenderRequest.Builder(
+                    e.userAction.actionIntent.intentSender,
+                ).build()
+                withContext(Dispatchers.Main) { pendingConsent = request }
+            } catch (_: Exception) {
+                withContext(Dispatchers.Main) { saveError = "No se pudo guardar el cambio." }
+            }
+        }
+    }
+
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) save()
+    }
+
+    LaunchedEffect(pendingConsent) {
+        pendingConsent?.let {
+            consentLauncher.launch(it)
+            pendingConsent = null
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+        dismissButton = {
+            if (!editing) TextButton(onClick = { editing = true }) { Text("Editar") }
+        },
+        title = { Text(song.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                if (editing) {
+                    OutlinedTextField(
+                        value = editTitle,
+                        onValueChange = { editTitle = it },
+                        label = { Text("Título") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = editArtist,
+                        onValueChange = { editArtist = it },
+                        label = { Text("Artista") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editAlbum,
+                        onValueChange = { editAlbum = it },
+                        label = { Text("Álbum") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    TextButton(onClick = { save() }, modifier = Modifier.padding(top = 8.dp)) {
+                        Text("Guardar cambios")
+                    }
+                    saveError?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
+                } else {
+                    DetailRow("Artista", song.artist)
+                    DetailRow("Álbum", song.album)
+                    DetailRow("Año", song.year?.toString())
+                    DetailRow("Género", details?.genre)
+                    DetailRow("Compositor", details?.composer)
+                    DetailRow("Pista", if (song.trackNumber > 0) song.trackNumber.toString() else null)
+                    DetailRow("Formato", details?.mimeType ?: song.mimeType)
+                    DetailRow("Bitrate", details?.bitrateKbps?.let { "$it kbps" })
+                    DetailRow("Sample rate", details?.sampleRateHz?.let { "$it Hz" })
+                    DetailRow("Duración", TimeFormat.formatDuration(song.durationMs))
+                    DetailRow("Tamaño", formatSize(song.sizeBytes))
+                    DetailRow("Añadida", formatDate(song.dateAdded))
+                    DetailRow("Reproducciones", playCount?.toString())
+                    DetailRow("Última escucha", lastPlayed?.let { formatDate(it) })
+                    DetailRow("Ruta", song.path)
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun DetailRow(label: String, value: String?) {
+    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+        Text("$label: ", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(
+            value ?: "—",
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+private fun formatSize(bytes: Long): String = when {
+    bytes <= 0 -> "—"
+    bytes < 1024 * 1024 -> "${bytes / 1024} KB"
+    else -> "%.1f MB".format(bytes / (1024f * 1024f))
+}
+
+private fun formatDate(millis: Long): String =
+    if (millis <= 0) "—"
+    else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))
 
 /** Caché pequeña de portadas en memoria (32 álbumes como mucho). */
 private object AlbumArtCache {
