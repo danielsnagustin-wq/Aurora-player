@@ -1,6 +1,5 @@
 package com.aurora.player
 
-import android.net.Uri
 import com.aurora.player.audio.BassPref
 import com.aurora.player.audio.EnergyPref
 import com.aurora.player.audio.EqualizerManager
@@ -13,9 +12,9 @@ import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.audio.suggestCurve
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.trackAndDisc
-import com.aurora.player.model.Song
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
+import com.aurora.player.ui.stats.SongInfo
 import com.aurora.player.ui.stats.computeYearStats
 import com.aurora.player.ui.stats.yearRange
 import com.aurora.player.util.LrcParser
@@ -265,8 +264,8 @@ class AuroraPlayerTest {
         val (start, end) = yearRange(2026)
         val dayMs = 24L * 60 * 60 * 1000
         val songs = mapOf(
-            1L to Song(1, "A", "X", "Alb", 0, 180000, "/a.mp3", Uri.EMPTY, "audio/mpeg", 1000, 0, genre = "Electrónica"),
-            2L to Song(2, "B", "Y", "Alb", 0, 180000, "/b.mp3", Uri.EMPTY, "audio/mpeg", 1000, 0, genre = "Rock"),
+            1L to SongInfo("A", "X", "Electrónica"),
+            2L to SongInfo("B", "Y", "Rock"),
         )
         val history = listOf(
             PlayHistoryEntity(1, start + 5 * dayMs, 60000),
