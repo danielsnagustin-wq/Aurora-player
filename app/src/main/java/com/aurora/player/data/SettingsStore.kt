@@ -1,8 +1,10 @@
 package com.aurora.player.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,6 +16,7 @@ import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 /**
@@ -22,9 +25,20 @@ import kotlinx.coroutines.flow.map
  * "Aplicar" desde la ronda solo). "Restablecer" escribe
  * ThemeSettings.DEFAULT. Un HEX guardado inválido se ignora al leer
  * (Theme.kt usa el valor por defecto) y se corrige al guardar.
+ * ANTI-CIERRE: un archivo de ajustes corrupto (muerte del proceso
+ * a mitad de escritura) antes tumbaba la app al abrir; ahora el
+ * archivo corrupto se reemplaza por ajustes vacíos (= valores por
+ * defecto) y cualquier otro fallo de lectura emite los valores por
+ * defecto en vez de lanzar.
  */
-private val Context.themeDataStore by preferencesDataStore(name = "aurora_theme")
-private val Context.playerDataStore by preferencesDataStore(name = "aurora_player")
+private val Context.themeDataStore by preferencesDataStore(
+    name = "aurora_theme",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
+private val Context.playerDataStore by preferencesDataStore(
+    name = "aurora_player",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 class ThemeSettingsStore(private val context: Context) {
 
@@ -45,10 +59,12 @@ class ThemeSettingsStore(private val context: Context) {
         val DENSITY = stringPreferencesKey("list_density")
     }
 
-    val settingsFlow: Flow<ThemeSettings> = context.themeDataStore.data.map { prefs ->
+    val settingsFlow: Flow<ThemeSettings> = context.themeDataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         val d = ThemeSettings.DEFAULT
         d.copy(
-            themeMode = ThemeMode.valueOf(prefs[Keys.MODE] ?: d.themeMode.name),
+            themeMode = ThemeMode.entries.find { it.name == prefs[Keys.MODE] } ?: d.themeMode,
             amoledWhenSystemDark = prefs[Keys.AMOLED_SYSTEM_DARK] ?: d.amoledWhenSystemDark,
             accentHex = ThemeSettings.normalizeHex(prefs[Keys.ACCENT] ?: d.accentHex) ?: d.accentHex,
             backgroundHex = ThemeSettings.normalizeHex(prefs[Keys.BACKGROUND] ?: d.backgroundHex) ?: d.backgroundHex,
@@ -59,9 +75,9 @@ class ThemeSettingsStore(private val context: Context) {
             playerBarHex = ThemeSettings.normalizeHex(prefs[Keys.PLAYER_BAR] ?: d.playerBarHex) ?: d.playerBarHex,
             visualizerHex = ThemeSettings.normalizeHex(prefs[Keys.VISUALIZER] ?: d.visualizerHex) ?: d.visualizerHex,
             useMaterialYou = prefs[Keys.MATERIAL_YOU] ?: d.useMaterialYou,
-            textSize = TextSize.valueOf(prefs[Keys.TEXT_SIZE] ?: d.textSize.name),
-            coverShape = CoverShape.valueOf(prefs[Keys.COVER_SHAPE] ?: d.coverShape.name),
-            listDensity = ListDensity.valueOf(prefs[Keys.DENSITY] ?: d.listDensity.name),
+            textSize = TextSize.entries.find { it.name == prefs[Keys.TEXT_SIZE] } ?: d.textSize,
+            coverShape = CoverShape.entries.find { it.name == prefs[Keys.COVER_SHAPE] } ?: d.coverShape,
+            listDensity = ListDensity.entries.find { it.name == prefs[Keys.DENSITY] } ?: d.listDensity,
         )
     }
 
@@ -100,7 +116,9 @@ class PlayerSettingsStore(private val context: Context) {
         val RESUME = booleanPreferencesKey("resume_where_left")
     }
 
-    val settingsFlow: Flow<PlayerSettings> = context.playerDataStore.data.map { prefs ->
+    val settingsFlow: Flow<PlayerSettings> = context.playerDataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         val d = PlayerSettings.DEFAULT
         d.copy(
             gapless = prefs[Keys.GAPLESS] ?: d.gapless,

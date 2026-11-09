@@ -1,12 +1,15 @@
 package com.aurora.player.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
 /**
@@ -14,8 +17,12 @@ import kotlinx.coroutines.flow.map
  * Guarda los ids de la cola, el índice actual y la posición, en
  * DataStore (sin migración Room: la cola es estado, no datos del
  * usuario). Solo se restaura si "Reanudar donde quedó" está activo.
+ * ANTI-CIERRE: archivo corrupto -> cola vacía, nunca tumba la app.
  */
-private val Context.queueDataStore by preferencesDataStore(name = "aurora_queue")
+private val Context.queueDataStore by preferencesDataStore(
+    name = "aurora_queue",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 data class SavedQueue(
     val songIds: List<Long> = emptyList(),
@@ -31,7 +38,9 @@ class QueueStore(private val context: Context) {
         val POSITION = longPreferencesKey("queue_position_ms")
     }
 
-    val queueFlow: Flow<SavedQueue> = context.queueDataStore.data.map { prefs ->
+    val queueFlow: Flow<SavedQueue> = context.queueDataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         SavedQueue(
             songIds = (prefs[Keys.IDS] ?: "")
                 .split(",").mapNotNull { it.toLongOrNull() },

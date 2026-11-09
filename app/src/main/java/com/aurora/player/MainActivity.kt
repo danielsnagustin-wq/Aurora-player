@@ -421,6 +421,16 @@ private fun AuroraApp(
         val future = MediaController.Builder(context, token).buildAsync()
         val listener = object : Player.Listener {
             private fun refresh(c: MediaController) {
+                // ANTI-CIERRE: un fallo al actualizar la UI (widget,
+                // cola, favorito) nunca puede tumbar la app al abrir.
+                try {
+                    refreshUnsafe(c)
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Actualizar reproductor", e)
+                }
+            }
+
+            private fun refreshUnsafe(c: MediaController) {
                 val meta = c.currentMediaItem?.mediaMetadata
                 currentTitle = meta?.title?.toString()
                 currentArtist = meta?.artist?.toString()

@@ -1,15 +1,21 @@
 package com.aurora.player.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.player.audio.EqualizerManager
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
-private val Context.eqPresetDataStore by preferencesDataStore(name = "aurora_eq_presets")
+private val Context.eqPresetDataStore by preferencesDataStore(
+    name = "aurora_eq_presets",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Aurora Player — presets de EQ propios del usuario.
@@ -26,7 +32,9 @@ class CustomPresetStore(context: Context) {
     }
 
     val presetsFlow: Flow<List<EqualizerManager.Preset>> =
-        dataStore.data.map { prefs -> decode(prefs[PRESETS_KEY] ?: "") }
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> decode(prefs[PRESETS_KEY] ?: "") }
 
     suspend fun save(name: String, levelsDb: List<Float>) {
         val clean = name.trim().take(40)

@@ -1,15 +1,21 @@
 package com.aurora.player.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 
-private val Context.eqStateDataStore by preferencesDataStore(name = "aurora_eq_state")
+private val Context.eqStateDataStore by preferencesDataStore(
+    name = "aurora_eq_state",
+    corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() },
+)
 
 /**
  * Aurora Player — estado del ecualizador que sobrevive al reinicio
@@ -34,7 +40,9 @@ class EqStateStore(context: Context) {
         val VIRTUALIZER = intPreferencesKey("eq_virtualizer")
     }
 
-    val stateFlow: Flow<EqState> = dataStore.data.map { prefs ->
+    val stateFlow: Flow<EqState> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
         val levels = (prefs[Keys.LEVELS] ?: "")
             .split(",").mapNotNull { it.toFloatOrNull() }
             .takeIf { it.size == 10 } ?: List(10) { 0f }
