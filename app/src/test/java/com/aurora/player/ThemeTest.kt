@@ -48,14 +48,14 @@ class ThemeTest {
     }
 
     @Test
-    fun `forma de portada: cuadrada 0, redondeada 12, circular 50`() {
+    fun `forma de portada - cuadrada 0, redondeada 12, circular 50`() {
         assertEquals(0, coverShapeToCornerPercent(CoverShape.SQUARE))
         assertEquals(12, coverShapeToCornerPercent(CoverShape.ROUNDED))
         assertEquals(50, coverShapeToCornerPercent(CoverShape.CIRCLE))
     }
 
     @Test
-    fun `densidad de lista: compacta 52 dp, comoda 72 dp`() {
+    fun `densidad de lista - compacta 52 dp, comoda 72 dp`() {
         assertEquals(52, listDensityToRowHeightDp(ListDensity.COMPACT))
         assertEquals(72, listDensityToRowHeightDp(ListDensity.COMFORTABLE))
     }
@@ -72,7 +72,7 @@ class ThemeTest {
     }
 
     @Test
-    fun `temporizador de apagado: valores de minutos reales`() {
+    fun `temporizador de apagado - valores de minutos reales`() {
         assertEquals(0, SleepTimerOption.OFF.minutes)
         assertEquals(15, SleepTimerOption.MIN_15.minutes)
         assertEquals(30, SleepTimerOption.MIN_30.minutes)
