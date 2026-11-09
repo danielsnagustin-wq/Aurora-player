@@ -77,6 +77,7 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
+import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalListDensity
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
@@ -142,6 +143,13 @@ fun LibraryScreen(
             )
             return@Column
         }
+        // Inicio propio: mientras la biblioteca carga, pantalla de
+        // Aurora (logo, nombre y lema) a pantalla completa, en vez
+        // de la barra de búsqueda y un "Cargando…" pelado.
+        if (uiState is LibraryUiState.Loading) {
+            StartScreen()
+            return@Column
+        }
         OutlinedTextField(
             value = query,
             onValueChange = { viewModel.setQuery(it) },
@@ -156,17 +164,6 @@ fun LibraryScreen(
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
         }
         when (val state = uiState) {
-            LibraryUiState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Text("Cargando…", modifier = Modifier.padding(top = 12.dp))
-                    }
-                }
-            }
             LibraryUiState.Empty -> {
                 Text(
                     "No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.",
