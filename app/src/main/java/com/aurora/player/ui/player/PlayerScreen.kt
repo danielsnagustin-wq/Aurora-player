@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -238,6 +239,10 @@ fun PlayerScreen(
         // Portada grande con sombra y la forma elegida en Ajustes.
         // Gestos (ideas de Retro/Gramophone): deslizar a los lados
         // cambia de pista y doble toque marca la canción como favorita.
+        // RONDA 5 (2026-11-09): el umbral del gesto era 100 px fijos:
+        // en un teléfono denso son ~6 mm (cambia de pista sin querer)
+        // y en uno poco denso ~16 mm. Ahora son 56 dp reales.
+        val swipeThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
         ArtworkImage(
             uri = artworkUri,
@@ -252,7 +257,7 @@ fun PlayerScreen(
                                 dragTotal = 0f
                                 return@detectHorizontalDragGestures
                             }
-                            when (swipeDirection(dragTotal)) {
+                            when (swipeDirection(dragTotal, swipeThresholdPx)) {
                                 1 -> onNext()
                                 -1 -> onPrevious()
                             }

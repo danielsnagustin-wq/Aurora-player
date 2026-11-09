@@ -1,5 +1,6 @@
 package com.aurora.player.ui.playlists
 
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -95,8 +96,20 @@ fun PlaylistsScreen(
                     ?: byFileName[java.io.File(entry.path).name]
                     ?: allSongs.firstOrNull { it.title == entry.title }
             }.distinctBy { it.id }
-            val name = uri.lastPathSegment
-                ?.substringAfterLast("/")
+            // RONDA 5 (2026-11-09): el nombre salía de
+            // lastPathSegment, que en un Uri de contenido es un ID
+            // de documento ("12345") o una ruta rara, no el nombre
+            // del archivo. Ahora se lee DISPLAY_NAME de verdad.
+            val displayName = try {
+                context.contentResolver.query(
+                    uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null,
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+            } catch (_: Exception) {
+                null
+            }
+            val name = (displayName ?: uri.lastPathSegment?.substringAfterLast("/"))
                 ?.removeSuffix(".m3u")
                 ?.removeSuffix(".M3U")
                 ?.ifBlank { "Importada" } ?: "Importada"
@@ -320,7 +333,10 @@ private fun PlaylistDetail(
                 }
             }
             OutlinedButton(
-                onClick = { exportLauncher.launch("$name.m3u") },
+                // RONDA 5 (2026-11-09): un nombre de playlist con
+                // "/" rompía el nombre de archivo sugerido al
+                // exportar. Se sanea aquí, sin tocar el nombre real.
+                onClick = { exportLauncher.launch("${name.replace("/", "_")}.m3u") },
                 modifier = Modifier.padding(start = 8.dp),
             ) {
                 Text("Exportar M3U")

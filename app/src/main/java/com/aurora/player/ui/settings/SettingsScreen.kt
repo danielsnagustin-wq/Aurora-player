@@ -297,6 +297,30 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Android 12 o más: el tema toma los colores del fondo de pantalla. Tu color de botones sigue valiendo.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        // RONDA 5 (2026-11-09): "AMOLED cuando el sistema está en
+        // oscuro" existía en el modelo, se guardaba y el tema lo
+        // leía, pero NO HABÍA interruptor para cambiarlo: siempre
+        // valía true. Ahora aparece cuando el modo es Sistema.
+        if (applied.themeMode == ThemeMode.SYSTEM) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
++            ) {
++                Text(
++                    "Negro AMOLED cuando el sistema está en oscuro",
++                    modifier = Modifier.weight(1f),
++                )
++                Switch(
++                    checked = applied.amoledWhenSystemDark,
++                    onCheckedChange = { save(applied.copy(amoledWhenSystemDark = it)) },
++                )
++            }
++            Text(
++                "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
++                modifier = Modifier.padding(top = 4.dp),
++            )
++        }
 
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
