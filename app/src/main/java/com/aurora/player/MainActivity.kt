@@ -356,6 +356,12 @@ private fun AuroraApp(
     val queueStore = remember { QueueStore(context) }
     val db = remember { AuroraDatabase.getInstance(context) }
     var speed by remember { mutableStateOf(1f) }
+    // RONDA 6: tono (pitch) independiente de la velocidad.
+    var pitch by remember { mutableStateOf(1f) }
+    // RONDA 6: radio local — no rellenar dos veces a la vez, y no
+    // repetir las últimas 50 canciones que puso la radio.
+    var radioBusy by remember { mutableStateOf(false) }
+    var radioRecentIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     var queueTitles by remember { mutableStateOf<List<String>>(emptyList()) }
     var queueIndex by remember { mutableStateOf(0) }
     var listenedMs by remember { mutableStateOf(0L) }
@@ -455,6 +461,53 @@ private fun AuroraApp(
         }
     }
 
+    /**
+     * RONDA 6: radio local — al acabar la cola, seguir con canciones
+     * parecidas de la biblioteca (mismo artista, luego mismo género,
+     * luego cualquiera), sin repetir las que ya suenan ni las últimas
+     * 50 que puso la radio. Solo biblioteca local, sin internet.
+     * Definida ANTES del listener que la llama (las funciones locales
+     * no se pueden usar antes de su declaración).
+     */
+    fun refillRadio() {
+        val c = controller ?: return
+        if (radioBusy) return
+        radioBusy = true
+        scope.launch {
+            val picked: List<Song> = try {
+                withContext(Dispatchers.IO) {
+                    val settings = playerStore.settingsFlow.first()
+                    val songs = MusicRepository(context).loadSongs(settings.minDurationMs)
+                    val currentId = c.currentMediaItem?.mediaId?.toLongOrNull()
+                    val current = songs.firstOrNull { it.id == currentId }
+                    val inQueue = (0 until c.mediaItemCount)
+                        .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }.toSet()
+                    val excluded = inQueue + radioRecentIds.toSet()
+                    val sameArtist = songs.filter {
+                        it.id !in excluded && current != null && it.artist == current.artist
+                    }
+                    val sameGenre = songs.filter {
+                        it.id !in excluded && current?.genre != null && it.genre == current.genre
+                    }
+                    val rest = songs.filter { it.id !in excluded }
+                    (sameArtist.shuffled() + sameGenre.shuffled() + rest.shuffled())
+                        .distinctBy { it.id }.take(10)
+                }
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Radio local", e)
+                emptyList()
+            }
+            if (picked.isNotEmpty()) {
+                radioRecentIds = (radioRecentIds + picked.map { it.id }).takeLast(50)
+                val startIndex = c.mediaItemCount
+                c.addMediaItems(picked.map { songToMediaItem(context, it) })
+                c.seekTo(startIndex, 0)
+                c.play()
+            }
+            radioBusy = false
+        }
+    }
+
     DisposableEffect(Unit) {
         val token = SessionToken(
             context,
@@ -538,6 +591,14 @@ private fun AuroraApp(
 
             override fun onPlaybackStateChanged(state: Int) {
                 controller?.let { refresh(it) }
+                // RONDA 6: radio local — la cola se acabó de verdad
+                // (repetición apagada) y el usuario la tiene activa.
+                if (state == Player.STATE_ENDED) {
+                    val c = controller
+                    if (c != null && c.repeatMode == Player.REPEAT_MODE_OFF && playerSettings.localRadio) {
+                        refillRadio()
+                    }
+                }
             }
         }
         future.addListener(
@@ -615,12 +676,14 @@ private fun AuroraApp(
         lyrics = loadLyricsForPath(currentSongPath ?: "")
     }
 
-    // Velocidad real (ETAPA 4): se aplica al controlador cuando cambia
-    // en Ajustes o en el reproductor, y se guarda en DataStore.
-    LaunchedEffect(playerSettings.playbackSpeed, controller) {
+    // Velocidad y tono reales (ETAPA 4 + RONDA 6): se aplican al
+    // controlador cuando cambian en Ajustes o en el reproductor, y se
+    // guardan en DataStore.
+    LaunchedEffect(playerSettings.playbackSpeed, playerSettings.playbackPitch, controller) {
         val c = controller ?: return@LaunchedEffect
-        PlayerControls.setSpeed(c, playerSettings.playbackSpeed)
+        PlayerControls.setSpeedAndPitch(c, playerSettings.playbackSpeed, playerSettings.playbackPitch)
         speed = playerSettings.playbackSpeed
+        pitch = playerSettings.playbackPitch
     }
 
     fun cycleSpeed() {
@@ -633,6 +696,19 @@ private fun AuroraApp(
             else -> 0.5f
         }
         scope.launch { playerStore.save(playerSettings.copy(playbackSpeed = next)) }
+    }
+
+    /** RONDA 6: el tono cicla como la velocidad (0.5x–2x, 1x = sin cambio). */
+    fun cyclePitch() {
+        val next = when (pitch) {
+            0.5f -> 0.75f
+            0.75f -> 1f
+            1f -> 1.25f
+            1.25f -> 1.5f
+            1.5f -> 2f
+            else -> 0.5f
+        }
+        scope.launch { playerStore.save(playerSettings.copy(playbackPitch = next)) }
     }
 
     // Cola persistente (ETAPA 4): al abrir, si "Reanudar" está activo,
@@ -708,6 +784,8 @@ private fun AuroraApp(
             onOpenEq = { showEq = true },
             speed = speed,
             onCycleSpeed = { cycleSpeed() },
+            pitch = pitch,
+            onCyclePitch = { cyclePitch() },
             queueTitles = queueTitles,
             queueIndex = queueIndex,
             onQueueClick = { index ->
