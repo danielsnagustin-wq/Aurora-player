@@ -24,6 +24,12 @@ enum class CoverShape { SQUARE, ROUNDED, CIRCLE }
 enum class ListDensity { COMPACT, COMFORTABLE }
 enum class TextSize { SMALL, MEDIUM, LARGE }
 
+/** Estilo de tarjetas (spec 003): sólido, cristal o solo contorno. */
+enum class CardStyle { SOLID, GLASS, OUTLINE }
+
+/** Fondo del reproductor (spec 003): plano, portada gigante o degradado. */
+enum class PlayerBackground { SOLID, COVER, GRADIENT }
+
 data class ThemeSettings(
     val themeMode: ThemeMode = ThemeMode.AMOLED,
     /** AMOLED también cuando el sistema está en oscuro y el modo es SYSTEM. */
@@ -40,6 +46,15 @@ data class ThemeSettings(
     val textSize: TextSize = TextSize.MEDIUM,
     val coverShape: CoverShape = CoverShape.ROUNDED,
     val listDensity: ListDensity = ListDensity.COMFORTABLE,
+    // DISEÑO PREMIUM (spec 003): todo personalizable, todo con efecto.
+    /** El acento del reproductor sigue el color de la portada actual. */
+    val dynamicColor: Boolean = true,
+    /** Radio de esquinas de tarjetas y mini-barra, en dp (0..28). */
+    val cornerRadiusDp: Int = 16,
+    val cardStyle: CardStyle = CardStyle.SOLID,
+    val playerBackground: PlayerBackground = PlayerBackground.COVER,
+    /** Álbumes en cuadrícula de 2 columnas en vez de lista. */
+    val albumGrid: Boolean = false,
 ) {
     companion object {
         val DEFAULT = ThemeSettings()

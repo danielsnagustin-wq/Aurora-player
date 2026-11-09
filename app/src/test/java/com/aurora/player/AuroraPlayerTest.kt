@@ -18,6 +18,7 @@ import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.audio.suggestCurve
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.trackAndDisc
+import com.aurora.player.ui.theme.CoverColors
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
 import com.aurora.player.ui.stats.SongInfo
@@ -59,6 +60,7 @@ import com.aurora.player.online.selectAudioFormat
 import com.aurora.player.ui.online.formatOnlineDuration
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -595,5 +597,46 @@ class AuroraPlayerTest {
         assertEquals("3:24", formatOnlineDuration(204))
         assertEquals("1:02:03", formatOnlineDuration(3723))
         assertEquals("0:05", formatOnlineDuration(5))
+    }
+
+    // DISEÑO PREMIUM (spec 003): color dominante de la portada, puro.
+    @Test
+    fun colorDominanteDeImagenSolida() {
+        val red = 0xFFFF0000.toInt()
+        val pixels = IntArray(100) { red }
+        val out = CoverColors.dominantColorFromPixels(pixels)
+        assertNotNull(out)
+        val r = (out!! ushr 16) and 0xFF
+        val g = (out ushr 8) and 0xFF
+        val b = out and 0xFF
+        assertTrue(r > 150)
+        assertTrue(r > g + 50 && r > b + 50)
+    }
+
+    @Test
+    fun colorDominanteEligeElTonoMayoritario() {
+        val red = 0xFFFF0000.toInt()
+        val blue = 0xFF0000FF.toInt()
+        val pixels = IntArray(100) { if (it < 80) red else blue }
+        val out = CoverColors.dominantColorFromPixels(pixels)
+        assertNotNull(out)
+        val r = (out!! ushr 16) and 0xFF
+        val b = out and 0xFF
+        assertTrue(r > b)
+    }
+
+    @Test
+    fun colorDominanteIgnoraGrises() {
+        val gray = 0xFF808080.toInt()
+        assertNull(CoverColors.dominantColorFromPixels(IntArray(100) { gray }))
+        assertNull(CoverColors.dominantColorFromPixels(IntArray(0)))
+        assertNull(CoverColors.dominantColorFromPixels(IntArray(50) { 0xFF000000.toInt() }))
+    }
+
+    @Test
+    fun tonoDeHueBasico() {
+        assertEquals(0f, CoverColors.hueOf(255, 0, 0), 1f)
+        assertEquals(120f, CoverColors.hueOf(0, 255, 0), 1f)
+        assertEquals(240f, CoverColors.hueOf(0, 0, 255), 1f)
     }
 }

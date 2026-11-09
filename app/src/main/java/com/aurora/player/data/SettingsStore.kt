@@ -9,8 +9,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
@@ -57,6 +59,12 @@ class ThemeSettingsStore(private val context: Context) {
         val TEXT_SIZE = stringPreferencesKey("text_size")
         val COVER_SHAPE = stringPreferencesKey("cover_shape")
         val DENSITY = stringPreferencesKey("list_density")
+        // DISEÑO PREMIUM (spec 003).
+        val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val CORNER_RADIUS = intPreferencesKey("corner_radius_dp")
+        val CARD_STYLE = stringPreferencesKey("card_style")
+        val PLAYER_BACKGROUND = stringPreferencesKey("player_background")
+        val ALBUM_GRID = booleanPreferencesKey("album_grid")
     }
 
     val settingsFlow: Flow<ThemeSettings> = context.themeDataStore.data
@@ -78,6 +86,11 @@ class ThemeSettingsStore(private val context: Context) {
             textSize = TextSize.entries.find { it.name == prefs[Keys.TEXT_SIZE] } ?: d.textSize,
             coverShape = CoverShape.entries.find { it.name == prefs[Keys.COVER_SHAPE] } ?: d.coverShape,
             listDensity = ListDensity.entries.find { it.name == prefs[Keys.DENSITY] } ?: d.listDensity,
+            dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: d.dynamicColor,
+            cornerRadiusDp = (prefs[Keys.CORNER_RADIUS] ?: d.cornerRadiusDp).coerceIn(0, 28),
+            cardStyle = CardStyle.entries.find { it.name == prefs[Keys.CARD_STYLE] } ?: d.cardStyle,
+            playerBackground = PlayerBackground.entries.find { it.name == prefs[Keys.PLAYER_BACKGROUND] } ?: d.playerBackground,
+            albumGrid = prefs[Keys.ALBUM_GRID] ?: d.albumGrid,
         )
     }
 
@@ -98,6 +111,11 @@ class ThemeSettingsStore(private val context: Context) {
             prefs[Keys.TEXT_SIZE] = settings.textSize.name
             prefs[Keys.COVER_SHAPE] = settings.coverShape.name
             prefs[Keys.DENSITY] = settings.listDensity.name
+            prefs[Keys.DYNAMIC_COLOR] = settings.dynamicColor
+            prefs[Keys.CORNER_RADIUS] = settings.cornerRadiusDp.coerceIn(0, 28)
+            prefs[Keys.CARD_STYLE] = settings.cardStyle.name
+            prefs[Keys.PLAYER_BACKGROUND] = settings.playerBackground.name
+            prefs[Keys.ALBUM_GRID] = settings.albumGrid
         }
     }
 

@@ -18,8 +18,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
@@ -76,6 +78,13 @@ val LocalButtonColor = staticCompositionLocalOf { IceBlue }
 val LocalOnButtonColor = staticCompositionLocalOf { PureBlack }
 val LocalCoverShape = staticCompositionLocalOf { CoverShape.ROUNDED }
 val LocalListDensity = staticCompositionLocalOf { ListDensity.COMFORTABLE }
+
+/** Diseño premium (spec 003): canales con efecto real en la UI. */
+val LocalCornerRadiusDp = staticCompositionLocalOf { 16 }
+val LocalCardStyle = staticCompositionLocalOf { CardStyle.SOLID }
+val LocalDynamicColor = staticCompositionLocalOf { true }
+val LocalPlayerBackground = staticCompositionLocalOf { PlayerBackground.COVER }
+val LocalAlbumGrid = staticCompositionLocalOf { false }
 
 /** Colores de botón reales: fondo = buttonHex, texto con contraste. */
 @Composable
@@ -253,6 +262,11 @@ fun AuroraPlayerTheme(
         LocalOnButtonColor provides onButton,
         LocalCoverShape provides settings.coverShape,
         LocalListDensity provides settings.listDensity,
+        LocalCornerRadiusDp provides settings.cornerRadiusDp.coerceIn(0, 28),
+        LocalCardStyle provides settings.cardStyle,
+        LocalDynamicColor provides settings.dynamicColor,
+        LocalPlayerBackground provides settings.playerBackground,
+        LocalAlbumGrid provides settings.albumGrid,
     ) {
         MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale), content = content)
     }
