@@ -67,6 +67,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -618,15 +620,42 @@ fun PlayerScreen(
                 ) {
                     itemsIndexed(lyrics) { index, line ->
                         val isCurrent = index == currentLine
-                        Text(
-                            line.text,
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            textAlign = TextAlign.Center,
-                            color = if (isCurrent) accent
-                            else MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = if (isCurrent) MaterialTheme.typography.titleMedium
-                            else MaterialTheme.typography.bodyMedium,
-                        )
+                        if (isCurrent && line.words.isNotEmpty()) {
+                            // Fase 1b — karaoke palabra por palabra:
+                            // ya cantadas en acento, la que suena en
+                            // acento y negrita, las que faltan apagadas.
+                            val wordIndex = LrcParser.currentWordIndex(
+                                line, positionMs + lyricsOffsetMs,
+                            )
+                            Text(
+                                buildAnnotatedString {
+                                    line.words.forEachIndexed { wi, word ->
+                                        if (wi > 0) append(" ")
+                                        withStyle(
+                                            SpanStyle(
+                                                color = if (wi <= wordIndex) accent
+                                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = if (wi == wordIndex) FontWeight.Bold
+                                                else FontWeight.Normal,
+                                            ),
+                                        ) { append(word.text) }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                textAlign = TextAlign.Center,
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                        } else {
+                            Text(
+                                line.text,
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                textAlign = TextAlign.Center,
+                                color = if (isCurrent) accent
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = if (isCurrent) MaterialTheme.typography.titleMedium
+                                else MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
             }
