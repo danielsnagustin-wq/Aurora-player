@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Song
@@ -63,11 +62,7 @@ data class StatsData(
 
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val db = Room.databaseBuilder(
-        application,
-        AuroraDatabase::class.java,
-        "aurora-player.db",
-    ).build()
+    private val db = AuroraDatabase.getInstance(application)
     private val repository = MusicRepository(application)
 
     private val _stats = MutableStateFlow<StatsData?>(null)
@@ -117,13 +112,19 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             _stats.value = data
         }
     }
+    /** Vuelve a cargar al entrar a la pantalla: las cifras se quedan
+     * viejas si solo se cargan una vez por arranque. */
+    fun refresh(hasAudioPermission: Boolean) {
+        loaded = false
+        load(hasAudioPermission)
+    }
 }
 
 @Composable
 fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     val viewModel: StatsViewModel = viewModel()
     val stats by viewModel.stats.collectAsState()
-    LaunchedEffect(hasAudioPermission) { viewModel.load(hasAudioPermission) }
+    LaunchedEffect(Unit) { viewModel.refresh(hasAudioPermission) }
     val data = stats
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text("Estadísticas", style = MaterialTheme.typography.titleLarge)
@@ -213,9 +214,9 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     }
 }
 
-/** Inicial del día (L/M/X/J/V/S/D) para la columna del gráfico semanal. */
+/** Inicial del día (LU/MA/MI/JU/VI/SA/DO) para la columna del gráfico semanal. */
 private fun dayLabel(indexFromOldest: Int): String {
     val dayMs = 24L * 60 * 60 * 1000
     val date = Date(System.currentTimeMillis() - (6 - indexFromOldest) * dayMs)
-    return SimpleDateFormat("EE", Locale.getDefault()).format(date).take(1).uppercase()
+    return SimpleDateFormat("EE", Locale.getDefault()).format(date).take(2).uppercase()
 }

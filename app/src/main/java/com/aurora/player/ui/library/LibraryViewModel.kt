@@ -3,7 +3,6 @@ package com.aurora.player.ui.library
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
@@ -65,11 +64,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository = MusicRepository(application)
     private val playerStore = PlayerSettingsStore(application)
-    private val db = Room.databaseBuilder(
-        application,
-        AuroraDatabase::class.java,
-        "aurora-player.db",
-    ).build()
+    private val db = AuroraDatabase.getInstance(application)
 
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
     val uiState: StateFlow<LibraryUiState> = _uiState
@@ -97,8 +92,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val duplicateGroups: StateFlow<List<DuplicateGroup>> = _duplicateGroups
 
     init {
+        // Favoritos en vivo: el flujo de Room avisa de cualquier
+        // cambio, venga de la biblioteca, del reproductor o de las
+        // playlists. Antes se cargaban una sola vez y el corazón del
+        // reproductor no se reflejaba en la biblioteca.
         viewModelScope.launch(Dispatchers.IO) {
-            _favoriteIds.value = db.libraryDao().favoriteIds().toSet()
+            db.libraryDao().favoriteIdsFlow().collect { ids ->
+                _favoriteIds.value = ids.toSet()
+            }
         }
     }
 
@@ -224,14 +225,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleFavorite(songId: Long) {
+        // El estado se actualiza solo por el flujo de favoritos: no se
+        // toca _favoriteIds aquí para no pelear con Room.
         viewModelScope.launch(Dispatchers.IO) {
-            val current = _favoriteIds.value
-            if (songId in current) {
+            if (songId in _favoriteIds.value) {
                 db.libraryDao().removeFavorite(songId)
-                _favoriteIds.value = current - songId
             } else {
                 db.libraryDao().addFavorite(FavoriteEntity(songId))
-                _favoriteIds.value = current + songId
             }
         }
     }

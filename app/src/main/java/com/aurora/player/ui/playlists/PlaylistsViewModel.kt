@@ -3,7 +3,6 @@ package com.aurora.player.ui.playlists
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.PlaylistEntity
 import com.aurora.player.data.PlaylistSongEntity
@@ -18,8 +17,9 @@ import kotlinx.coroutines.withContext
 
 /**
  * Aurora Player — ViewModel de playlists (Room, solo en el teléfono).
- * La base se crea aquí (Room.databaseBuilder); el DAO ya existía pero
- * nadie lo instanciaba. Todo corre en IO, nunca en el hilo de UI.
+ * La base es la instancia única compartida (AuroraDatabase.getInstance);
+ * antes cada ViewModel creaba la suya y los datos no se veían entre sí.
+ * Todo corre en IO, nunca en el hilo de UI.
  */
 
 /** Playlist inteligente: una regla sobre datos locales, no una lista fija. */
@@ -31,11 +31,7 @@ data class SmartPlaylist(
 
 class PlaylistsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val db = Room.databaseBuilder(
-        application,
-        AuroraDatabase::class.java,
-        "aurora-player.db",
-    ).build()
+    private val db = AuroraDatabase.getInstance(application)
     private val dao = db.playlistDao()
     private val libraryDao = db.libraryDao()
     private val repository = MusicRepository(application)
@@ -115,6 +111,14 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    /** Vuelve a cargar al entrar a la pantalla: las inteligentes
+     * ("Más escuchadas", "Sin escuchar", "Favoritas") se quedan viejas
+     * si solo se cargan una vez por arranque. */
+    fun refresh(hasAudioPermission: Boolean) {
+        loaded = false
+        load(hasAudioPermission)
+    }
+
     fun createPlaylist(name: String) {
         val clean = name.trim()
         if (clean.isEmpty()) return
@@ -126,8 +130,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun deletePlaylist(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            dao.clearSongs(id)
-            dao.deletePlaylist(id)
+            dao.deletePlaylistWithSongs(id)
             _playlists.value = dao.allPlaylists()
             if (_selectedId.value == id) {
                 _selectedId.value = null
@@ -151,10 +154,12 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setPlaylistSongs(id: Long, songIds: List<Long>) {
         viewModelScope.launch(Dispatchers.IO) {
-            dao.clearSongs(id)
-            dao.setSongs(songIds.mapIndexed { index, songId ->
-                PlaylistSongEntity(playlistId = id, songId = songId, position = index)
-            })
+            dao.replaceSongs(
+                id,
+                songIds.mapIndexed { index, songId ->
+                    PlaylistSongEntity(playlistId = id, songId = songId, position = index)
+                },
+            )
             val byId = _allSongs.value.associateBy { it.id }
             _selectedSongs.value = songIds.mapNotNull { byId[it] }
             _playlists.value = dao.allPlaylists()

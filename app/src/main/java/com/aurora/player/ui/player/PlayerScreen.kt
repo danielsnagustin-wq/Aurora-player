@@ -4,6 +4,8 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -95,6 +97,14 @@ fun swipeDirection(totalPx: Float, threshold: Float = 100f): Int = when {
     else -> 0
 }
 
+/**
+ * AUDITORÍA (2026-11-09): la velocidad se mostraba con "%.2g", que
+ * recorta a 2 cifras significativas: 1.25x se leía "1.2x". Con 2
+ * decimales y ceros recortados, cada velocidad se lee como es.
+ */
+fun formatSpeed(speed: Float): String =
+    String.format(java.util.Locale.US, "%.2f", speed).trimEnd('0').trimEnd('.')
+
 @Composable
 fun PlayerScreen(
     title: String?,
@@ -127,12 +137,19 @@ fun PlayerScreen(
     onToggleFavorite: () -> Unit = {},
     lyricsOffsetMs: Int = 0,
     onLyricsOffsetChange: (Int) -> Unit = {},
+    // Gestos con interruptor real en Ajustes (AUDITORÍA 2026-11-09).
+    swipeEnabled: Boolean = true,
+    doubleTapEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
+    // Posición mientras se arrastra la barra: se busca UNA sola vez al
+    // soltar, no en cada paso del arrastre (antes se pedían decenas de
+    // seeks por segundo y el sonido se entrecortaba).
+    var sliderPosition by remember { mutableStateOf<Float?>(null) }
     val lyricsListState = rememberLazyListState()
     val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
     LaunchedEffect(showLyrics, currentLine) {
@@ -143,6 +160,7 @@ fun PlayerScreen(
     Column(
         modifier = modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -219,9 +237,13 @@ fun PlayerScreen(
             letter = title.take(1).uppercase(),
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 .shadow(16.dp, coverCorner)
-                .pointerInput(Unit) {
+                .pointerInput(swipeEnabled) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
+                            if (!swipeEnabled) {
+                                dragTotal = 0f
+                                return@detectHorizontalDragGestures
+                            }
                             when (swipeDirection(dragTotal)) {
                                 1 -> onNext()
                                 -1 -> onPrevious()
@@ -231,8 +253,10 @@ fun PlayerScreen(
                         onHorizontalDrag = { _, dragAmount -> dragTotal += dragAmount },
                     )
                 }
-                .pointerInput(Unit) {
-                    detectTapGestures(onDoubleTap = { onToggleFavorite() })
+                .pointerInput(doubleTapEnabled) {
+                    detectTapGestures(
+                        onDoubleTap = { if (doubleTapEnabled) onToggleFavorite() },
+                    )
                 },
         )
         Spacer(Modifier.height(24.dp))
@@ -253,9 +277,14 @@ fun PlayerScreen(
             modifier = Modifier.padding(top = 4.dp),
         )
         val duration = durationMs.coerceAtLeast(0L)
+        val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
         Slider(
-            value = positionMs.coerceIn(0L, duration).toFloat(),
-            onValueChange = { onSeek(it.toLong()) },
+            value = shownPosition,
+            onValueChange = { sliderPosition = it },
+            onValueChangeFinished = {
+                sliderPosition?.let { onSeek(it.toLong()) }
+                sliderPosition = null
+            },
             valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         )
@@ -263,7 +292,7 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(TimeFormat.formatDuration(positionMs))
+            Text(TimeFormat.formatDuration(shownPosition.toLong()))
             Text(TimeFormat.formatDuration(duration))
         }
         Row(
@@ -328,7 +357,7 @@ fun PlayerScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onCycleSpeed) {
-                Text("Velocidad ${"%.2g".format(speed)}x")
+                Text("Velocidad ${formatSpeed(speed)}x")
             }
             if (queueTitles.isNotEmpty()) {
                 TextButton(onClick = { showQueue = !showQueue }) {
