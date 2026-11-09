@@ -97,6 +97,9 @@ val LocalDynamicColor = staticCompositionLocalOf { true }
 val LocalPlayerBackground = staticCompositionLocalOf { PlayerBackground.COVER }
 val LocalAlbumGrid = staticCompositionLocalOf { false }
 
+/** Rendimiento (spec 004): animaciones activas o no (efectivas). */
+val LocalAnimationsEnabled = staticCompositionLocalOf { true }
+
 /** Colores de botón reales: fondo = buttonHex, texto con contraste. */
 @Composable
 fun auroraButtonColors() = ButtonDefaults.buttonColors(
@@ -275,6 +278,7 @@ fun AuroraPlayerTheme(
         LocalDynamicColor provides settings.dynamicColor,
         LocalPlayerBackground provides settings.playerBackground,
         LocalAlbumGrid provides settings.albumGrid,
+        LocalAnimationsEnabled provides settings.animationsEnabled,
     ) {
         MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale), content = content)
     }
