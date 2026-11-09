@@ -1,5 +1,11 @@
 package com.aurora.player
 
+import com.aurora.player.alarm.AlarmSource
+import com.aurora.player.alarm.decodeAlarmSource
+import com.aurora.player.alarm.describeNextAlarm
+import com.aurora.player.alarm.encodeAlarmSource
+import com.aurora.player.alarm.formatAlarmTime
+import com.aurora.player.alarm.nextAlarmTime
 import com.aurora.player.audio.BassPref
 import com.aurora.player.audio.EnergyPref
 import com.aurora.player.audio.EqualizerManager
@@ -296,5 +302,55 @@ class AuroraPlayerTest {
         assertEquals(1, stats.totalPlays)
         assertTrue(stats.topSongs.isEmpty())
         assertTrue(stats.topSongIds.isEmpty())
+    }
+
+    // RONDA 7 P4: alarma musical.
+    @Test
+    fun `la alarma de las 7 30 suena hoy si aun no paso`() {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(2026, java.util.Calendar.JANUARY, 15, 6, 0, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val now = cal.timeInMillis
+        val next = nextAlarmTime(7, 30, now)
+        cal.timeInMillis = next
+        assertEquals(15, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(7, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(30, cal.get(java.util.Calendar.MINUTE))
+        assertEquals("Sonará hoy a las 07:30", describeNextAlarm(7, 30, now))
+    }
+
+    @Test
+    fun `la alarma de las 7 30 suena manana si ya paso`() {
+        val cal = java.util.Calendar.getInstance()
+        cal.set(2026, java.util.Calendar.JANUARY, 15, 8, 0, 0)
+        cal.set(java.util.Calendar.MILLISECOND, 0)
+        val now = cal.timeInMillis
+        val next = nextAlarmTime(7, 30, now)
+        cal.timeInMillis = next
+        assertEquals(16, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(7, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals("Sonará mañana a las 07:30", describeNextAlarm(7, 30, now))
+    }
+
+    @Test
+    fun `la hora de la alarma se escribe con cero`() {
+        assertEquals("07:30", formatAlarmTime(7, 30))
+        assertEquals("00:05", formatAlarmTime(0, 5))
+    }
+
+    @Test
+    fun `la fuente de la alarma se guarda y se lee igual`() {
+        assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource(encodeAlarmSource(AlarmSource.ShuffleAll)))
+        assertEquals(
+            AlarmSource.Song(123, "Mi canción"),
+            decodeAlarmSource(encodeAlarmSource(AlarmSource.Song(123, "Mi canción"))),
+        )
+        assertEquals(
+            AlarmSource.Playlist(5, "Favoritas"),
+            decodeAlarmSource(encodeAlarmSource(AlarmSource.Playlist(5, "Favoritas"))),
+        )
+        assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource("roto"))
+        assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource(null))
+        assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource(""))
     }
 }
