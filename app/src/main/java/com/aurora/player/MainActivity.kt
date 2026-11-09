@@ -5,9 +5,11 @@ import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -66,7 +68,6 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
@@ -91,7 +92,7 @@ import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
-import com.aurora.player.util.loadLyricsFor
+import com.aurora.player.util.loadLyricsForPath
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -110,6 +111,10 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
 
     private var hasAudioPermission by mutableStateOf(false)
+
+    /** Ya se pidió el permiso al menos una vez (para saber si la
+     * denegación es permanente). */
+    private var permissionAsked = false
 
     private val audioPermissionName: String
         get() = if (Build.VERSION.SDK_INT >= 33) {
@@ -174,13 +179,7 @@ class MainActivity : ComponentActivity() {
                     )
                 } else {
                     WelcomeScreen(
-                        onGrant = {
-                            val perms = mutableListOf(audioPermissionName)
-                            if (Build.VERSION.SDK_INT >= 33) {
-                                perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                            }
-                            permissionLauncher.launch(perms.toTypedArray())
-                        },
+                        onGrant = { requestAudioPermission() },
                     )
                 }
             }
@@ -199,6 +198,31 @@ class MainActivity : ComponentActivity() {
                 pendingWidgetAction = intent.action
             }
         }
+    }
+
+    /**
+     * AUDITORÍA (2026-11-09): si el usuario denegaba el permiso para
+     * siempre, el botón "Permitir acceso" no hacía nada visible (el
+     * sistema ya no muestra su diálogo) y se quedaba atorado en la
+     * bienvenida. Ahora ese botón abre Ajustes del sistema para
+     * concederlo a mano.
+     */
+    private fun requestAudioPermission() {
+        if (permissionAsked &&
+            !shouldShowRequestPermissionRationale(audioPermissionName)
+        ) {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+            }
+            startActivity(intent)
+            return
+        }
+        permissionAsked = true
+        val perms = mutableListOf(audioPermissionName)
+        if (Build.VERSION.SDK_INT >= 33) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        permissionLauncher.launch(perms.toTypedArray())
     }
 
     private fun audioPermissionGranted(): Boolean {
@@ -227,6 +251,10 @@ private fun songToMediaItem(context: android.content.Context, song: Song): Media
                 .setArtist(song.artist)
                 .setAlbumTitle(song.album)
                 .setArtworkUri(MusicRepository(context).albumArtUri(song.albumId))
+                // La ruta viaja en el MediaItem: las letras (.lrc) se
+                // leen directas, sin escanear toda la biblioteca al
+                // cambiar de pista (AUDITORÍA 2026-11-09).
+                .setExtras(Bundle().apply { putString("aurora_path", song.path) })
                 .build(),
         )
         .build()
@@ -326,9 +354,7 @@ private fun AuroraApp(
     val playerStore = remember { PlayerSettingsStore(context) }
     val playerSettings by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     val queueStore = remember { QueueStore(context) }
-    val db = remember {
-        Room.databaseBuilder(context, AuroraDatabase::class.java, "aurora-player.db").build()
-    }
+    val db = remember { AuroraDatabase.getInstance(context) }
     var speed by remember { mutableStateOf(1f) }
     var queueTitles by remember { mutableStateOf<List<String>>(emptyList()) }
     var queueIndex by remember { mutableStateOf(0) }
@@ -336,9 +362,15 @@ private fun AuroraApp(
     var listenedId by remember { mutableStateOf<Long?>(null) }
     var historyDone by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var queueRestored by remember { mutableStateOf(false) }
+    // Último estado guardado en el widget, para no reescribirlo en
+    // cada cambio de estado del reproductor.
+    var lastWidgetTitle by remember { mutableStateOf<String?>(null) }
+    var lastWidgetArtist by remember { mutableStateOf<String?>(null) }
+    var lastWidgetPlaying by remember { mutableStateOf(false) }
 
     // ETAPA 5: letras del .lrc de la canción actual y temporizador.
     var currentSongId by remember { mutableStateOf<Long?>(null) }
+    var currentSongPath by remember { mutableStateOf<String?>(null) }
     val songUri = currentSongId?.let {
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
@@ -349,23 +381,30 @@ private fun AuroraApp(
 
     // Ideas open source: favorito de la canción actual y ajuste de
     // sincronización de letras por canción (se guarda en DataStore).
-    var isFavorite by remember { mutableStateOf(false) }
+    // AUDITORÍA (2026-11-09): isFavorite ya no es un estado que se
+    // escribe a mano en dos sitios: se deriva del flujo de favoritos
+    // de Room, así que el corazón del reproductor y el de la
+    // biblioteca siempre dicen lo mismo.
+    var favoriteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val offsetStore = remember { LyricsOffsetStore(context) }
     var lyricsOffsetMs by remember { mutableStateOf(0) }
 
     // Animación de inicio: una sola vez por arranque de la app.
     var showStart by remember { mutableStateOf(true) }
 
+    // Favoritos en vivo (Room avisa de cada cambio, venga de donde venga).
+    LaunchedEffect(Unit) {
+        db.libraryDao().favoriteIdsFlow().collect { favoriteIds = it.toSet() }
+    }
+
     fun toggleFavorite() {
         val id = currentSongId ?: return
         scope.launch(Dispatchers.IO) {
             val dao = db.libraryDao()
-            if (dao.favoriteIds().contains(id)) {
+            if (id in favoriteIds) {
                 dao.removeFavorite(id)
-                isFavorite = false
             } else {
                 dao.addFavorite(FavoriteEntity(id))
-                isFavorite = true
             }
         }
     }
@@ -444,25 +483,29 @@ private fun AuroraApp(
                 repeatMode = c.repeatMode
                 positionMs = c.currentPosition
                 durationMs = c.duration
-                // Widget: guarda lo que suena para mostrarlo en el inicio.
-                AuroraWidgetProvider.saveNowPlaying(
-                    context,
-                    meta?.title?.toString(),
-                    meta?.artist?.toString(),
-                )
+                // Widget: se guarda solo cuando cambia lo que suena (o
+                // el estado play/pausa). Antes se reescribía y se
+                // actualizaba el widget en cada cambio de estado del
+                // reproductor, también al buscar o al cargar.
+                val newTitle = meta?.title?.toString()
+                val newArtist = meta?.artist?.toString()
+                if (newTitle != lastWidgetTitle || newArtist != lastWidgetArtist ||
+                    c.isPlaying != lastWidgetPlaying
+                ) {
+                    lastWidgetTitle = newTitle
+                    lastWidgetArtist = newArtist
+                    lastWidgetPlaying = c.isPlaying
+                    AuroraWidgetProvider.saveNowPlaying(
+                        context, newTitle, newArtist, c.isPlaying,
+                    )
+                }
                 queueTitles = (0 until c.mediaItemCount).map {
                     c.getMediaItemAt(it).mediaMetadata.title?.toString() ?: ""
                 }
                 queueIndex = c.currentMediaItemIndex
                 currentSongId = c.currentMediaItem?.mediaId?.toLongOrNull()
-                // Favorito de la canción actual (para el corazón del
-                // reproductor y el doble toque en la portada).
-                val songId = c.currentMediaItem?.mediaId?.toLongOrNull()
-                if (songId != null) {
-                    scope.launch(Dispatchers.IO) {
-                        isFavorite = db.libraryDao().favoriteIds().contains(songId)
-                    }
-                }
+                // La ruta de la canción actual, para las letras (.lrc).
+                currentSongPath = meta?.extras?.getString("aurora_path")
                 // Cola persistente: se guarda en cada cambio de pista.
                 scope.launch {
                     queueStore.save(
@@ -556,15 +599,14 @@ private fun AuroraApp(
         }
     }
 
-    // Letras (ETAPA 5): al cambiar de canción se busca su .lrc y su
-    // ajuste de sincronización guardado.
+    // Letras (ETAPA 5): al cambiar de canción se busca su .lrc por su
+    // ruta y su ajuste de sincronización guardado. Ya no se escanea
+    // toda la biblioteca para encontrar la ruta (AUDITORÍA 2026-11-09).
     LaunchedEffect(currentSongId) {
         val id = currentSongId ?: return@LaunchedEffect
         lyrics = emptyList()
         lyricsOffsetMs = offsetStore.offsetFor(id)
-        val songs = withContext(Dispatchers.IO) { MusicRepository(context).loadSongs() }
-        val song = songs.firstOrNull { it.id == id } ?: return@LaunchedEffect
-        lyrics = loadLyricsFor(song)
+        lyrics = loadLyricsForPath(currentSongPath ?: "")
     }
 
     // Velocidad real (ETAPA 4): se aplica al controlador cuando cambia
@@ -610,7 +652,12 @@ private fun AuroraApp(
 
     fun playSongs(songs: List<Song>, startIndex: Int) {
         val c = controller ?: return
-        c.setMediaItems(songs.map { songToMediaItem(context, it) }, startIndex, 0)
+        if (songs.isEmpty()) return
+        // indexOfFirst devuelve -1 si la canción no está en la lista
+        // (duplicados exactos): nunca se pasa un índice inválido al
+        // reproductor.
+        val safeIndex = startIndex.coerceIn(0, songs.size - 1)
+        c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
         c.prepare()
         c.play()
     }
@@ -658,7 +705,7 @@ private fun AuroraApp(
             lyrics = lyrics,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
-            isFavorite = isFavorite,
+            isFavorite = currentSongId in favoriteIds,
             onToggleFavorite = { toggleFavorite() },
             lyricsOffsetMs = lyricsOffsetMs,
             onLyricsOffsetChange = { newOffset ->
@@ -666,6 +713,8 @@ private fun AuroraApp(
                 lyricsOffsetMs = newOffset
                 scope.launch(Dispatchers.IO) { offsetStore.saveOffset(id, newOffset) }
             },
+            swipeEnabled = playerSettings.swipeToChangeTrack,
+            doubleTapEnabled = playerSettings.doubleTapToFavorite,
         )
         return
     }
@@ -748,7 +797,9 @@ private fun AuroraApp(
         when (tab) {
             Tab.LIBRARY -> LibraryScreen(
                 hasAudioPermission = hasAudioPermission,
-                onSongClick = { song, songs -> playSongs(songs, songs.indexOf(song)) },
+                onSongClick = { song, songs ->
+                    playSongs(songs, songs.indexOfFirst { it.id == song.id })
+                },
                 onPlayNext = { song -> playNext(song) },
                 onAddToQueue = { song -> addToQueue(song) },
                 showStart = showStart,
@@ -757,7 +808,9 @@ private fun AuroraApp(
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
                 hasAudioPermission = hasAudioPermission,
-                onSongClick = { song, songs -> playSongs(songs, songs.indexOf(song)) },
+                onSongClick = { song, songs ->
+                    playSongs(songs, songs.indexOfFirst { it.id == song.id })
+                },
                 modifier = Modifier.padding(padding),
             )
             Tab.STATS -> StatsScreen(
