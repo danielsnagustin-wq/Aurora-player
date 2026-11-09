@@ -349,34 +349,39 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
     }
 
     // Reloj de progreso: actualiza la barra mientras suena.
+    // ETAPA 7: en pausa y con el reproductor cerrado no hay nada que
+    // actualizar: el bucle duerme sin leer el reproductor (ahorra
+    // batería; la corrutina en sí no consume nada mientras duerme).
     LaunchedEffect(controller, isPlaying) {
         val c = controller ?: return@LaunchedEffect
         while (true) {
-            positionMs = c.currentPosition
-            durationMs = c.duration
-            if (c.isPlaying) {
-                val id = c.currentMediaItem?.mediaId?.toLongOrNull()
-                if (id != null && id != listenedId) {
-                    listenedId = id
-                    listenedMs = 0L
-                } else if (id != null) {
-                    listenedMs += 500L
+            if (c.isPlaying || showPlayer) {
+                positionMs = c.currentPosition
+                durationMs = c.duration
+                if (c.isPlaying) {
+                    val id = c.currentMediaItem?.mediaId?.toLongOrNull()
+                    if (id != null && id != listenedId) {
+                        listenedId = id
+                        listenedMs = 0L
+                    } else if (id != null) {
+                        listenedMs += 500L
+                    }
                 }
-            }
-            // Temporizador de apagado (ETAPA 5): por minutos o al final
-            // de la canción. Nunca se activa solo.
-            val until = sleepUntilMs
-            if (until != null && System.currentTimeMillis() >= until) {
-                c.pause()
-                sleepUntilMs = null
-                sleepTimer = SleepTimerOption.OFF
-            }
-            if (sleepAtSongEnd && c.isPlaying && c.duration > 0 &&
-                c.duration - c.currentPosition < 1000
-            ) {
-                c.pause()
-                sleepAtSongEnd = false
-                sleepTimer = SleepTimerOption.OFF
+                // Temporizador de apagado (ETAPA 5): por minutos o al final
+                // de la canción. Nunca se activa solo.
+                val until = sleepUntilMs
+                if (until != null && System.currentTimeMillis() >= until) {
+                    c.pause()
+                    sleepUntilMs = null
+                    sleepTimer = SleepTimerOption.OFF
+                }
+                if (sleepAtSongEnd && c.isPlaying && c.duration > 0 &&
+                    c.duration - c.currentPosition < 1000
+                ) {
+                    c.pause()
+                    sleepAtSongEnd = false
+                    sleepTimer = SleepTimerOption.OFF
+                }
             }
             delay(500)
         }
