@@ -17,6 +17,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- RONDA 7 P4: alarma musical (sin internet, todo local). -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Sin INTERNET: a propósito. Aurora Player no necesita red. -->
 
     <application
@@ -55,6 +58,16 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/aurora_widget_info" />
+        </receiver>
+
+        <!-- RONDA 7 P4: alarma musical. Recibe la hora programada y el
+             arranque del teléfono (para volver a programarla sola). -->
+        <receiver
+            android:name=".alarm.MusicAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
         </receiver>
     </application>
 </manifest>
