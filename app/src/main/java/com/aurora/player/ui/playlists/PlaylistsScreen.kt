@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.model.Song
 import com.aurora.player.ui.theme.auroraButtonColors
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
 
@@ -225,8 +226,9 @@ private fun PlaylistDetail(
                 }
                 out.write(M3u.build(entries).toByteArray(Charsets.UTF_8))
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             // Exportar falló: la playlist sigue intacta en Room.
+            ErrorLog.log(context, "Exportar M3U", e)
         }
     }
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {

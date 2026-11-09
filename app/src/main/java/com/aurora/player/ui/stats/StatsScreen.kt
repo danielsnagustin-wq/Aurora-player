@@ -58,10 +58,14 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     val stats: StateFlow<StatsData?> = _stats
 
     private var loaded = false
+    private var loadedPermission: Boolean? = null
 
     fun load(hasAudioPermission: Boolean) {
-        if (loaded) return
+        // Refinamiento: si la primera carga fue sin permiso y el usuario
+        // lo concede después, hay que volver a cargar (antes quedaba vacío).
+        if (loaded && loadedPermission == hasAudioPermission) return
         loaded = true
+        loadedPermission = hasAudioPermission
         viewModelScope.launch {
             val data = withContext(Dispatchers.IO) {
                 val songs = if (hasAudioPermission) repository.loadSongs() else emptyList()

@@ -76,6 +76,7 @@ import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.util.LrcLine
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.loadLyricsFor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -112,6 +113,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Registro de errores (depuración, se quitará en el release):
+        // un cierre inesperado queda guardado y sanitizado en el
+        // teléfono, y se puede ver y compartir desde Ajustes.
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                ErrorLog.log(this, "CRASH", throwable)
+            } catch (_: Exception) {
+                // El registro nunca puede impedir el cierre.
+            }
+            previousHandler?.uncaughtException(thread, throwable)
+        }
         hasAudioPermission = audioPermissionGranted()
         setContent {
             val themeStore = ThemeSettingsStore(applicationContext)

@@ -56,10 +56,14 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
     val selectedSongs: StateFlow<List<Song>> = _selectedSongs
 
     private var loaded = false
+    private var loadedPermission: Boolean? = null
 
     fun load(hasAudioPermission: Boolean) {
-        if (loaded) return
+        // Refinamiento: si la primera carga fue sin permiso y el usuario
+        // lo concede después, hay que volver a cargar (antes quedaba vacío).
+        if (loaded && loadedPermission == hasAudioPermission) return
         loaded = true
+        loadedPermission = hasAudioPermission
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 _allSongs.value = if (hasAudioPermission) repository.loadSongs() else emptyList()

@@ -35,8 +35,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.data.CustomPresetStore
+import com.aurora.player.data.EqState
+import com.aurora.player.data.EqStateStore
 import com.aurora.player.playback.AudioEffects
 import com.aurora.player.ui.theme.auroraButtonColors
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -53,20 +56,37 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     val manager = AudioEffects.equalizerManager
     val scope = rememberCoroutineScope()
     val presetStore = remember { CustomPresetStore(context) }
+    val eqStateStore = remember { EqStateStore(context) }
     val customPresets by presetStore.presetsFlow.collectAsState(initial = emptyList())
 
-    var enabled by remember { mutableStateOf(true) }
+    var enabled by remember { mutableStateOf(false) }
     var levels by remember { mutableStateOf(List(10) { 0f }) }
     var bass by remember { mutableStateOf(0f) }
     var virtualizer by remember { mutableStateOf(0f) }
     var selectedPreset by remember { mutableStateOf<String?>(null) }
     var newPresetName by remember { mutableStateOf("") }
 
+    /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
+    fun persist() {
+        scope.launch {
+            eqStateStore.save(EqState(enabled, levels, bass.toInt(), virtualizer.toInt()))
+        }
+    }
+
     LaunchedEffect(manager) {
         val m = manager ?: return@LaunchedEffect
-        levels = List(10) { i -> m.getBandLevel(i) / 100f }
-        bass = m.getBassBoostStrength().toFloat()
-        virtualizer = m.getVirtualizerStrength().toFloat()
+        // Estado guardado: el EQ vuelve a como lo dejó el usuario, no en
+        // cero. Si nunca se guardó nada, el estado por defecto es apagado
+        // con niveles en cero, igual que un manager recién creado.
+        val saved = eqStateStore.stateFlow.first()
+        m.setEnabled(saved.enabled)
+        m.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+        m.setBassBoost(saved.bassBoost.toShort())
+        m.setVirtualizer(saved.virtualizer.toShort())
+        enabled = saved.enabled
+        levels = saved.levelsDb
+        bass = saved.bassBoost.toFloat()
+        virtualizer = saved.virtualizer.toFloat()
     }
 
     Column(
@@ -104,6 +124,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 onCheckedChange = {
                     enabled = it
                     manager.setEnabled(it)
+                    persist()
                 },
             )
         }
@@ -122,6 +143,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     manager.setBandLevel(band, (db * 100).toInt().toShort())
                     selectedPreset = null
                 },
+                onValueChangeFinished = { persist() },
                 valueRange = -15f..15f,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
@@ -135,6 +157,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 bass = it
                 manager.setBassBoost(it.toInt().toShort())
             },
+            onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
@@ -147,6 +170,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 virtualizer = it
                 manager.setVirtualizer(it.toInt().toShort())
             },
+            onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
@@ -165,6 +189,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         manager.applyPreset(preset)
                         levels = preset.levelsDb
                         selectedPreset = preset.name
+                        persist()
                     },
                 )
             }
@@ -185,6 +210,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                                 manager.applyPreset(preset)
                                 levels = preset.levelsDb
                                 selectedPreset = preset.name
+                                persist()
                             },
                         )
                         IconButton(onClick = {

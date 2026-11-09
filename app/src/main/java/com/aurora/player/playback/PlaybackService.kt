@@ -13,14 +13,17 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.data.EqStateStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.RepeatMode
+import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
@@ -78,10 +81,23 @@ class PlaybackService : MediaSessionService() {
         player = exoPlayer
         equalizer = try {
             EqualizerManager(exoPlayer.audioSessionId)
-        } catch (_: Exception) {
-            null // sin EQ en este dispositivo: la UI lo dice, no se finge
+        } catch (e: Exception) {
+            // Sin EQ en este dispositivo: se registra y la UI lo dice.
+            ErrorLog.log(this, "EQ no disponible", e)
+            null
         }
         AudioEffects.equalizerManager = equalizer
+        // Estado del EQ guardado (refinamiento): al reiniciar el servicio
+        // el ecualizador vuelve a como lo dejó el usuario, no en cero.
+        serviceScope.launch {
+            val saved = EqStateStore(this@PlaybackService).stateFlow.first()
+            equalizer?.let {
+                it.setEnabled(saved.enabled)
+                it.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+                it.setBassBoost(saved.bassBoost.toShort())
+                it.setVirtualizer(saved.virtualizer.toShort())
+            }
+        }
         mediaSession = MediaSession.Builder(this, exoPlayer).build()
         // Ajustes vivos (ETAPA 4): crossfade y auto-pausa se aplican
         // cuando cambian en Ajustes, sin reiniciar nada.
@@ -105,17 +121,20 @@ class PlaybackService : MediaSessionService() {
         })
         serviceScope.launch {
             while (true) {
-                delay(250)
-                val p = player ?: continue
-                if (!p.isPlaying || fadingIn || crossfadeSeconds <= 0) continue
-                val duration = p.duration
-                val remaining = duration - p.currentPosition
-                val windowMs = crossfadeSeconds * 1000L
-                if (duration > 0 && p.currentPosition > 5000 && remaining in 0..windowMs) {
-                    p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
-                } else if (duration > 0 && remaining > windowMs && p.volume < 1f) {
-                    p.volume = 1f
+                val p = player
+                if (p != null && p.isPlaying && !fadingIn && crossfadeSeconds > 0) {
+                    val duration = p.duration
+                    val remaining = duration - p.currentPosition
+                    val windowMs = crossfadeSeconds * 1000L
+                    if (duration > 0 && p.currentPosition > 5000 && remaining in 0..windowMs) {
+                        p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
+                    } else if (duration > 0 && remaining > windowMs && p.volume < 1f) {
+                        p.volume = 1f
+                    }
                 }
+                // Refinamiento: en pausa el monitor duerme 2 s en vez de
+                // despertar 4 veces por segundo sin nada que vigilar.
+                delay(if (p?.isPlaying == true) 250 else 2000)
             }
         }
         // startForeground() INMEDIATO: la notificación de MediaSession

@@ -1,5 +1,6 @@
 package com.aurora.player.ui.settings
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -23,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +47,10 @@ import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.ui.theme.parseHexOrNull
+import com.aurora.player.util.ErrorLog
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Aurora Player — Ajustes (Etapa 1, tema + colores).
@@ -69,6 +75,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val applied by store.settingsFlow.collectAsState(initial = ThemeSettings.DEFAULT)
     val player by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
+    // Reporte de errores (depuración, se quitará en el release).
+    var reportText by remember { mutableStateOf<String?>(null) }
+    var showReport by remember { mutableStateOf(false) }
+    var hasLog by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        hasLog = withContext(Dispatchers.IO) { ErrorLog.hasEntries(context) }
+    }
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
@@ -76,6 +89,15 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
     fun savePlayer(next: PlayerSettings) {
         scope.launch { playerStore.save(next) }
+    }
+
+    fun shareReport(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+            putExtra(Intent.EXTRA_SUBJECT, "Aurora Player - reporte de errores")
+        }
+        context.startActivity(Intent.createChooser(intent, "Compartir reporte"))
     }
 
     Column(
@@ -305,6 +327,60 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 16.dp),
         ) {
             Text("Restablecer por defecto")
+        }
+
+        // Reporte de errores (depuración): se quitará en el release.
+        Text("Reporte de errores (depuración)", modifier = Modifier.padding(top = 24.dp))
+        Text(
+            "Solo para encontrar errores mientras desarrollamos. El reporte está sanitizado: sin rutas, sin nombres de canciones, sin datos personales. Nada sale del teléfono salvo que tú lo compartas.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        reportText = withContext(Dispatchers.IO) {
+                            ErrorLog.buildReportText(context)
+                        }
+                        showReport = true
+                    }
+                },
+                colors = auroraButtonColors(),
+            ) { Text("Ver reporte") }
+            OutlinedButton(onClick = {
+                scope.launch {
+                    val text = withContext(Dispatchers.IO) {
+                        ErrorLog.buildReportText(context)
+                    }
+                    shareReport(text)
+                }
+            }) { Text("Compartir") }
+            TextButton(onClick = {
+                scope.launch {
+                    withContext(Dispatchers.IO) { ErrorLog.clear(context) }
+                    hasLog = false
+                }
+            }) { Text("Borrar") }
+        }
+        if (!hasLog) {
+            Text("Sin errores registrados todavía.", modifier = Modifier.padding(top = 4.dp))
+        }
+        if (showReport && reportText != null) {
+            AlertDialog(
+                onDismissRequest = { showReport = false },
+                confirmButton = {
+                    TextButton(onClick = { showReport = false }) { Text("Cerrar") }
+                },
+                title = { Text("Reporte de errores") },
+                text = {
+                    Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(reportText ?: "")
+                    }
+                },
+            )
         }
     }
 }

@@ -76,6 +76,7 @@ import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalListDensity
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
@@ -562,7 +563,8 @@ private fun SongDetailsDialog(
                     e.userAction.actionIntent.intentSender,
                 ).build()
                 withContext(Dispatchers.Main) { pendingConsent = request }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Editar metadatos", e)
                 withContext(Dispatchers.Main) { saveError = "No se pudo guardar el cambio." }
             }
         }
