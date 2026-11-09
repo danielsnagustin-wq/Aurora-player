@@ -81,6 +81,7 @@ import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
+import com.aurora.player.data.IntroStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
@@ -112,7 +113,9 @@ import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
 import com.aurora.player.util.resolveEffective
 import com.aurora.player.lyrics.loadOnlineLyrics
+import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadLyricsForPath
+import com.aurora.player.util.loadSongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -515,6 +518,8 @@ private fun AuroraApp(
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
     var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+    // RONDA 2 (2026-11-09): línea de calidad real del tema actual.
+    var qualityText by remember { mutableStateOf<String?>(null) }
     var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
     var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
     var sleepAtSongEnd by remember { mutableStateOf(false) }
@@ -527,10 +532,15 @@ private fun AuroraApp(
     // biblioteca siempre dicen lo mismo.
     var favoriteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val offsetStore = remember { LyricsOffsetStore(context) }
+    // RONDA 2 (2026-11-09): la intro solo se muestra la primera vez
+    // (IntroStore); antes se repetía al volver tras un rato porque
+    // Android había matado el proceso en segundo plano.
+    val introStore = remember { IntroStore(context) }
+    val introShown by introStore.shownFlow.collectAsState(initial = true)
     var lyricsOffsetMs by remember { mutableStateOf(0) }
 
     // Animación de inicio: una sola vez por arranque de la app.
-    var showStart by remember { mutableStateOf(true) }
+    var showStart by remember(introShown) { mutableStateOf(!introShown) }
 
     // Favoritos en vivo (Room avisa de cada cambio, venga de donde venga).
     LaunchedEffect(Unit) {
@@ -831,6 +841,7 @@ private fun AuroraApp(
     LaunchedEffect(currentMediaId) {
         val mediaId = currentMediaId
         lyrics = emptyList()
+        qualityText = null
         if (mediaId == null) return@LaunchedEffect
         if (mediaId.startsWith("yt:")) {
             lyricsOffsetMs = 0
@@ -850,7 +861,39 @@ private fun AuroraApp(
         }
         val id = mediaId.toLongOrNull() ?: return@LaunchedEffect
         lyricsOffsetMs = offsetStore.offsetFor(id)
-        lyrics = loadLyricsForPath(currentSongPath ?: "")
+        lyrics = loadLyricsForPath(context, currentSongPath ?: "")
+        // RONDA 2: línea de calidad real (códec/bitrate/muestreo);
+        // solo se muestra si hay al menos un dato real.
+        // La canción se reconstruye del MediaItem actual (uri +
+        // mimeType son lo único que usa loadSongDetails); no hay una
+        // lista de canciones en este ámbito para buscarla.
+        val mediaItem = controller?.currentMediaItem
+        val songForDetails = mediaItem?.localConfiguration?.let { config ->
+            Song(
+                id = id,
+                title = currentTitle ?: "",
+                artist = currentArtist ?: "",
+                album = currentAlbum ?: "",
+                albumId = 0L,
+                durationMs = controller?.duration ?: 0L,
+                path = currentSongPath ?: "",
+                uri = config.uri,
+                mimeType = config.mimeType ?: "",
+                sizeBytes = 0L,
+                dateAdded = 0L,
+            )
+        }
+        qualityText = songForDetails?.let { song ->
+            val details = loadSongDetails(context, song)
+            if (details.bitrateKbps == null && details.sampleRateHz == null) {
+                null
+            } else {
+                val parts = mutableListOf(codecDisplayName(song.mimeType))
+                details.bitrateKbps?.let { parts.add("$it kbps") }
+                details.sampleRateHz?.let { parts.add("${it / 1000} kHz") }
+                parts.joinToString(" · ")
+            }
+        }
         if (lyrics.isEmpty() && playerSettings.onlineMode) {
             val meta = controller?.currentMediaItem?.mediaMetadata
             val track = meta?.title?.toString().orEmpty()
@@ -1082,6 +1125,8 @@ private fun AuroraApp(
             onDeleteSavedQueue = { deleteSavedQueue(it) },
             onSavedQueueMessageConsumed = { savedQueueMessage = null },
             lyrics = lyrics,
+            qualityText = qualityText,
+            onlineMode = playerSettings.onlineMode,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
             isFavorite = currentSongId in favoriteIds,
@@ -1206,7 +1251,10 @@ private fun AuroraApp(
                 onlineMode = playerSettings.onlineMode,
                 onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
                 showStart = showStart,
-                onStartFinished = { showStart = false },
+                onStartFinished = {
+                    showStart = false
+                    scope.launch { introStore.markShown() }
+                },
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
