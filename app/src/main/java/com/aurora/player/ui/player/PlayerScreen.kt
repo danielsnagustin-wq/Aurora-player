@@ -131,6 +131,9 @@ fun PlayerScreen(
     onOpenEq: () -> Unit,
     speed: Float = 1f,
     onCycleSpeed: () -> Unit = {},
+    // RONDA 6: tono independiente de la velocidad (1x = sin cambio).
+    pitch: Float = 1f,
+    onCyclePitch: () -> Unit = {},
     queueTitles: List<String> = emptyList(),
     queueIndex: Int = 0,
     onQueueClick: (Int) -> Unit = {},
@@ -364,6 +367,7 @@ fun PlayerScreen(
             }
         }
         // ETAPA 4: velocidad real y cola visible (tocar salta a esa pista).
+        // RONDA 6: tono independiente, al lado de la velocidad.
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -371,6 +375,9 @@ fun PlayerScreen(
         ) {
             TextButton(onClick = onCycleSpeed) {
                 Text("Velocidad ${formatSpeed(speed)}x")
+            }
+            TextButton(onClick = onCyclePitch) {
+                Text("Tono ${formatSpeed(pitch)}x")
             }
             if (queueTitles.isNotEmpty()) {
                 TextButton(onClick = { showQueue = !showQueue }) {
