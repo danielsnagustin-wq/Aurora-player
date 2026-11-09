@@ -38,7 +38,7 @@
             android:id="@+id/widget_prev"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Anterior"
             android:src="@android:drawable/ic_media_previous" />
 
@@ -46,7 +46,7 @@
             android:id="@+id/widget_play"
             android:layout_width="56dp"
             android:layout_height="56dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Reproducir o pausar"
             android:src="@android:drawable/ic_media_play" />
 
@@ -54,7 +54,7 @@
             android:id="@+id/widget_next"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
             android:contentDescription="Siguiente"
             android:src="@android:drawable/ic_media_next" />
 
