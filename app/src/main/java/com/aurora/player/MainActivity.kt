@@ -353,6 +353,9 @@ private fun AuroraApp(
     val offsetStore = remember { LyricsOffsetStore(context) }
     var lyricsOffsetMs by remember { mutableStateOf(0) }
 
+    // Animación de inicio: una sola vez por arranque de la app.
+    var showStart by remember { mutableStateOf(true) }
+
     fun toggleFavorite() {
         val id = currentSongId ?: return
         scope.launch(Dispatchers.IO) {
@@ -748,6 +751,8 @@ private fun AuroraApp(
                 onSongClick = { song, songs -> playSongs(songs, songs.indexOf(song)) },
                 onPlayNext = { song -> playNext(song) },
                 onAddToQueue = { song -> addToQueue(song) },
+                showStart = showStart,
+                onStartFinished = { showStart = false },
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(

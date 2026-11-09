@@ -113,6 +113,8 @@ fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onPlayNext: (Song) -> Unit = {},
     onAddToQueue: (Song) -> Unit = {},
+    showStart: Boolean = false,
+    onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val viewModel: LibraryViewModel = viewModel()
@@ -143,11 +145,11 @@ fun LibraryScreen(
             )
             return@Column
         }
-        // Inicio propio: mientras la biblioteca carga, pantalla de
-        // Aurora (logo, nombre y lema) a pantalla completa, en vez
-        // de la barra de búsqueda y un "Cargando…" pelado.
-        if (uiState is LibraryUiState.Loading) {
-            StartScreen()
+        // Inicio propio: animación de Aurora (se disuelve en polvo
+        // y el viento se lo lleva) a pantalla completa, una sola vez
+        // por arranque. Tocar salta la animación.
+        if (showStart) {
+            StartScreen(onFinished = onStartFinished)
             return@Column
         }
         OutlinedTextField(
@@ -164,6 +166,16 @@ fun LibraryScreen(
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
         }
         when (val state = uiState) {
+            LibraryUiState.Loading -> {
+                // Si la biblioteca tarda más que la animación de
+                // inicio, un indicador simple hasta que aparezca.
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
             LibraryUiState.Empty -> {
                 Text(
                     "No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.",
