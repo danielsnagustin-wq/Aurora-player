@@ -109,9 +109,14 @@ class PlayerSettingsStore(private val context: Context) {
     private object Keys {
         val CROSSFADE = intPreferencesKey("crossfade_seconds")
         val SPEED = stringPreferencesKey("playback_speed")
+        val PITCH = stringPreferencesKey("playback_pitch")
+        val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
+        val REPLAY_GAIN_MODE = stringPreferencesKey("replay_gain_mode")
+        val REPLAY_GAIN_PREAMP = stringPreferencesKey("replay_gain_preamp_db")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause_on_disconnect")
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
+        val LOCAL_RADIO = booleanPreferencesKey("local_radio")
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
     }
@@ -123,9 +128,15 @@ class PlayerSettingsStore(private val context: Context) {
         d.copy(
             crossfadeSeconds = (prefs[Keys.CROSSFADE] ?: d.crossfadeSeconds).coerceIn(0, 12),
             playbackSpeed = (prefs[Keys.SPEED]?.toFloatOrNull() ?: d.playbackSpeed).coerceIn(0.5f, 2.0f),
+            playbackPitch = (prefs[Keys.PITCH]?.toFloatOrNull() ?: d.playbackPitch).coerceIn(0.5f, 2.0f),
+            skipSilence = prefs[Keys.SKIP_SILENCE] ?: d.skipSilence,
+            replayGainMode = (prefs[Keys.REPLAY_GAIN_MODE] ?: d.replayGainMode)
+                .takeIf { it in setOf("off", "track", "album", "smart") } ?: "off",
+            replayGainPreAmpDb = (prefs[Keys.REPLAY_GAIN_PREAMP]?.toFloatOrNull() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
             autoPauseOnDisconnect = prefs[Keys.AUTO_PAUSE] ?: d.autoPauseOnDisconnect,
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
+            localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
         )
@@ -135,9 +146,14 @@ class PlayerSettingsStore(private val context: Context) {
         context.playerDataStore.edit { prefs ->
             prefs[Keys.CROSSFADE] = settings.crossfadeSeconds
             prefs[Keys.SPEED] = settings.playbackSpeed.toString()
+            prefs[Keys.PITCH] = settings.playbackPitch.toString()
+            prefs[Keys.SKIP_SILENCE] = settings.skipSilence
+            prefs[Keys.REPLAY_GAIN_MODE] = settings.replayGainMode
+            prefs[Keys.REPLAY_GAIN_PREAMP] = settings.replayGainPreAmpDb.toString()
             prefs[Keys.AUTO_PAUSE] = settings.autoPauseOnDisconnect
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
+            prefs[Keys.LOCAL_RADIO] = settings.localRadio
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
         }

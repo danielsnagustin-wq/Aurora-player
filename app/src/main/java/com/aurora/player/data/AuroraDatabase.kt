@@ -121,7 +121,10 @@ interface LibraryDao {
     @Query("SELECT COUNT(*) FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun totalPlays(): Int
 
-    @Query("SELECT COALESCE(SUM(durationListenedMs), 0) FROM play_history")
+    // RONDA 6: el tiempo escuchado solo cuenta escuchas de 30 s o
+    // más, como las reproducciones: antes sumaba también los saltos
+    // de 2 s y "Tiempo escuchado" mentía por arriba.
+    @Query("SELECT COALESCE(SUM(durationListenedMs), 0) FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun totalListenedMs(): Long
 
     /** Reproducciones de una canción (ETAPA 5: pantalla Detalles). */
@@ -136,8 +139,10 @@ interface LibraryDao {
     @Query("SELECT playedAt FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun historyPlayedAt(): List<Long>
 
-    /** Última reproducción de una canción (ETAPA 5: Detalles). */
-    @Query("SELECT MAX(playedAt) FROM play_history WHERE songId = :songId")
+    /** Última reproducción de una canción (ETAPA 5: Detalles).
+     * RONDA 6: solo escuchas de 30 s o más, como playCountFor: un
+     * salto de 2 s no es una "última escucha". */
+    @Query("SELECT MAX(playedAt) FROM play_history WHERE songId = :songId AND durationListenedMs >= 30000")
     suspend fun lastPlayedAt(songId: Long): Long?
 
     @Query("DELETE FROM play_history")
