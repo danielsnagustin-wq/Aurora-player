@@ -43,6 +43,7 @@ import com.aurora.player.online.JsonParseException
 import com.aurora.player.online.JsonParser
 import com.aurora.player.online.arr
 import com.aurora.player.online.bool
+import com.aurora.player.online.double
 import com.aurora.player.online.long
 import com.aurora.player.online.obj
 import com.aurora.player.online.str
@@ -496,7 +497,8 @@ class AuroraPlayerTest {
         )
         assertEquals("x\ny", parsed.obj("a")?.obj("b")?.arr()?.get(2)?.str())
         assertEquals("é", parsed.obj("a")?.obj("b")?.arr()?.get(3)?.str())
-        assertEquals(2.5, parsed.obj("a")?.obj("b")?.arr()?.get(1)?.long()?.toDouble() ?: 0.0, 0.001)
+        assertEquals(1L, parsed.obj("a")?.obj("b")?.arr()?.get(0)?.long())
+        assertEquals(2.5, parsed.obj("a")?.obj("b")?.arr()?.get(1)?.double() ?: 0.0, 0.001)
         assertEquals(true, parsed.obj("a")?.obj("c")?.bool())
         assertEquals(null, parsed.obj("a")?.obj("d")?.str())
         assertEquals("A", parsed.obj("e")?.str())

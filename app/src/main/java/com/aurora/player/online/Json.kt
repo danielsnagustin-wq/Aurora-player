@@ -24,6 +24,7 @@ fun JsonValue?.obj(key: String): JsonValue? = (this as? JsonValue.Obj)?.map?.get
 fun JsonValue?.arr(): List<JsonValue>? = (this as? JsonValue.Arr)?.items
 fun JsonValue?.str(): String? = (this as? JsonValue.Str)?.value
 fun JsonValue?.long(): Long? = (this as? JsonValue.Num)?.value?.toLong()
+fun JsonValue?.double(): Double? = (this as? JsonValue.Num)?.value
 fun JsonValue?.bool(): Boolean? = (this as? JsonValue.Bool)?.value
 
 object JsonParser {
