@@ -1,7 +1,7 @@
 package com.aurora.player.data
 
 import android.content.Context
-import androidx.datastore.preferences.core.ReplaceFileCorruptionHandler
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
