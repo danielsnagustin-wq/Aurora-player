@@ -55,6 +55,11 @@ data class ThemeSettings(
     val playerBackground: PlayerBackground = PlayerBackground.COVER,
     /** Álbumes en cuadrícula de 2 columnas en vez de lista. */
     val albumGrid: Boolean = false,
+    // RENDIMIENTO (spec 004): perfiles + interruptor de animaciones.
+    // Solo gobiernan efectos reales (ver PerformanceProfile.kt).
+    val performanceProfile: PerformanceProfile = PerformanceProfile.BALANCED,
+    /** Animaciones: inicio (3 s) y desplazamiento animado de letras. */
+    val animationsEnabled: Boolean = true,
 ) {
     companion object {
         val DEFAULT = ThemeSettings()

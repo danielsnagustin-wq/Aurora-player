@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.PerformanceProfile
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
@@ -59,6 +60,9 @@ class ThemeSettingsStore(private val context: Context) {
         val TEXT_SIZE = stringPreferencesKey("text_size")
         val COVER_SHAPE = stringPreferencesKey("cover_shape")
         val DENSITY = stringPreferencesKey("list_density")
+        // RENDIMIENTO (spec 004).
+        val PERFORMANCE_PROFILE = stringPreferencesKey("performance_profile")
+        val ANIMATIONS_ENABLED = booleanPreferencesKey("animations_enabled")
         // DISEÑO PREMIUM (spec 003).
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val CORNER_RADIUS = intPreferencesKey("corner_radius_dp")
@@ -91,6 +95,8 @@ class ThemeSettingsStore(private val context: Context) {
             cardStyle = CardStyle.entries.find { it.name == prefs[Keys.CARD_STYLE] } ?: d.cardStyle,
             playerBackground = PlayerBackground.entries.find { it.name == prefs[Keys.PLAYER_BACKGROUND] } ?: d.playerBackground,
             albumGrid = prefs[Keys.ALBUM_GRID] ?: d.albumGrid,
+            performanceProfile = PerformanceProfile.entries.find { it.name == prefs[Keys.PERFORMANCE_PROFILE] } ?: d.performanceProfile,
+            animationsEnabled = prefs[Keys.ANIMATIONS_ENABLED] ?: d.animationsEnabled,
         )
     }
 
@@ -116,6 +122,8 @@ class ThemeSettingsStore(private val context: Context) {
             prefs[Keys.CARD_STYLE] = settings.cardStyle.name
             prefs[Keys.PLAYER_BACKGROUND] = settings.playerBackground.name
             prefs[Keys.ALBUM_GRID] = settings.albumGrid
+            prefs[Keys.PERFORMANCE_PROFILE] = settings.performanceProfile.name
+            prefs[Keys.ANIMATIONS_ENABLED] = settings.animationsEnabled
         }
     }
 
