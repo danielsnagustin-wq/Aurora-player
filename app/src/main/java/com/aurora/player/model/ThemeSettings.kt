@@ -77,25 +77,31 @@ data class PlayerSettings(
     // Audio (Etapa 1)
     val crossfadeSeconds: Int = 0, // 0 = OFF, 1..12
     val playbackSpeed: Float = 1.0f,
-    // Audio (Fase 1b)
-    val replayGainMode: String = "off", // off | track | album | smart
+    // Audio (RONDA 6): tono independiente de la velocidad (0.5..2.0,
+    // 1.0 = sin cambio) y saltar silencios largos (OFF por defecto).
+    val playbackPitch: Float = 1.0f,
+    val skipSilence: Boolean = false,
+    // Audio (RONDA 6): ReplayGain de verdad — modo off | track |
+    // album | smart (track si hay etiqueta, si no album) + preamp
+    // en dB (-12..+12). Sin etiqueta ReplayGain en el archivo, la
+    // ganancia es 0 y no se finge ningún cambio de volumen.
+    val replayGainMode: String = "off",
     val replayGainPreAmpDb: Float = 0f,
-    val normalizeVolume: Boolean = false,
-    // Auriculares / Bluetooth (Fase 1b)
+    // Auriculares / Bluetooth (Etapa 1)
     val autoPauseOnDisconnect: Boolean = true,
-    val autoplayOnConnect: Boolean = false,
     // Biblioteca (Etapa 1: minDuration + rescan; 1b: carpetas)
     val minDurationMs: Long = 5_000L,
-    val excludedFolders: List<String> = emptyList(),
-    // Reproducción (Etapa 1: temporizador; 1b: resto)
+    // Reproducción (Etapa 1: temporizador; RONDA 6: radio local)
     val resumeWhereLeft: Boolean = true,
-    val persistentQueue: Boolean = true,
+    // RONDA 6: radio local (OFF por defecto) — al acabar la cola,
+    // seguir con canciones parecidas (mismo artista/género) en vez
+    // de parar. Sin internet, solo con la biblioteca del teléfono.
+    val localRadio: Boolean = false,
     // Gestos (Etapa 1: ya existen en el reproductor; el interruptor
     // decide si están activos. El doble toque viene activado porque
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
     val swipeToChangeTrack: Boolean = true,
     val doubleTapToFavorite: Boolean = true,
-    val verticalSwipeVolume: Boolean = false,
 ) {
     companion object {
         val DEFAULT = PlayerSettings()

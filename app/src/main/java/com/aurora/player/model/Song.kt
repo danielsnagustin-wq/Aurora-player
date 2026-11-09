@@ -24,8 +24,6 @@ data class Song(
     val discNumber: Int = 1, // Fase 1b: leído del tag; por defecto 1, no inventado
     val genre: String? = null,
     val year: Int? = null,
-    val bitrate: Int? = null, // Fase 1b: del extractor; null = no verificado
-    val sampleRateHz: Int? = null, // Fase 1b: del extractor; null = no verificado
     val albumArtist: String? = null, // Android 11+: columna ALBUM_ARTIST
     val composer: String? = null, // Android 11+: columna COMPOSER
     val isFavorite: Boolean = false,
