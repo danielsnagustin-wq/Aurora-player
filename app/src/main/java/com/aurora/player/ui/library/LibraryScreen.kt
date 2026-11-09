@@ -90,6 +90,7 @@ import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
 import com.aurora.player.util.buildMetadataUpdate
+import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadEmbeddedCover
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
@@ -841,9 +842,19 @@ private fun SongDetailsDialog(
                     DetailRow("Compositor", details?.composer ?: song.composer)
                     DetailRow("Pista", if (song.trackNumber > 0) song.trackNumber.toString() else null)
                     DetailRow("Disco", if (song.discNumber > 1) song.discNumber.toString() else null)
-                    DetailRow("Formato", details?.mimeType ?: song.mimeType)
+                    DetailRow("Formato", codecDisplayName(details?.mimeType ?: song.mimeType))
                     DetailRow("Bitrate", details?.bitrateKbps?.let { "$it kbps" })
                     DetailRow("Sample rate", details?.sampleRateHz?.let { "$it Hz" })
+                    DetailRow(
+                        "Canales",
+                        details?.channelCount?.let {
+                            when (it) {
+                                1 -> "Mono"
+                                2 -> "Estéreo"
+                                else -> "$it canales"
+                            }
+                        },
+                    )
                     DetailRow("Duración", TimeFormat.formatDuration(song.durationMs))
                     DetailRow("Tamaño", formatSize(song.sizeBytes))
                     DetailRow("Añadida", formatDate(song.dateAdded))
