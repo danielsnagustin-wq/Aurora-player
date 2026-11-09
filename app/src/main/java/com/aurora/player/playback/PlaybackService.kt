@@ -4,8 +4,12 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.bluetooth.BluetoothA2dp
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.os.Build
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -99,6 +103,9 @@ class PlaybackService : MediaSessionService() {
     /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var crossfadeSeconds = 0
+    /** Fase 1b: reproducir al conectar auriculares/BT (opt-in, OFF). */
+    private var autoplayOnConnect = false
+    private var headphoneReceiver: BroadcastReceiver? = null
     private var fadeJob: Job? = null
     private var fadingIn = false
     /** Sesión de audio a la que está atado el EQ actual (0 = ninguna). */
@@ -178,12 +185,39 @@ class PlaybackService : MediaSessionService() {
             // archivo o inicial de Aurora; nunca sin carátula.
             .setBitmapLoader(AuroraBitmapLoader(this))
             .build()
+        // Fase 1b: reproducir al conectar auriculares/BT (opt-in,
+        // OFF por defecto). El receptor es dinámico: solo vive
+        // mientras el servicio está vivo; si la app se cerró del
+        // todo, no resucita la reproducción.
+        val autoplayReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent == null) return
+                val connected = isAudioOutputConnected(
+                    intent.action,
+                    intent.getIntExtra("state", 0),
+                    intent.getIntExtra(BluetoothA2dp.EXTRA_STATE, -1),
+                )
+                if (connected) maybeAutoplayOnConnect()
+            }
+        }
+        headphoneReceiver = autoplayReceiver
+        val autoplayFilter = IntentFilter().apply {
+            addAction(Intent.ACTION_HEADSET_PLUG)
+            addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(autoplayReceiver, autoplayFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(autoplayReceiver, autoplayFilter)
+        }
         // Ajustes vivos (ETAPA 4): crossfade y auto-pausa se aplican
         // cuando cambian en Ajustes, sin reiniciar nada.
         serviceScope.launch {
             PlayerSettingsStore(this@PlaybackService).settingsFlow.collect { settings ->
                 crossfadeSeconds = settings.crossfadeSeconds
                 exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
+                autoplayOnConnect = settings.autoplayOnConnect
                 if (crossfadeSeconds == 0) {
                     fadeJob?.cancel()
                     fadingIn = false
@@ -490,8 +524,24 @@ class PlaybackService : MediaSessionService() {
         super.onTaskRemoved(rootIntent)
     }
 
+    /**
+     * Fase 1b: si el usuario activó "Reproducir al conectar" y hay
+     * una canción cargada en pausa, reanuda al conectar auriculares
+     * o BT. Sin canción cargada no hace nada (no se inventa
+     * reproducción) y si ya suena, tampoco.
+     */
+    private fun maybeAutoplayOnConnect() {
+        val p = player ?: return
+        if (!autoplayOnConnect) return
+        if (p.isPlaying) return
+        if (p.currentMediaItem == null) return
+        p.play()
+    }
+
     override fun onDestroy() {
         serviceScope.cancel()
+        try { headphoneReceiver?.let { unregisterReceiver(it) } } catch (_: IllegalArgumentException) { }
+        headphoneReceiver = null
         fadeJob?.cancel()
         mediaSession?.release()
         player?.release()
