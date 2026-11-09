@@ -113,6 +113,10 @@ data class PlayerSettings(
     val channelBalance: Float = 0f,
     // Auriculares / Bluetooth (Etapa 1)
     val autoPauseOnDisconnect: Boolean = true,
+    // Fase 1b: reproducir al conectar auriculares/BT (OFF por
+    // defecto) — al conectar una salida de audio, reanuda la
+    // reproducción si hay una canción cargada y está en pausa.
+    val autoplayOnConnect: Boolean = false,
     // Biblioteca (Etapa 1: minDuration + rescan; 1b: carpetas)
     val minDurationMs: Long = 5_000L,
     // Reproducción (Etapa 1: temporizador; RONDA 6: radio local)
