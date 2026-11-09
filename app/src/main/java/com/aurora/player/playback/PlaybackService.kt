@@ -121,27 +121,22 @@ class PlaybackService : MediaSessionService() {
         val silenceDetector = SilenceDetectorAudioProcessor(
             onLongSilence = { onLongSilenceDetected() },
         ).also { silenceProcessor = it }
-        // RONDA 6 (fix run #67): los procesadores NO van en
-        // ExoPlayer.Builder — no tiene setAudioProcessors en Media3
-        // 1.4.1. La vía documentada es sobreescribir buildAudioSink
-        // en DefaultRenderersFactory y ponerlos en
-        // DefaultAudioSink.Builder. El resto replica el
-        // comportamiento por defecto (salida float, parámetros de
-        // pista y offload gapless).
+        // RONDA 6 (fix run #68, VERIFICADO EN EL CÓDIGO FUENTE 1.4.1):
+        // en 1.4.1 buildAudioSink tiene TRES parámetros (context,
+        // enableFloatOutput, enableAudioTrackPlaybackParams) y el
+        // Builder de DefaultAudioSink NO tiene setOffloadMode (ese
+        // método solo existe en DefaultAudioSink, no en su Builder).
+        // El override replica el cuerpo por defecto de 1.4.1 y solo
+        // añade los procesadores.
         val renderersFactory = object : DefaultRenderersFactory(this) {
             override fun buildAudioSink(
                 context: Context,
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
-                enableOffload: Boolean,
             ): AudioSink? {
                 return DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setOffloadMode(
-                        if (enableOffload) DefaultAudioSink.OFFLOAD_MODE_ENABLED_GAPLESS_REQUIRED
-                        else DefaultAudioSink.OFFLOAD_MODE_DISABLED,
-                    )
                     .setAudioProcessors(arrayOf(gainProcessor, silenceDetector))
                     .build()
             }
