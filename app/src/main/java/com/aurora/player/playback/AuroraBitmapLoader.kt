@@ -35,6 +35,9 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
     override fun supportsMimeType(mimeType: String): Boolean =
         mimeType.startsWith("image/")
 
+    override fun decodeBitmap(data: ByteArray): Bitmap? =
+        BitmapFactory.decodeByteArray(data, 0, data.size)
+
     override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
         val future = SettableFuture.create<Bitmap>()
         executor.execute {
