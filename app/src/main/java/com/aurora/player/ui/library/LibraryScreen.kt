@@ -325,6 +325,7 @@ fun LibraryScreen(
                         onShowDuplicates = { showDuplicates = true },
                         onDetails = { detailsSong = it },
                         onShuffleAll = onShuffleAll,
+                        coverSizeDp = rowCoverDp,
                     )
                     1 -> ArtistsTab(
                         artists = state.artists,
@@ -363,6 +364,7 @@ fun LibraryScreen(
                         onSongClick = onSongClick,
                         onDetails = { detailsSong = it },
                         onExcludeFolder = { viewModel.excludeFolder(it) },
+                        coverSizeDp = rowCoverDp,
                     )
                 }
             }
@@ -407,6 +409,7 @@ private fun SongsTab(
     onShowDuplicates: () -> Unit,
     onDetails: (Song) -> Unit,
     onShuffleAll: (List<Song>) -> Unit = {},
+    coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -499,7 +502,7 @@ private fun SongsTab(
                     onToggleFavorite = { viewModel.toggleFavorite(song.id) },
                     onClick = { onSongClick(song, songs) },
                     onDetails = onDetails,
-                    coverSizeDp = rowCoverDp,
+                    coverSizeDp = coverSizeDp,
                 )
                 Divider()
             }
@@ -691,6 +694,7 @@ private fun FoldersTab(
     onSongClick: (Song, List<Song>) -> Unit,
     onDetails: (Song) -> Unit,
     onExcludeFolder: (String) -> Unit,
+    coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
 ) {
     if (songs.isEmpty()) {
         Text(
@@ -762,7 +766,7 @@ private fun FoldersTab(
                     onToggleFavorite = { onToggleFavorite(song.id) },
                     onClick = { onSongClick(song, here) },
                     onDetails = onDetails,
-                    coverSizeDp = rowCoverDp,
+                    coverSizeDp = coverSizeDp,
                 )
                 Divider()
             }
@@ -816,7 +820,7 @@ private fun FavoritesTab(
                 onToggleFavorite = { onToggleFavorite(song.id) },
                 onClick = { onSongClick(song, songs) },
                 onDetails = onDetails,
-                coverSizeDp = rowCoverDp,
+                coverSizeDp = coverSizeDp,
             )
             Divider()
         }
