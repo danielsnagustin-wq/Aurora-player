@@ -28,10 +28,12 @@ import com.aurora.player.model.RepeatMode
  * - onTaskRemoved(): no se mata la reproducción a traición; si no suena
  *   nada, el servicio se detiene solo (stopSelf).
  * - Gapless: ExoPlayer con cola continua (sin recrear el player).
- * - Crossfade (Fase 1): no se finge con dos players; en Etapa 1 el
- *   crossfade es un fundido de volumen al cambiar de pista (0 s = OFF).
- *   El crossfade real de mezcla (Retro, hasta 12 s) va en Fase 1b con
- *   dos instancias o con audio processor, y se prueba en el teléfono.
+ * - Crossfade: NO implementado (auditoría ETAPA 2: el comentario
+ *   anterior decía que en Etapa 1 era un fundido de volumen, pero no
+ *   había ningún código que lo hiciera). Se implementa de verdad en
+ *   ETAPA 4; hasta entonces no aparece en la UI. El crossfade real de
+ *   mezcla (Retro, hasta 12 s) va en Fase 1b con dos instancias o con
+ *   audio processor, y se prueba en el teléfono.
  */
 /** Puente UI <-> efectos: el servicio publica aquí su EqualizerManager real. */
 object AudioEffects {

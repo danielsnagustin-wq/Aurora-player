@@ -18,8 +18,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * Aurora Player — persistencia de ajustes con DataStore (Etapa 1).
- * Los colores se guardan SOLO al pulsar "Aplicar" (la pantalla trabaja
- * con un draft); "Descartar" no escribe nada. "Restablecer" escribe
+ * ETAPA 2 (renovación): los colores se guardan AL TOCAR (sin botón
+ * "Aplicar" desde la ronda solo). "Restablecer" escribe
  * ThemeSettings.DEFAULT. Un HEX guardado inválido se ignora al leer
  * (Theme.kt usa el valor por defecto) y se corrige al guardar.
  */
@@ -65,7 +65,7 @@ class ThemeSettingsStore(private val context: Context) {
         )
     }
 
-    /** Solo se llama desde "Aplicar" o "Restablecer". */
+    /** Se llama al tocar un ajuste (guardado inmediato) o al restablecer. */
     suspend fun save(settings: ThemeSettings) {
         context.themeDataStore.edit { prefs ->
             prefs[Keys.MODE] = settings.themeMode.name

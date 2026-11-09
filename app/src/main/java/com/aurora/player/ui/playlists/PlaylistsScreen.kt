@@ -19,9 +19,11 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -128,8 +130,21 @@ fun PlaylistsScreen(
             LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
                 items(playlists, key = { it.id }) { playlist ->
                     ListItem(
-                        headlineContent = { Text(playlist.name) },
-                        supportingContent = { Text("Toca para ver sus canciones") },
+                        headlineContent = {
+                            Text(
+                                playlist.name,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                "Toca para ver sus canciones",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         trailingContent = {
                             IconButton(onClick = { viewModel.deletePlaylist(playlist.id) }) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Borrar ${playlist.name}")
@@ -199,11 +214,27 @@ private fun PlaylistDetail(
             LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
                 items(songs, key = { it.id }) { song ->
                     ListItem(
-                        headlineContent = { Text(song.title) },
-                        supportingContent = { Text("${song.artist} · ${song.album}") },
+                        headlineContent = {
+                            Text(
+                                song.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                "${song.artist} · ${song.album}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         trailingContent = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(TimeFormat.formatDuration(song.durationMs))
+                                Text(
+                                    TimeFormat.formatDuration(song.durationMs),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                                 IconButton(onClick = { onRemoveSong(song) }) {
                                     Icon(Icons.Filled.Delete, contentDescription = "Quitar ${song.title}")
                                 }
@@ -253,8 +284,21 @@ private fun SongPicker(
                 items(allSongs, key = { it.id }) { song ->
                     val checked = song.id in picked
                     ListItem(
-                        headlineContent = { Text(song.title) },
-                        supportingContent = { Text("${song.artist} · ${song.album}") },
+                        headlineContent = {
+                            Text(
+                                song.title,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                        supportingContent = {
+                            Text(
+                                "${song.artist} · ${song.album}",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        },
                         leadingContent = {
                             Checkbox(
                                 checked = checked,

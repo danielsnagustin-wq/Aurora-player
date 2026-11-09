@@ -101,6 +101,16 @@ fun AuroraPlayerTheme(
     }
     val onBackground = parseHexOrNull(settings.textHex) ?: if (useDark) Silver else Color.Black
     val onSurface = onBackground
+    // ETAPA 2 (renovación): colores guardados que el tema no usaba y
+    // ahora tienen efecto real: texto secundario -> onSurfaceVariant,
+    // barra del reproductor -> surfaceVariant (oscuro/AMOLED). El color
+    // de botones se cablea en ETAPA 6 (necesita su propio canal).
+    val secondaryText = parseHexOrNull(settings.secondaryTextHex)
+        ?: if (useDark) Color(0xFF9AA7B8) else Color(0xFF5A6470)
+    val playerBar = if (useDark) parseHexOrNull(settings.playerBarHex) ?: surface else surface
+    // Contraste real del texto sobre el color principal: acento claro
+    // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
+    val onPrimary = if (accent.luminance() > 0.5f) PureBlack else Color.White
 
     val colors = if (useDark) {
         darkColorScheme(
@@ -109,10 +119,11 @@ fun AuroraPlayerTheme(
             tertiary = Turquoise,
             background = background,
             surface = surface,
-            surfaceVariant = surface,
+            surfaceVariant = playerBar,
             onBackground = onBackground,
             onSurface = onSurface,
-            onPrimary = PureBlack,
+            onSurfaceVariant = secondaryText,
+            onPrimary = onPrimary,
         )
     } else {
         lightColorScheme(
@@ -123,6 +134,8 @@ fun AuroraPlayerTheme(
             surface = surface,
             onBackground = onBackground,
             onSurface = onSurface,
+            onSurfaceVariant = secondaryText,
+            onPrimary = onPrimary,
         )
     }
     MaterialTheme(colorScheme = colors, typography = AuroraTypography, content = content)

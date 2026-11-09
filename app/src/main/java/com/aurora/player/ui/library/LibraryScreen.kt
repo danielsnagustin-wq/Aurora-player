@@ -22,6 +22,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -112,10 +113,26 @@ fun LibraryScreen(
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(filtered, key = { it.id }) { song ->
                             ListItem(
-                                headlineContent = { Text(song.title) },
-                                supportingContent = { Text("${song.artist} · ${song.album}") },
+                                headlineContent = {
+                                    Text(
+                                        song.title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                supportingContent = {
+                                    Text(
+                                        "${song.artist} · ${song.album}",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
                                 trailingContent = {
-                                    Text(TimeFormat.formatDuration(song.durationMs))
+                                    Text(
+                                        TimeFormat.formatDuration(song.durationMs),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
                                 },
                                 leadingContent = { AlbumCover(song, size = 56.dp) },
                                 modifier = Modifier.clickable {
