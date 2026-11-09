@@ -109,6 +109,7 @@ import com.aurora.player.ui.theme.LocalCornerRadiusDp
 import com.aurora.player.ui.theme.cardBackground
 import com.aurora.player.ui.theme.cardBorder
 import com.aurora.player.ui.theme.cornerRadiusShape
+import com.aurora.player.util.BackupManager
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
@@ -552,6 +553,11 @@ private fun AuroraApp(
     val playerStore = remember { PlayerSettingsStore(context) }
     val playerSettings by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     val queueStore = remember { QueueStore(context) }
+    // SPEC 005 FR-004: respaldo automático al abrir (si está activo
+    // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
+    LaunchedEffect(Unit) {
+        BackupManager.maybeAutoBackup(context)
+    }
     val db = remember { AuroraDatabase.getInstance(context) }
     var speed by remember { mutableStateOf(1f) }
     // RONDA 6: tono (pitch) independiente de la velocidad.
