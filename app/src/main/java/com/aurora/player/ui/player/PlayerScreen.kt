@@ -74,6 +74,7 @@ import androidx.media3.common.Player
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.rememberArtworkBitmap
+import com.aurora.player.ui.theme.LocalAnimationsEnabled
 import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalDynamicColor
 import com.aurora.player.ui.theme.LocalPlayerBackground
@@ -176,9 +177,13 @@ fun PlayerScreen(
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
     val lyricsListState = rememberLazyListState()
     val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
+    // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
+    // al instante en vez de desplazarse animada.
+    val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(showLyrics, currentLine) {
         if (showLyrics && currentLine >= 0) {
-            lyricsListState.animateScrollToItem(currentLine)
+            if (animationsEnabled) lyricsListState.animateScrollToItem(currentLine)
+            else lyricsListState.scrollToItem(currentLine)
         }
     }
     // DISEÑO PREMIUM (spec 003): fondo y acento siguen a la portada
