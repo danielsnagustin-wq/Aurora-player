@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.alarm.AlarmScreen
 import com.aurora.player.data.BackupData
 import com.aurora.player.data.BackupValidation
+import com.aurora.player.data.FolderStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.data.validateBackup
@@ -915,6 +916,33 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     TextButton(onClick = { pendingRestore = null }) { Text("Cancelar") }
                 },
             )
+        }
+
+        // SPEC 005 FR-006: carpetas excluidas (se excluyen con
+        // mantener pulsado en la pestaña Carpetas; aquí se quitan).
+        val folderStore = remember { FolderStore(context) }
+        val excludedFolders by folderStore.excludedFlow.collectAsState(initial = emptySet())
+        Text("Carpetas excluidas", modifier = Modifier.padding(top = 24.dp))
+        Text("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Quítalas para volver a incluirlas.")
+        if (excludedFolders.isEmpty()) {
+            Text("Ninguna carpeta excluida.", modifier = Modifier.padding(top = 8.dp))
+        } else {
+            for (folder in excludedFolders.sorted()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(folder, modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        scope.launch { folderStore.include(folder) }
+                    }) { Text("Quitar") }
+                }
+            }
+            TextButton(
+                onClick = { scope.launch { folderStore.clearExcluded() } },
+                modifier = Modifier.padding(top = 8.dp),
+            ) { Text("Quitar todas") }
         }
 
         // Reporte de errores (depuración): se quitará en el release.
