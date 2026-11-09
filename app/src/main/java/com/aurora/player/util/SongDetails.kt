@@ -2,6 +2,8 @@ package com.aurora.player.util
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
+import android.os.Build
+import android.provider.MediaStore
 import com.aurora.player.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -93,7 +95,8 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
  * Si no existe o no se puede leer (p. ej. por el acceso a archivos en
  * Android 13+), devuelve lista vacía y la UI dice "Sin letras".
  */
-suspend fun loadLyricsFor(song: Song): List<LrcLine> = loadLyricsForPath(song.path)
+suspend fun loadLyricsFor(song: Song, context: Context): List<LrcLine> =
+    loadLyricsForPath(context, song.path)
 
 /**
  * AUDITORÍA (2026-11-09): buscar las letras pedía escanear TODA la
@@ -101,14 +104,57 @@ suspend fun loadLyricsFor(song: Song): List<LrcLine> = loadLyricsForPath(song.pa
  * encontrar la ruta de la canción actual. Ahora la ruta viaja en el
  * MediaItem y las letras se leen directas, sin escaneo.
  */
-suspend fun loadLyricsForPath(path: String): List<LrcLine> = withContext(Dispatchers.IO) {
-    try {
-        if (path.isBlank()) return@withContext emptyList()
-        val audio = java.io.File(path)
-        val lrc = java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc")
-        if (!lrc.exists()) return@withContext emptyList()
-        LrcParser.parse(lrc.readText())
-    } catch (_: Exception) {
-        emptyList()
+suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
+    withContext(Dispatchers.IO) {
+        try {
+            if (path.isBlank()) return@withContext emptyList()
+            val audio = java.io.File(path)
+            val lrcName = audio.nameWithoutExtension + ".lrc"
+            // 1) Ruta directa (Android antiguo o acceso permitido).
+            val lrc = java.io.File(audio.parentFile, lrcName)
+            if (lrc.exists()) return@withContext LrcParser.parse(lrc.readText())
+            // 2) MediaStore (RONDA 2, 2026-11-09): en Android 13+ el
+            // File directo a carpetas ajenas falla en silencio y el
+            // .lrc nunca se encontraba aunque existiera junto a la
+            // canción. Se busca por nombre de archivo y se lee por
+            // contentResolver; si hay varios, manda el de la misma
+            // carpeta que el audio.
+            val resolver = context.contentResolver
+            val uri = MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL)
+            val projection = arrayOf(
+                MediaStore.Files.FileColumns._ID,
+                MediaStore.Files.FileColumns.RELATIVE_PATH,
+            )
+            val selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} = ?"
+            val folder = audio.parentFile?.name.orEmpty()
+            var chosenId: Long? = null
+            resolver.query(uri, projection, selection, arrayOf(lrcName), null)?.use { cursor ->
+                val idCol = cursor.getColumnIndex(MediaStore.Files.FileColumns._ID)
+                val pathCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
+                var firstId: Long? = null
+                while (cursor.moveToNext()) {
+                    if (idCol < 0) break
+                    val id = cursor.getLong(idCol)
+                    if (firstId == null) firstId = id
+                    val rel = if (pathCol >= 0 && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        cursor.getString(pathCol).orEmpty()
+                    } else {
+                        ""
+                    }
+                    if (folder.isNotEmpty() && rel.trimEnd('/').endsWith(folder)) {
+                        chosenId = id
+                        break
+                    }
+                }
+                if (chosenId == null) chosenId = firstId
+            }
+            val lrcUri = chosenId?.let {
+                MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL, it)
+            } ?: return@withContext emptyList()
+            val text = resolver.openInputStream(lrcUri)?.bufferedReader()?.use { it.readText() }
+                ?: return@withContext emptyList()
+            LrcParser.parse(text)
+        } catch (_: Exception) {
+            emptyList()
+        }
     }
-}
