@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
@@ -210,7 +212,7 @@ fun PlayerScreen(
     // apagado) manda el acento elegido en Ajustes, como siempre.
     val useDynamicColor = LocalDynamicColor.current
     val playerBackground = LocalPlayerBackground.current
-    val coverBitmap = rememberArtworkBitmap(artworkUri, songUri)
+    val coverBitmap = rememberArtworkBitmap(artworkUri, songUri, sizePx = 1024)
     val dynamicAccent = remember(useDynamicColor, coverBitmap) {
         if (useDynamicColor) coverBitmap?.let { dominantColor(it) } else null
     }
@@ -261,6 +263,7 @@ fun PlayerScreen(
         }
     Column(
         modifier = Modifier.fillMaxSize()
+            .statusBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -272,50 +275,6 @@ fun PlayerScreen(
         ) {
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Cerrar")
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box {
-                    IconButton(onClick = { sleepMenuOpen = true }) {
-                        Icon(
-                            Icons.Filled.Timer,
-                            contentDescription = "Temporizador de apagado",
-                            tint = if (sleepTimer == SleepTimerOption.OFF) {
-                                MaterialTheme.colorScheme.onSurface
-                            } else {
-                                accent
-                            },
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = sleepMenuOpen,
-                        onDismissRequest = { sleepMenuOpen = false },
-                    ) {
-                        SleepTimerOption.entries.forEach { option ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        if (option == sleepTimer) "✓ ${option.label}" else option.label,
-                                    )
-                                },
-                                onClick = {
-                                    onSleepTimerSelected(option)
-                                    sleepMenuOpen = false
-                                },
-                            )
-                        }
-                    }
-                }
-                IconButton(onClick = onOpenEq) {
-                    Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
-                }
-                IconButton(onClick = onToggleFavorite) {
-                    Icon(
-                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                        contentDescription = "Favorito",
-                        tint = if (isFavorite) accent
-                        else MaterialTheme.colorScheme.onSurface,
-                    )
-                }
             }
         }
         if (title == null) {
@@ -340,6 +299,7 @@ fun PlayerScreen(
             uri = artworkUri,
             songUri = songUri,
             letter = title.take(1).uppercase(),
+            sizePx = 1024,
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 // Resplandor con el color de la portada (spec 003).
                 .shadow(24.dp, coverCorner, ambientColor = accent.copy(alpha = 0.45f), spotColor = accent.copy(alpha = 0.45f))
@@ -373,15 +333,28 @@ fun PlayerScreen(
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
-        Text(
-            listOfNotNull(artist, album).joinToString(" · "),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
-        )
+        if (artist != null) {
+            Text(
+                artist,
+                style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        if (album != null) {
+            Text(
+                album,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
         val duration = durationMs.coerceAtLeast(0L)
         val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
         Slider(
@@ -457,27 +430,87 @@ fun PlayerScreen(
                 )
             }
         }
+        // RONDA PULIDO (2026-11-09): fila de acciones estilo
+        // Musicolet: favorito, letras, ecualizador y temporizador
+        // con iconos, en vez de amontonados arriba con la X.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
+                    tint = if (isFavorite) accent else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            IconButton(onClick = { showLyrics = !showLyrics }) {
+                Icon(
+                    Icons.Filled.MusicNote,
+                    contentDescription = "Letras",
+                    tint = if (showLyrics) accent else MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            IconButton(onClick = onOpenEq) {
+                Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
+            }
+            Box {
+                IconButton(onClick = { sleepMenuOpen = true }) {
+                    Icon(
+                        Icons.Filled.Timer,
+                        contentDescription = "Temporizador de apagado",
+                        tint = if (sleepTimer == SleepTimerOption.OFF) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            accent
+                        },
+                    )
+                }
+                DropdownMenu(
+                    expanded = sleepMenuOpen,
+                    onDismissRequest = { sleepMenuOpen = false },
+                ) {
+                    SleepTimerOption.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (option == sleepTimer) "✓ ${option.label}" else option.label,
+                                )
+                            },
+                            onClick = {
+                                onSleepTimerSelected(option)
+                                sleepMenuOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
         // ETAPA 4: velocidad real y cola visible (tocar salta a esa pista).
         // RONDA 6: tono independiente, al lado de la velocidad.
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onCycleSpeed) {
-                Text("Velocidad ${formatSpeed(speed)}x")
+                Text("Velocidad ${formatSpeed(speed)}x", maxLines = 1)
             }
             TextButton(onClick = onCyclePitch) {
-                Text("Tono ${formatSpeed(pitch)}x")
+                Text("Tono ${formatSpeed(pitch)}x", maxLines = 1)
             }
             if (queueTitles.isNotEmpty()) {
                 TextButton(onClick = { showQueue = !showQueue }) {
-                    Text(if (showQueue) "Ocultar cola" else "Cola (${queueTitles.size})")
+                    Text(
+                        if (showQueue) "Ocultar cola" else "Cola (${queueTitles.size})",
+                        maxLines = 1,
+                    )
                 }
             }
             if (queueTitles.isNotEmpty() || savedQueues.isNotEmpty()) {
                 TextButton(onClick = { showSavedQueues = true }) {
-                    Text("Colas guardadas")
+                    Text("Colas", maxLines = 1)
                 }
             }
         }
@@ -529,15 +562,8 @@ fun PlayerScreen(
             }
         }
         // ETAPA 5: letras sincronizadas del .lrc de la canción.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = { showLyrics = !showLyrics }) {
-                Text(if (showLyrics) "Ocultar letras" else "Letras")
-            }
-        }
+        // El botón de letras vive en la fila de acciones (icono de
+        // nota); aquí solo va la lista.
         if (showLyrics) {
             if (lyrics.isEmpty()) {
                 Text(
