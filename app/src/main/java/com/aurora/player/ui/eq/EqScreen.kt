@@ -269,7 +269,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 onClick = {
                     scope.launch {
                         presetStore.save(newPresetName, levels)
-                        selectedPreset = newPresetName.trim()
+                        // RONDA 4 (2026-11-09): el nombre se guarda
+                        // recortado a 40 caracteres; el seleccionado
+                        // quedaba con el nombre completo y el chip no
+                        // se marcaba como elegido.
+                        selectedPreset = newPresetName.trim().take(40)
                         newPresetName = ""
                     }
                 },

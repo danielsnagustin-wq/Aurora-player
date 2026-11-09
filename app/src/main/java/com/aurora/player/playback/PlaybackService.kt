@@ -18,7 +18,6 @@ import androidx.media3.session.MediaSessionService
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.data.EqStateStore
 import com.aurora.player.data.PlayerSettingsStore
-import com.aurora.player.model.RepeatMode
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -260,23 +259,5 @@ class PlaybackService : MediaSessionService() {
 object PlayerControls {
     fun setSpeed(player: Player, speed: Float) {
         player.playbackParameters = player.playbackParameters.withSpeed(speed.coerceIn(0.5f, 2.0f))
-    }
-
-    fun setRepeatMode(player: Player, mode: RepeatMode) {
-        player.repeatMode = when (mode) {
-            RepeatMode.OFF -> Player.REPEAT_MODE_OFF
-            RepeatMode.ALL -> Player.REPEAT_MODE_ALL
-            RepeatMode.ONE -> Player.REPEAT_MODE_ONE
-        }
-    }
-
-    fun setShuffle(player: Player, enabled: Boolean) {
-        player.shuffleModeEnabled = enabled
-    }
-
-    fun playSongs(player: Player, songs: List<MediaItem>, startIndex: Int = 0) {
-        player.setMediaItems(songs, startIndex, 0L)
-        player.prepare()
-        player.play()
     }
 }

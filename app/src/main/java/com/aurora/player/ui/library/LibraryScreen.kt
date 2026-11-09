@@ -684,7 +684,10 @@ private fun SongDetailsDialog(
     var editTrack by remember(song) {
         mutableStateOf(if (song.trackNumber > 0) song.trackNumber.toString() else "")
     }
-    var editDisc by remember(song) { mutableStateOf(song.discNumber.toString()) }
+    var editDisc by remember(song) {
+        // RONDA 4 (2026-11-09): con disco 0 el campo mostraba "0".
+        mutableStateOf(if (song.discNumber > 0) song.discNumber.toString() else "")
+    }
     var saveError by remember { mutableStateOf<String?>(null) }
     // El sistema pide permiso para editar metadatos (Android 10+):
     // se guarda la petición y se lanza desde un efecto, para no
@@ -716,8 +719,13 @@ private fun SongDetailsDialog(
             try {
                 context.contentResolver.update(song.uri, values, null, null)
                 withContext(Dispatchers.Main) {
-                    editing = false
+                    // RONDA 4 (2026-11-09): antes el diálogo se
+                    // quedaba abierto mostrando los datos VIEJOS (el
+                    // Song del diálogo no cambia al refrescar la
+                    // biblioteca). Al guardar bien, se cierra y la
+                    // lista muestra los valores nuevos.
                     onLibraryChanged()
+                    onDismiss()
                 }
             } catch (e: RecoverableSecurityException) {
                 val request = IntentSenderRequest.Builder(

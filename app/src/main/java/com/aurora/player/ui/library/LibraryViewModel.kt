@@ -126,7 +126,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             if (artist != null) songs = songs.filter { it.artist == artist }
             if (albumId != null) songs = songs.filter { it.albumId == albumId }
             if (genre != null) {
-                songs = songs.filter { (it.genre ?: "Sin género") == genre }
+                // RONDA 4 (2026-11-09): la pestaña agrupa el género
+                // en blanco como "Sin género", pero el filtro solo
+                // trataba el null: esas canciones no aparecían al
+                // tocar "Sin género".
+                songs = songs.filter {
+                    (it.genre?.takeIf { g -> g.isNotBlank() } ?: "Sin género") == genre
+                }
             }
             if (q.isNotBlank()) {
                 songs = songs.filter {

@@ -575,6 +575,12 @@ private fun AuroraApp(
                     if (id != null && id != listenedId) {
                         listenedId = id
                         listenedMs = 0L
+                        // RONDA 4 (2026-11-09): historyDone nunca se
+                        // limpiaba: si una canción ya había contado
+                        // una vez en esta sesión, sus siguientes
+                        // escuchas no se registraban nunca más (ni en
+                        // "Más escuchadas" ni en reproducciones).
+                        historyDone = historyDone - id
                     } else if (id != null) {
                         listenedMs += 500L
                     }
@@ -639,7 +645,12 @@ private fun AuroraApp(
         if (!settings.resumeWhereLeft) return@LaunchedEffect
         val saved = queueStore.queueFlow.first()
         if (saved.songIds.isEmpty()) return@LaunchedEffect
-        val songs = withContext(Dispatchers.IO) { MusicRepository(context).loadSongs() }
+        val songs = withContext(Dispatchers.IO) {
+            // RONDA 4 (2026-11-09): restauraba con la duración
+            // mínima por defecto (5 s), no con la del usuario: la
+            // cola podía traer canciones que la biblioteca no muestra.
+            MusicRepository(context).loadSongs(settings.minDurationMs)
+        }
         val ordered = saved.songIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
         if (ordered.isEmpty()) return@LaunchedEffect
         c.setMediaItems(
