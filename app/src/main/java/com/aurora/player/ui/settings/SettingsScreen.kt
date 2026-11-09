@@ -1229,12 +1229,6 @@ fun SettingsScreen(
     }
 }
 
-/** Tarjeta de ejemplo con los colores aplicados: portada, título, botón y barra.
- * AUDITORÍA (2026-11-09): antes usaba los HEX crudos (fondo #000000,
- * texto #DCE8F5) y en modo claro mostraba una tarjeta oscura que NO
- * era lo que se veía en la app. Ahora usa los colores reales del
- * tema, así que la vista previa miente menos: es lo que se ve ahora. */
-@Composable
 /**
  * RONDA PULIDO (2026-11-09): categorías de Ajustes estilo
  * AIMP/Musicolet: icono + título + descripción. Cada una abre solo
