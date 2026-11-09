@@ -118,7 +118,10 @@ class FrameRateMeter {
     private var lastNanos = -1L
     private var running = false
 
-    private val callback = Choreographer.FrameCallback { nowNanos ->
+    // Tipo explícito: el callback se re-registra a sí mismo en cada
+    // frame; sin el tipo declarado el compilador entra en un problema
+    // recursivo de inferencia (run #121).
+    private val callback: Choreographer.FrameCallback = Choreographer.FrameCallback { nowNanos ->
         if (lastNanos >= 0) {
             durations.addLast((nowNanos - lastNanos) / 1_000_000L)
             if (durations.size > 120) durations.removeFirst()
