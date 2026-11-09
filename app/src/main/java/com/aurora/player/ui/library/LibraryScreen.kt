@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -87,6 +88,7 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.ui.online.OnlineScreen
@@ -149,6 +151,7 @@ fun LibraryScreen(
     val viewModel: LibraryViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
     val query by viewModel.query.collectAsState()
+    val searchCategory by viewModel.searchCategory.collectAsState()
     val filtered by viewModel.filteredSongs.collectAsState()
     val favorites by viewModel.favoriteSongs.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
@@ -192,10 +195,45 @@ fun LibraryScreen(
         OutlinedTextField(
             value = query,
             onValueChange = { viewModel.setQuery(it) },
-            label = { Text("Buscar título, artista o álbum") },
+            label = { Text("Buscar en tu biblioteca") },
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             singleLine = true,
         )
+        // SPEC 005 FR-005: ámbito de la búsqueda. Solo se muestra
+        // con texto, para que nunca sea un adorno: tocar cambia
+        // dónde busca; mantener pulsado aísla ese ámbito y quita
+        // los demás filtros.
+        if (query.isNotBlank()) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for (category in SearchCategory.entries) {
+                    val selected = category == searchCategory
+                    Box(
+                        modifier = Modifier.clip(RoundedCornerShape(16.dp))
+                            .background(
+                                if (selected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                            )
+                            .combinedClickable(
+                                onClick = { viewModel.setSearchCategory(category) },
+                                onLongClick = { viewModel.isolateSearchCategory(category) },
+                            )
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            category.label,
+                            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
         // 6 pestañas con Online: TabRow las aplastaría; con scroll
         // caben todas sin recortar los nombres.
         ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
