@@ -29,6 +29,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -48,6 +49,8 @@ import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.PerformanceProfile
+import com.aurora.player.model.applyTo
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
@@ -57,7 +60,10 @@ import com.aurora.player.ui.theme.PureBlack
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.ui.theme.brightnessOf
 import com.aurora.player.ui.theme.parseHexOrNull
+import com.aurora.player.util.DiagnosticsSnapshot
 import com.aurora.player.util.ErrorLog
+import com.aurora.player.util.FrameRateMeter
+import com.aurora.player.util.collectSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -343,7 +349,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Text("Color dinámico de la portada", modifier = Modifier.weight(1f))
             Switch(
                 checked = applied.dynamicColor,
-                onCheckedChange = { save(applied.copy(dynamicColor = it)) },
+                // Cambio manual a un ajuste que gobierna el perfil:
+                // el perfil pasa a Personalizado.
+                onCheckedChange = {
+                    save(applied.copy(dynamicColor = it, performanceProfile = PerformanceProfile.CUSTOM))
+                },
             )
         }
         Text(
@@ -360,13 +370,17 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 PlayerBackground.GRADIENT to "Degradado",
                 PlayerBackground.SOLID to "Plano",
             )) {
+                // Tocar el fondo ya elegido no cambia nada (y no debe
+                // pasar el perfil a Personalizado sin motivo).
+                val next = if (applied.playerBackground == bg) applied
+                    else applied.copy(playerBackground = bg, performanceProfile = PerformanceProfile.CUSTOM)
                 if (applied.playerBackground == bg) {
                     Button(
-                        onClick = { save(applied.copy(playerBackground = bg)) },
+                        onClick = { save(next) },
                         colors = auroraButtonColors(),
                     ) { Text(label) }
                 } else {
-                    OutlinedButton(onClick = { save(applied.copy(playerBackground = bg)) }) {
+                    OutlinedButton(onClick = { save(next) }) {
                         Text(label)
                     }
                 }
@@ -408,7 +422,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             value = cornerRadius,
             onValueChange = { cornerRadius = it },
             onValueChangeFinished = {
-                save(applied.copy(cornerRadiusDp = cornerRadius.toInt()))
+                // Solo si el radio cambió de verdad: soltar la barra en
+                // el mismo valor no debe pasar el perfil a Personalizado.
+                val radius = cornerRadius.toInt()
+                if (radius != applied.cornerRadiusDp) {
+                    save(applied.copy(cornerRadiusDp = radius, performanceProfile = PerformanceProfile.CUSTOM))
+                }
             },
             valueRange = 0f..28f,
             steps = 27,
@@ -429,6 +448,95 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
             modifier = Modifier.padding(top = 4.dp),
         )
+
+        // RENDIMIENTO (spec 004): perfiles + animaciones + restablecer.
+        // Solo gobierna efectos reales; cada cambio se aplica al tocar.
+        Text("Rendimiento", modifier = Modifier.padding(top = 16.dp))
+        Text("Cuánto trabajo visual hace la app. Equilibrado es el aspecto actual; Ahorro gasta menos batería; Alto rendimiento nunca se baja solo.")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for (profile in PerformanceProfile.entries) {
+                val next = profile.applyTo(applied).copy(performanceProfile = profile)
+                if (applied.performanceProfile == profile) {
+                    Button(
+                        onClick = { save(next) },
+                        colors = auroraButtonColors(),
+                    ) { Text(profile.label) }
+                } else {
+                    OutlinedButton(onClick = { save(next) }) {
+                        Text(profile.label)
+                    }
+                }
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Animaciones", modifier = Modifier.weight(1f))
+            Switch(
+                checked = applied.animationsEnabled,
+                onCheckedChange = {
+                    save(applied.copy(animationsEnabled = it, performanceProfile = PerformanceProfile.CUSTOM))
+                },
+            )
+        }
+        Text(
+            "Apagadas, la pantalla de inicio se muestra estática y las letras saltan de línea sin animación.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text(
+            "Con el perfil Equilibrado, si Android entra en ahorro de energía o el teléfono se calienta mucho, la app baja sola a los valores de Ahorro sin tocar lo que guardaste: al salir, vuelve sola. La música no se corta nunca por esto.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Button(
+            onClick = { scope.launch { store.resetToDefault() } },
+            colors = auroraButtonColors(),
+            modifier = Modifier.padding(top = 8.dp),
+        ) { Text("Restablecer tema y diseño") }
+        Text(
+            "Vuelve todos los ajustes de tema, diseño y rendimiento a los valores de fábrica.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
+        // RENDIMIENTO (spec 004) — DIAGNÓSTICO: mediciones reales de
+        // este teléfono. El medidor de FPS solo mide mientras Ajustes
+        // está abierto; al salir se para.
+        Text("Diagnóstico", modifier = Modifier.padding(top = 16.dp))
+        Text("Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.")
+        val meter = remember { FrameRateMeter() }
+        val fps by meter.fps.collectAsState()
+        val dropped by meter.dropped.collectAsState()
+        var snapshot by remember { mutableStateOf<DiagnosticsSnapshot?>(null) }
+        DisposableEffect(Unit) {
+            meter.start()
+            onDispose { meter.stop() }
+        }
+        LaunchedEffect(Unit) {
+            snapshot = withContext(Dispatchers.IO) { collectSnapshot(context) }
+        }
+        val snap = snapshot
+        Text(
+            "FPS: ${if (snap == null) "—" else "%.1f".format(fps)}",
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Text("Frames perdidos (muestra actual): $dropped")
+        Text("RAM de la app: ${snap?.appRamUsedMb?.toString() ?: "—"} MB de ${snap?.appRamMaxMb?.toString() ?: "—"} MB")
+        Text("RAM del teléfono: ${snap?.deviceRamAvailMb?.toString() ?: "—"} MB libres de ${snap?.deviceRamTotalMb?.toString() ?: "—"} MB")
+        Text("CPU del proceso: ${snap?.cpuTimeMs?.toString() ?: "—"} ms (${snap?.cpuCores?.toString() ?: "—"} núcleos)")
+        Text("Batería: ${snap?.batteryPercent?.let { "$it %" } ?: "—"} · Temperatura: ${snap?.batteryTempC?.let { "%.1f °C".format(it) } ?: "—"}")
+        Text("Apertura (proceso a biblioteca): ${snap?.startupMs?.let { "$it ms" } ?: "—"}")
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    snapshot = withContext(Dispatchers.IO) { collectSnapshot(context) }
+                }
+            },
+            modifier = Modifier.padding(top = 8.dp),
+        ) { Text("Actualizar") }
 
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
