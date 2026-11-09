@@ -2,6 +2,7 @@ package com.aurora.player.data
 
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -11,6 +12,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
 import androidx.room.Update
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
 import kotlinx.coroutines.flow.Flow
 
@@ -43,6 +46,28 @@ data class PlayHistoryEntity(
     val songId: Long,
     val playedAt: Long,
     val durationListenedMs: Long,
+)
+
+/** SPEC 005 FR-007: colas guardadas con nombre (hasta 20). */
+@Entity(tableName = "named_queues")
+data class NamedQueueEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+)
+
+@Entity(tableName = "named_queue_songs", primaryKeys = ["queueId", "position"])
+data class NamedQueueSongEntity(
+    val queueId: Long,
+    val songId: Long,
+    val position: Int,
+)
+
+/** Una cola guardada con su nº de canciones (una sola consulta). */
+data class NamedQueueWithCount(
+    @Embedded val queue: NamedQueueEntity,
+    val songCount: Int,
 )
 
 @Dao
@@ -101,6 +126,57 @@ interface PlaylistDao {
     suspend fun clearAll() {
         clearAllSongs()
         clearAllPlaylists()
+    }
+}
+
+/** SPEC 005 FR-007: colas guardadas con nombre. */
+@Dao
+interface NamedQueueDao {
+    @Query(
+        "SELECT q.*, (SELECT COUNT(*) FROM named_queue_songs s WHERE s.queueId = q.id) AS songCount " +
+            "FROM named_queues q ORDER BY q.updatedAt DESC",
+    )
+    fun allQueuesWithCount(): Flow<List<NamedQueueWithCount>>
+
+    @Query("SELECT * FROM named_queues ORDER BY updatedAt DESC")
+    suspend fun allQueues(): List<NamedQueueEntity>
+
+    @Query("SELECT COUNT(*) FROM named_queues")
+    suspend fun count(): Int
+
+    @Insert
+    suspend fun insertQueue(queue: NamedQueueEntity): Long
+
+    @Query("UPDATE named_queues SET updatedAt = :updatedAt WHERE id = :queueId")
+    suspend fun touchQueue(queueId: Long, updatedAt: Long)
+
+    @Query("SELECT songId FROM named_queue_songs WHERE queueId = :queueId ORDER BY position ASC")
+    suspend fun songIdsOf(queueId: Long): List<Long>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSongs(songs: List<NamedQueueSongEntity>)
+
+    @Query("DELETE FROM named_queue_songs WHERE queueId = :queueId")
+    suspend fun clearSongs(queueId: Long)
+
+    /** Guardar (o reemplazar) las canciones de una cola, en transacción. */
+    @Transaction
+    suspend fun setSongs(queueId: Long, songIds: List<Long>) {
+        clearSongs(queueId)
+        insertSongs(
+            songIds.mapIndexed { position, songId ->
+                NamedQueueSongEntity(queueId, songId, position)
+            },
+        )
+    }
+
+    @Query("DELETE FROM named_queues WHERE id = :queueId")
+    suspend fun deleteQueue(queueId: Long)
+
+    @Transaction
+    suspend fun deleteQueueWithSongs(queueId: Long) {
+        clearSongs(queueId)
+        deleteQueue(queueId)
     }
 }
 
@@ -180,14 +256,40 @@ interface LibraryDao {
 
 data class PlayCount(val songId: Long, val c: Int)
 
+/**
+ * SPEC 005 FR-007: migración 1 -> 2, solo crea las tablas de colas
+ * guardadas. Nada se borra: las listas, favoritos e historial
+ * quedan intactos (sin fallback destructivo).
+ */
+val MIGRATION_1_2: Migration = object : Migration(1, 2) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `named_queues` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`name` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, " +
+                "`updatedAt` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `named_queue_songs` (" +
+                "`queueId` INTEGER NOT NULL, `songId` INTEGER NOT NULL, " +
+                "`position` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`queueId`, `position`))",
+        )
+    }
+}
+
 @Database(
-    entities = [PlaylistEntity::class, PlaylistSongEntity::class, FavoriteEntity::class, PlayHistoryEntity::class],
-    version = 1,
+    entities = [
+        PlaylistEntity::class, PlaylistSongEntity::class, FavoriteEntity::class,
+        PlayHistoryEntity::class, NamedQueueEntity::class, NamedQueueSongEntity::class,
+    ],
+    version = 2,
     exportSchema = false,
 )
 abstract class AuroraDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun libraryDao(): LibraryDao
+    abstract fun namedQueueDao(): NamedQueueDao
 
     companion object {
         /**
@@ -207,7 +309,7 @@ abstract class AuroraDatabase : RoomDatabase() {
                     context.applicationContext,
                     AuroraDatabase::class.java,
                     "aurora-player.db",
-                ).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
             }
     }
 }
