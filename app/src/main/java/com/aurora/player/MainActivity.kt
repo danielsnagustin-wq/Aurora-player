@@ -40,6 +40,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,11 +53,18 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.room.Room
+import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.PlayHistoryEntity
+import com.aurora.player.data.PlayerSettings
+import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService
+import com.aurora.player.playback.PlayerControls
 import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.LibraryScreen
@@ -64,7 +72,11 @@ import com.aurora.player.ui.player.PlayerScreen
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Aurora Player — MainActivity (Etapa 1, cableada).
@@ -133,6 +145,21 @@ private enum class Tab(val label: String) {
     SETTINGS("Ajustes"),
 }
 
+/** Construye el MediaItem de una canción (metadatos + portada real). */
+private fun songToMediaItem(context: android.content.Context, song: Song): MediaItem =
+    MediaItem.Builder()
+        .setUri(song.uri)
+        .setMediaId(song.id.toString())
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(song.title)
+                .setArtist(song.artist)
+                .setAlbumTitle(song.album)
+                .setArtworkUri(MusicRepository(context).albumArtUri(song.albumId))
+                .build(),
+        )
+        .build()
+
 /** Pantalla de inicio: qué es la app y por qué pide el permiso. */
 @Composable
 private fun WelcomeScreen(onGrant: () -> Unit) {
@@ -194,6 +221,33 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
     var shuffleEnabled by remember { mutableStateOf(false) }
     var repeatMode by remember { mutableStateOf(Player.REPEAT_MODE_OFF) }
 
+    // ETAPA 4: velocidad, cola visible, historial (30 s) y cola persistente.
+    val scope = rememberCoroutineScope()
+    val playerStore = remember { PlayerSettingsStore(context) }
+    val playerSettings by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
+    val queueStore = remember { QueueStore(context) }
+    val db = remember {
+        Room.databaseBuilder(context, AuroraDatabase::class.java, "aurora-player.db").build()
+    }
+    var speed by remember { mutableStateOf(1f) }
+    var queueTitles by remember { mutableStateOf<List<String>>(emptyList()) }
+    var queueIndex by remember { mutableStateOf(0) }
+    var listenedMs by remember { mutableStateOf(0L) }
+    var listenedId by remember { mutableStateOf<Long?>(null) }
+    var historyDone by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var queueRestored by remember { mutableStateOf(false) }
+
+    /** Historial real: una pista cuenta cuando suena 30 s o más. */
+    fun finalizeHistory() {
+        val id = listenedId ?: return
+        val ms = listenedMs
+        if (ms < 30_000L || id in historyDone) return
+        historyDone = historyDone + id
+        scope.launch(Dispatchers.IO) {
+            db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
+        }
+    }
+
     DisposableEffect(Unit) {
         val token = SessionToken(
             context,
@@ -212,14 +266,30 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                 repeatMode = c.repeatMode
                 positionMs = c.currentPosition
                 durationMs = c.duration
+                queueTitles = (0 until c.mediaItemCount).map {
+                    c.getMediaItemAt(it).mediaMetadata.title?.toString() ?: ""
+                }
+                queueIndex = c.currentMediaItemIndex
+                // Cola persistente: se guarda en cada cambio de pista.
+                scope.launch {
+                    queueStore.save(
+                        (0 until c.mediaItemCount).mapNotNull {
+                            c.getMediaItemAt(it).mediaId.toLongOrNull()
+                        },
+                        c.currentMediaItemIndex,
+                        c.currentPosition,
+                    )
+                }
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                finalizeHistory()
                 controller?.let { refresh(it) }
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                if (!playing) finalizeHistory()
             }
 
             override fun onShuffleModeEnabledChanged(enabled: Boolean) {
@@ -260,27 +330,63 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
         while (true) {
             positionMs = c.currentPosition
             durationMs = c.duration
+            if (c.isPlaying) {
+                val id = c.currentMediaItem?.mediaId?.toLongOrNull()
+                if (id != null && id != listenedId) {
+                    listenedId = id
+                    listenedMs = 0L
+                } else if (id != null) {
+                    listenedMs += 500L
+                }
+            }
             delay(500)
         }
     }
 
+    // Velocidad real (ETAPA 4): se aplica al controlador cuando cambia
+    // en Ajustes o en el reproductor, y se guarda en DataStore.
+    LaunchedEffect(playerSettings.playbackSpeed, controller) {
+        val c = controller ?: return@LaunchedEffect
+        PlayerControls.setSpeed(c, playerSettings.playbackSpeed)
+        speed = playerSettings.playbackSpeed
+    }
+
+    fun cycleSpeed() {
+        val next = when (speed) {
+            0.5f -> 0.75f
+            0.75f -> 1f
+            1f -> 1.25f
+            1.25f -> 1.5f
+            1.5f -> 2f
+            else -> 0.5f
+        }
+        scope.launch { playerStore.save(playerSettings.copy(playbackSpeed = next)) }
+    }
+
+    // Cola persistente (ETAPA 4): al abrir, si "Reanudar" está activo,
+    // se recupera la última cola con su posición (sin reproducir sola).
+    LaunchedEffect(controller) {
+        val c = controller ?: return@LaunchedEffect
+        if (queueRestored || c.mediaItemCount > 0) return@LaunchedEffect
+        queueRestored = true
+        val settings = playerStore.settingsFlow.first()
+        if (!settings.resumeWhereLeft) return@LaunchedEffect
+        val saved = queueStore.queueFlow.first()
+        if (saved.songIds.isEmpty()) return@LaunchedEffect
+        val songs = withContext(Dispatchers.IO) { MusicRepository(context).loadSongs() }
+        val ordered = saved.songIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+        if (ordered.isEmpty()) return@LaunchedEffect
+        c.setMediaItems(
+            ordered.map { songToMediaItem(context, it) },
+            saved.index.coerceIn(0, ordered.size - 1),
+            saved.positionMs,
+        )
+        c.prepare()
+    }
+
     fun playSongs(songs: List<Song>, startIndex: Int) {
         val c = controller ?: return
-        val items = songs.map { song ->
-            MediaItem.Builder()
-                .setUri(song.uri)
-                .setMediaId(song.id.toString())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.artist)
-                        .setAlbumTitle(song.album)
-                        .setArtworkUri(MusicRepository(context).albumArtUri(song.albumId))
-                        .build(),
-                )
-                .build()
-        }
-        c.setMediaItems(items, startIndex, 0)
+        c.setMediaItems(songs.map { songToMediaItem(context, it) }, startIndex, 0)
         c.prepare()
         c.play()
     }
@@ -317,6 +423,13 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                 }
             },
             onOpenEq = { showEq = true },
+            speed = speed,
+            onCycleSpeed = { cycleSpeed() },
+            queueTitles = queueTitles,
+            queueIndex = queueIndex,
+            onQueueClick = { index ->
+                controller?.let { it.seekTo(index, 0); it.play() }
+            },
         )
         return
     }

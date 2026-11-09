@@ -7,6 +7,7 @@ import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -60,6 +62,7 @@ data class DuplicateGroup(
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = MusicRepository(application)
+    private val playerStore = PlayerSettingsStore(application)
     private val db = Room.databaseBuilder(
         application,
         AuroraDatabase::class.java,
@@ -154,7 +157,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _uiState.value = LibraryUiState.Loading
         viewModelScope.launch {
             val (songs, albums, artists) = withContext(Dispatchers.IO) {
-                val loadedSongs = repository.loadSongs()
+                // ETAPA 4: la duración mínima guardada en Ajustes sí se
+                // usa (antes loadSongs() siempre usaba 5 s fijos).
+                val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+                val loadedSongs = repository.loadSongs(minDurationMs)
                 Triple(
                     loadedSongs,
                     repository.loadAlbums(loadedSongs),

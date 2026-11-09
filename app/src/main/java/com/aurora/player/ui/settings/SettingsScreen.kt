@@ -18,6 +18,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -27,10 +29,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.data.PlayerSettings
+import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
@@ -56,12 +61,18 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
+    val playerStore = remember { PlayerSettingsStore(context) }
     val scope = rememberCoroutineScope()
     val applied by store.settingsFlow.collectAsState(initial = ThemeSettings.DEFAULT)
+    val player by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
+    }
+
+    fun savePlayer(next: PlayerSettings) {
+        scope.launch { playerStore.save(next) }
     }
 
     Column(
@@ -141,6 +152,43 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Text("Así se ve ahora", modifier = Modifier.padding(top = 16.dp))
         PreviewCard(applied)
+
+        // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
+        // reanudar la cola). Todo se guarda al tocar, como el tema.
+        Text("Reproducción", modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Crossfade: ${player.crossfadeSeconds} s (0 = apagado)",
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Slider(
+            value = player.crossfadeSeconds.toFloat(),
+            onValueChange = { savePlayer(player.copy(crossfadeSeconds = it.toInt())) },
+            valueRange = 0f..12f,
+            steps = 11,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Pausar al quitar los auriculares", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.autoPauseOnDisconnect,
+                onCheckedChange = { savePlayer(player.copy(autoPauseOnDisconnect = it)) },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Reanudar la cola al abrir la app", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.resumeWhereLeft,
+                onCheckedChange = { savePlayer(player.copy(resumeWhereLeft = it)) },
+            )
+        }
 
         TextButton(
             onClick = { scope.launch { store.resetToDefault() } },

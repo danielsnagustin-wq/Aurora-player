@@ -13,7 +13,15 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.RepeatMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * Aurora Player — servicio de reproducción (Etapa 1).
@@ -28,12 +36,11 @@ import com.aurora.player.model.RepeatMode
  * - onTaskRemoved(): no se mata la reproducción a traición; si no suena
  *   nada, el servicio se detiene solo (stopSelf).
  * - Gapless: ExoPlayer con cola continua (sin recrear el player).
- * - Crossfade: NO implementado (auditoría ETAPA 2: el comentario
- *   anterior decía que en Etapa 1 era un fundido de volumen, pero no
- *   había ningún código que lo hiciera). Se implementa de verdad en
- *   ETAPA 4; hasta entonces no aparece en la UI. El crossfade real de
- *   mezcla (Retro, hasta 12 s) va en Fase 1b con dos instancias o con
- *   audio processor, y se prueba en el teléfono.
+ * - Crossfade: implementado de verdad en ETAPA 4 (fade-in al cambiar
+ *   de pista + fade-out al final de la pista, con un solo ExoPlayer).
+ *   El crossfade real de mezcla con solape (Retro, hasta 12 s) va en
+ *   Fase 1b con dos instancias o con audio processor, y se prueba en
+ *   el teléfono.
  */
 /** Puente UI <-> efectos: el servicio publica aquí su EqualizerManager real. */
 object AudioEffects {
@@ -45,6 +52,12 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
+
+    /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var crossfadeSeconds = 0
+    private var fadeJob: Job? = null
+    private var fadingIn = false
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -70,9 +83,62 @@ class PlaybackService : MediaSessionService() {
         }
         AudioEffects.equalizerManager = equalizer
         mediaSession = MediaSession.Builder(this, exoPlayer).build()
+        // Ajustes vivos (ETAPA 4): crossfade y auto-pausa se aplican
+        // cuando cambian en Ajustes, sin reiniciar nada.
+        serviceScope.launch {
+            PlayerSettingsStore(this@PlaybackService).settingsFlow.collect { settings ->
+                crossfadeSeconds = settings.crossfadeSeconds
+                exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
+                if (crossfadeSeconds == 0) {
+                    fadeJob?.cancel()
+                    fadingIn = false
+                    exoPlayer.volume = 1f
+                }
+            }
+        }
+        // Crossfade real (ETAPA 4): fade-in al cambiar de pista y
+        // fade-out vigilado por posición al final de la pista.
+        exoPlayer.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (crossfadeSeconds > 0) startFadeIn() else exoPlayer.volume = 1f
+            }
+        })
+        serviceScope.launch {
+            while (true) {
+                delay(250)
+                val p = player ?: continue
+                if (!p.isPlaying || fadingIn || crossfadeSeconds <= 0) continue
+                val duration = p.duration
+                val remaining = duration - p.currentPosition
+                val windowMs = crossfadeSeconds * 1000L
+                if (duration > 0 && p.currentPosition > 5000 && remaining in 0..windowMs) {
+                    p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
+                } else if (duration > 0 && remaining > windowMs && p.volume < 1f) {
+                    p.volume = 1f
+                }
+            }
+        }
         // startForeground() INMEDIATO: la notificación de MediaSession
         // se publica al arrancar el servicio, antes de cualquier play().
         startForeground(NOTIFICATION_ID, buildPlaceholderNotification())
+    }
+
+    /** Fade-in de 0 a 1 durante los segundos de crossfade. */
+    private fun startFadeIn() {
+        val p = player ?: return
+        val seconds = crossfadeSeconds.coerceIn(1, 12)
+        fadeJob?.cancel()
+        fadingIn = true
+        p.volume = 0f
+        fadeJob = serviceScope.launch {
+            val steps = 20
+            val stepMs = seconds * 1000L / steps
+            for (i in 1..steps) {
+                delay(stepMs)
+                p.volume = i / steps.toFloat()
+            }
+            fadingIn = false
+        }
     }
 
     private fun createNotificationChannel() {
@@ -106,6 +172,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        serviceScope.cancel()
+        fadeJob?.cancel()
         mediaSession?.release()
         player?.release()
         equalizer?.release()

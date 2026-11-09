@@ -1,6 +1,7 @@
 package com.aurora.player.ui.player
 
 import android.net.Uri
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
@@ -23,12 +26,18 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -62,8 +71,14 @@ fun PlayerScreen(
     onToggleShuffle: () -> Unit,
     onCycleRepeat: () -> Unit,
     onOpenEq: () -> Unit,
+    speed: Float = 1f,
+    onCycleSpeed: () -> Unit = {},
+    queueTitles: List<String> = emptyList(),
+    queueIndex: Int = 0,
+    onQueueClick: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    var showQueue by remember { mutableStateOf(false) }
     Column(
         modifier = modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -170,6 +185,40 @@ fun PlayerScreen(
                         MaterialTheme.colorScheme.primary
                     },
                 )
+            }
+        }
+        // ETAPA 4: velocidad real y cola visible (tocar salta a esa pista).
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            TextButton(onClick = onCycleSpeed) {
+                Text("Velocidad ${"%.2g".format(speed)}x")
+            }
+            if (queueTitles.isNotEmpty()) {
+                TextButton(onClick = { showQueue = !showQueue }) {
+                    Text(if (showQueue) "Ocultar cola" else "Cola (${queueTitles.size})")
+                }
+            }
+        }
+        if (showQueue && queueTitles.isNotEmpty()) {
+            LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                itemsIndexed(queueTitles) { index, queueTitle ->
+                    val isCurrent = index == queueIndex
+                    ListItem(
+                        headlineContent = {
+                            Text(
+                                "${index + 1}. $queueTitle",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                            )
+                        },
+                        modifier = Modifier.clickable { onQueueClick(index) },
+                    )
+                }
             }
         }
     }
