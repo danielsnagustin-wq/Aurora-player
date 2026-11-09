@@ -1,6 +1,5 @@
 package com.aurora.player.ui.settings
 
-import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -20,7 +19,23 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -68,7 +83,6 @@ import com.aurora.player.ui.theme.brightnessOf
 import com.aurora.player.ui.theme.parseHexOrNull
 import com.aurora.player.util.BackupManager
 import com.aurora.player.util.DiagnosticsSnapshot
-import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.FrameRateMeter
 import com.aurora.player.util.RestoreReport
 import com.aurora.player.util.collectSnapshot
@@ -84,14 +98,20 @@ import kotlinx.coroutines.withContext
  *   se aplican AL TOCAR: se guardan en DataStore al instante, sin
  *   botón "Aplicar" que bloquee nada. La lista hace scroll y los
  *   chips usan FlowRow (nada se corta ni se escribe en vertical).
- * - ETAPA 6: la personalización avanzada expone fondo, tarjetas,
- *   textos, botones, barra y visualizador (HEX), tamaño de texto,
- *   forma de portada, densidad de lista y Material You. Todo tiene
- *   efecto real (ver ui/theme/Theme.kt).
+ * - ETAPA 6: tamaño de texto, forma de portada, densidad de lista
+ *   y Material You. Todo tiene efecto real (ver ui/theme/Theme.kt).
+ *   La personalización por HEX de cada parte (fondo, tarjetas,
+ *   textos...) se quitó en la ronda de pulido (2026-11-09): el
+ *   color principal (HEX) sigue, y el tema usa sus colores.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun SettingsScreen(modifier: Modifier = Modifier) {
+fun SettingsScreen(
+    modifier: Modifier = Modifier,
+    notificationsGranted: Boolean = false,
+    onRequestNotificationPermission: () -> Unit = {},
+    onOpenEq: () -> Unit = {},
+) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
     val playerStore = remember { PlayerSettingsStore(context) }
@@ -99,15 +119,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val applied by store.settingsFlow.collectAsState(initial = ThemeSettings.DEFAULT)
     val player by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
-    // Reporte de errores (depuración, se quitará en el release).
-    var reportText by remember { mutableStateOf<String?>(null) }
-    var showReport by remember { mutableStateOf(false) }
-    var hasLog by remember { mutableStateOf(false) }
     // RONDA 7 P4: alarma musical.
     var showAlarm by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        hasLog = withContext(Dispatchers.IO) { ErrorLog.hasEntries(context) }
-    }
+    // RONDA PULIDO (2026-11-09): Ajustes por categorías estilo
+    // AIMP/Musicolet: null muestra la lista de categorías; al tocar
+    // una se abre solo esa sección.
+    var section by remember { mutableStateOf<SettingsSection?>(null) }
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
@@ -117,27 +134,37 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         scope.launch { playerStore.save(next) }
     }
 
-    fun shareReport(text: String) {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_TEXT, text)
-            putExtra(Intent.EXTRA_SUBJECT, "Aurora Player - reporte de errores")
-        }
-        context.startActivity(Intent.createChooser(intent, "Compartir reporte"))
-    }
-
     Column(
         modifier = modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
     ) {
-        Text("Ajustes")
         if (showAlarm) {
             AlarmScreen(onClose = { showAlarm = false })
             return@Column
         }
-        Text("Aurora Player 0.1.0 — reproductor local, sin anuncios, sin cuenta, sin internet.")
+        if (section == null) {
+            Text("Ajustes", style = MaterialTheme.typography.titleLarge)
+            SettingsHome(onOpen = { section = it })
+            return@Column
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = { section = null }) {
+                Icon(
+                    Icons.Filled.ArrowBack,
+                    contentDescription = "Volver a Ajustes",
+                )
+            }
+            Text(
+                section?.title ?: "Ajustes",
+                style = MaterialTheme.typography.titleLarge,
+            )
+        }
 
+        if (section == SettingsSection.INTERFACE) {
         Text("Tema", modifier = Modifier.padding(top = 16.dp))
         Text("Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.")
         FlowRow(
@@ -215,27 +242,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Text("Así se ve ahora", modifier = Modifier.padding(top = 16.dp))
         PreviewCard(applied)
-
-        // ETAPA 6: personalización avanzada. Cada color se aplica al
-        // tocar (HEX válido); cada selector cambia la UI de verdad.
-        Text("Personalización avanzada", modifier = Modifier.padding(top = 16.dp))
-        Text(
-            "Cada color es un código HEX (ej. #8CCBEB). El círculo muestra el color actual de cada parte de la app: toca el campo y escribe otro código para cambiarlo.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        HexField("Fondo", applied.backgroundHex) { save(applied.copy(backgroundHex = it)) }
-        HexField("Tarjetas", applied.cardHex) { save(applied.copy(cardHex = it)) }
-        HexField("Texto principal", applied.textHex) { save(applied.copy(textHex = it)) }
-        HexField("Texto secundario", applied.secondaryTextHex) {
-            save(applied.copy(secondaryTextHex = it))
-        }
-        HexField("Botones", applied.buttonHex) { save(applied.copy(buttonHex = it)) }
-        HexField("Barra del reproductor", applied.playerBarHex) {
-            save(applied.copy(playerBarHex = it))
-        }
-        HexField("Visualizador", applied.visualizerHex) {
-            save(applied.copy(visualizerHex = it))
-        }
 
         Text("Tamaño de texto", modifier = Modifier.padding(top = 16.dp))
         FlowRow(
@@ -509,7 +515,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Vuelve todos los ajustes de tema, diseño y rendimiento a los valores de fábrica.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        }
 
+        if (section == SettingsSection.ADVANCED) {
         // RENDIMIENTO (spec 004) — DIAGNÓSTICO: mediciones reales de
         // este teléfono. El medidor de FPS solo mide mientras Ajustes
         // está abierto; al salir se para.
@@ -545,11 +553,20 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             },
             modifier = Modifier.padding(top = 8.dp),
         ) { Text("Actualizar") }
+        }
 
+        if (section == SettingsSection.SOUND) {
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
         Text("Reproducción", modifier = Modifier.padding(top = 16.dp))
         Text("Cómo suena y qué pasa al quitar los auriculares o al reabrir la app.")
+        Button(
+            onClick = onOpenEq,
+            colors = auroraButtonColors(),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text("Abrir ecualizador")
+        }
         // El crossfade se guarda al soltar la barra, no a cada paso del
         // arrastre (antes escribía en DataStore decenas de veces por
         // arrastre y el servicio reaccionaba a cada una).
@@ -639,6 +656,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        }
+        if (section == SettingsSection.PLAYBACK) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -692,7 +711,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Cuando se acaba la cola y la repetición está apagada, sigue con canciones parecidas de tu biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        }
 
+        if (section == SettingsSection.CONTROL) {
         // AUDITORÍA (2026-11-09): los gestos del reproductor existían
         // pero no se podían apagar; sus ajustes vivían muertos en el
         // modelo. Ahora cada gesto tiene su interruptor real.
@@ -720,7 +741,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 onCheckedChange = { savePlayer(player.copy(doubleTapToFavorite = it)) },
             )
         }
+        }
 
+        if (section == SettingsSection.LIBRARY) {
         // RONDA 2 (2026-11-09): la duración mínima existía en el
         // modelo y la biblioteca la usaba, pero NO HABÍA control para
         // cambiarla en Ajustes: era un ajuste muerto. Ahora sí se
@@ -754,7 +777,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Se aplica al volver a escanear la biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        }
 
+        if (section == SettingsSection.NETWORK) {
         // RONDA 7 P2 + 002-online-youtube: modo online. Apagado por
         // defecto: con el interruptor apagado la app no toca la red
         // jamás. Con él encendido: letras online (LRCLIB, solo si no
@@ -775,7 +800,32 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        }
 
+        if (section == SettingsSection.NOTIFICATIONS) {
+            Text("Notificaciones", modifier = Modifier.padding(top = 16.dp))
+            Text(
+                if (notificationsGranted) {
+                    "El aviso de reproducción sale en la barra de estado y en la pantalla de bloqueo."
+                } else {
+                    "Sin este permiso, en Android 13+ no sale el aviso de reproducción con los controles."
+                },
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            Button(
+                onClick = onRequestNotificationPermission,
+                colors = auroraButtonColors(),
+                modifier = Modifier.padding(top = 8.dp),
+                enabled = !notificationsGranted,
+            ) {
+                Text(
+                    if (notificationsGranted) "Notificaciones activadas"
+                    else "Activar notificaciones"
+                )
+            }
+        }
+
+        if (section == SettingsSection.ADVANCED) {
         TextButton(
             onClick = {
                 scope.launch {
@@ -787,7 +837,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         ) {
             Text("Restablecer por defecto")
         }
+        }
 
+        if (section == SettingsSection.ALARM) {
         // RONDA 7 P4: alarma musical.
         Text("Alarma", modifier = Modifier.padding(top = 24.dp))
         Text(
@@ -801,7 +853,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         ) {
             Text("Programar alarma")
         }
+        }
 
+        if (section == SettingsSection.BACKUP) {
         // SPEC 005 FR-004: respaldo local (listas, favoritos,
         // historial, ajustes, cola y presets de EQ) en un archivo
         // en Descargas. Restaurar reemplaza lo que hay ahora.
@@ -917,7 +971,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 },
             )
         }
+        }
 
+        if (section == SettingsSection.LIBRARY) {
         // SPEC 005 FR-006: carpetas excluidas (se excluyen con
         // mantener pulsado en la pestaña Carpetas; aquí se quitan).
         val folderStore = remember { FolderStore(context) }
@@ -944,97 +1000,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 8.dp),
             ) { Text("Quitar todas") }
         }
+        }
 
-        // Reporte de errores (depuración): se quitará en el release.
-        Text("Reporte de errores (depuración)", modifier = Modifier.padding(top = 24.dp))
-        Text(
-            "Solo para encontrar errores mientras desarrollamos. El reporte está sanitizado: sin rutas, sin nombres de canciones, sin datos personales. Nada sale del teléfono salvo que tú lo compartas.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Button(
-                onClick = {
-                    scope.launch {
-                        reportText = withContext(Dispatchers.IO) {
-                            ErrorLog.buildReportText(context)
-                        }
-                        showReport = true
-                    }
-                },
-                colors = auroraButtonColors(),
-            ) { Text("Ver reporte") }
-            OutlinedButton(onClick = {
-                scope.launch {
-                    val text = withContext(Dispatchers.IO) {
-                        ErrorLog.buildReportText(context)
-                    }
-                    shareReport(text)
-                }
-            }) { Text("Compartir") }
-            TextButton(onClick = {
-                scope.launch {
-                    withContext(Dispatchers.IO) { ErrorLog.clear(context) }
-                    hasLog = false
-                }
-            }) { Text("Borrar") }
-        }
-        if (!hasLog) {
-            Text("Sin errores registrados todavía.", modifier = Modifier.padding(top = 4.dp))
-        }
-        if (showReport && reportText != null) {
-            AlertDialog(
-                onDismissRequest = { showReport = false },
-                confirmButton = {
-                    TextButton(onClick = { showReport = false }) { Text("Cerrar") }
-                },
-                title = { Text("Reporte de errores") },
-                text = {
-                    Column(Modifier.verticalScroll(rememberScrollState())) {
-                        Text(reportText ?: "")
-                    }
-                },
-            )
-        }
-    }
-}
-
-/** Campo HEX con su propio estado: guarda solo cuando el HEX es válido. */
-@Composable
-private fun HexField(label: String, value: String, onChange: (String) -> Unit) {
-    var text by remember(value) { mutableStateOf(value) }
-    val color = parseHexOrNull(text)
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // Muestra del color actual: así se entiende qué es cada código.
-        Box(
-            modifier = Modifier.size(40.dp)
-                .clip(CircleShape)
-                .background(color ?: Color.Transparent)
-                .border(
-                    1.dp,
-                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
-                    CircleShape,
-                ),
-        )
-        OutlinedTextField(
-            value = text,
-            onValueChange = {
-                text = it
-                if (ThemeSettings.isValidHex(it)) onChange(it)
-            },
-            label = { Text("$label (HEX)") },
-            singleLine = true,
-            isError = !ThemeSettings.isValidHex(text),
-            modifier = Modifier.weight(1f).padding(start = 12.dp),
-        )
-    }
-    if (!ThemeSettings.isValidHex(text)) {
-        Text("HEX no válido: usa #RRGGBB con 6 cifras hexadecimales.")
     }
 }
 
@@ -1099,6 +1066,97 @@ private fun PreviewCard(applied: ThemeSettings) {
             contentAlignment = Alignment.Center,
         ) {
             Text("Botón", color = onButton)
+        }
+    }
+}
+
+/**
+ * RONDA PULIDO (2026-11-09): categorías de Ajustes estilo
+ * AIMP/Musicolet: icono + título + descripción. Cada una abre solo
+ * su sección; nada de un scroll infinito con todo amontonado.
+ */
+enum class SettingsSection(
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector,
+) {
+    INTERFACE(
+        "Interfaz",
+        "Tema, colores, texto, portadas, diseño y rendimiento",
+        Icons.Filled.Palette,
+    ),
+    SOUND(
+        "Motor de sonido",
+        "Ecualizador, crossfade, balance y normalización",
+        Icons.Filled.GraphicEq,
+    ),
+    PLAYBACK(
+        "Reproducción",
+        "Pausar al quitar auriculares, reanudar cola, radio local",
+        Icons.Filled.PlayArrow,
+    ),
+    CONTROL(
+        "Control",
+        "Auriculares, botones y gestos del reproductor",
+        Icons.Filled.Headphones,
+    ),
+    LIBRARY(
+        "Biblioteca",
+        "Duración mínima y carpetas excluidas",
+        Icons.Filled.LibraryMusic,
+    ),
+    NOTIFICATIONS(
+        "Notificaciones",
+        "Aviso de reproducción en la barra de estado",
+        Icons.Filled.Notifications,
+    ),
+    NETWORK(
+        "Red",
+        "Modo online: letras y YouTube (opcional, apagado)",
+        Icons.Filled.Public,
+    ),
+    ALARM(
+        "Alarma",
+        "Despiértate con tu música",
+        Icons.Filled.Timer,
+    ),
+    BACKUP(
+        "Respaldo",
+        "Copia de seguridad y restauración",
+        Icons.Filled.Backup,
+    ),
+    ADVANCED(
+        "Avanzadas",
+        "Diagnóstico y restablecer por defecto",
+        Icons.Filled.Settings,
+    ),
+}
+
+@Composable
+private fun SettingsHome(onOpen: (SettingsSection) -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        for (section in SettingsSection.entries) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .clickable { onOpen(section) }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = section.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+                Column(modifier = Modifier.padding(start = 16.dp)) {
+                    Text(section.title, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        section.subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
     }
 }
