@@ -39,7 +39,15 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
         val future = SettableFuture.create<Bitmap>()
         executor.execute {
             try {
-                future.set(BitmapFactory.decodeByteArray(data, 0, data.size))
+                // Como las incrustadas: a 512 px de lado mayor. La
+                // notificación no necesita la portada a tamaño completo.
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+                var sample = 1
+                val longest = maxOf(bounds.outWidth, bounds.outHeight)
+                while (longest / sample > 512) sample *= 2
+                val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                future.set(BitmapFactory.decodeByteArray(data, 0, data.size, options))
             } catch (_: Exception) {
                 future.set(null)
             }

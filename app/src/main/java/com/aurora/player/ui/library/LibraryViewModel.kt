@@ -85,6 +85,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _idFilter = MutableStateFlow<Set<Long>?>(null)
     val idFilter: StateFlow<Set<Long>?> = _idFilter
 
+    /** Filtro por género (pestaña Géneros). */
+    private val _genreFilter = MutableStateFlow<String?>(null)
+    val genreFilter: StateFlow<String?> = _genreFilter
+
     private val _favoriteIds = MutableStateFlow<Set<Long>>(emptySet())
     val favoriteIds: StateFlow<Set<Long>> = _favoriteIds
 
@@ -105,7 +109,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     val filteredSongs: StateFlow<List<Song>> =
         combine(
-            _uiState, _query, _sortOrder, _artistFilter, _albumFilter, _idFilter,
+            _uiState, _query, _sortOrder, _artistFilter, _albumFilter, _idFilter, _genreFilter,
         ) { values ->
             // Forma de array (el overload de 6 flujos no resolvía en
             // este Kotlin: el compilador pedía la función de 1 parámetro).
@@ -116,10 +120,14 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             val artist = values[3] as String?
             val albumId = values[4] as Long?
             val ids = values[5] as Set<Long>?
+            val genre = values[6] as String?
             var songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
             if (ids != null) songs = songs.filter { it.id in ids }
             if (artist != null) songs = songs.filter { it.artist == artist }
             if (albumId != null) songs = songs.filter { it.albumId == albumId }
+            if (genre != null) {
+                songs = songs.filter { (it.genre ?: "Sin género") == genre }
+            }
             if (q.isNotBlank()) {
                 songs = songs.filter {
                     it.title.contains(q, ignoreCase = true) ||
@@ -204,24 +212,35 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _artistFilter.value = artist
         _albumFilter.value = null
         _idFilter.value = null
+        _genreFilter.value = null
     }
 
     fun filterByAlbum(albumId: Long?) {
         _albumFilter.value = albumId
         _artistFilter.value = null
         _idFilter.value = null
+        _genreFilter.value = null
     }
 
     fun filterByIds(ids: Set<Long>?) {
         _idFilter.value = ids
         _artistFilter.value = null
         _albumFilter.value = null
+        _genreFilter.value = null
+    }
+
+    fun filterByGenre(genre: String?) {
+        _genreFilter.value = genre
+        _artistFilter.value = null
+        _albumFilter.value = null
+        _idFilter.value = null
     }
 
     fun clearFilters() {
         _artistFilter.value = null
         _albumFilter.value = null
         _idFilter.value = null
+        _genreFilter.value = null
     }
 
     fun toggleFavorite(songId: Long) {

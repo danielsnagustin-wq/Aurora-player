@@ -5,6 +5,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -47,7 +50,26 @@ import kotlinx.coroutines.launch
  */
 /** Puente UI <-> efectos: el servicio publica aquí su EqualizerManager real. */
 object AudioEffects {
-    var equalizerManager: EqualizerManager? = null
+    // Estado de Compose: la pantalla del EQ se entera cuando el
+    // manager aparece (al sonar la primera canción) sin reabrirla.
+    var equalizerManager: EqualizerManager? by mutableStateOf(null)
+        private set
+    /** true si el dispositivo rechazó el EQ con una sesión real. */
+    var equalizerUnsupported: Boolean by mutableStateOf(false)
+        private set
+
+    internal fun publish(manager: EqualizerManager?) {
+        equalizerManager = manager
+    }
+
+    internal fun markUnsupported() {
+        equalizerUnsupported = true
+    }
+
+    internal fun clear() {
+        equalizerManager = null
+        equalizerUnsupported = false
+    }
 }
 
 class PlaybackService : MediaSessionService() {
@@ -61,6 +83,8 @@ class PlaybackService : MediaSessionService() {
     private var crossfadeSeconds = 0
     private var fadeJob: Job? = null
     private var fadingIn = false
+    /** Sesión de audio a la que está atado el EQ actual (0 = ninguna). */
+    private var equalizerSessionId: Int = 0
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -79,25 +103,13 @@ class PlaybackService : MediaSessionService() {
             .setHandleAudioBecomingNoisy(true) // auto-pausa al quitar auriculares
             .build()
         player = exoPlayer
-        equalizer = try {
-            EqualizerManager(exoPlayer.audioSessionId)
-        } catch (e: Exception) {
-            // Sin EQ en este dispositivo: se registra y la UI lo dice.
-            ErrorLog.log(this, "EQ no disponible", e)
-            null
-        }
-        AudioEffects.equalizerManager = equalizer
-        // Estado del EQ guardado (refinamiento): al reiniciar el servicio
-        // el ecualizador vuelve a como lo dejó el usuario, no en cero.
-        serviceScope.launch {
-            val saved = EqStateStore(this@PlaybackService).stateFlow.first()
-            equalizer?.let {
-                it.setEnabled(saved.enabled)
-                it.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
-                it.setBassBoost(saved.bassBoost.toShort())
-                it.setVirtualizer(saved.virtualizer.toShort())
-            }
-        }
+        // RONDA 2 (2026-11-09): el EQ NO se crea aquí. Al arrancar,
+        // exoPlayer.audioSessionId aún es 0 (la sesión se crea al
+        // preparar la primera pista) y Equalizer(0, 0) se engancha a
+        // la MEZCLA GLOBAL: el EQ cambiaba el sonido de TODAS las
+        // apps mientras Aurora corría, y no estaba atado a su sesión.
+        // Se crea en onAudioSessionIdChanged, con la sesión real.
+        AudioEffects.clear()
         mediaSession = MediaSession.Builder(this, exoPlayer)
             // Portadas de la notificación: MediaStore, incrustada en el
             // archivo o inicial de Aurora; nunca sin carátula.
@@ -122,6 +134,10 @@ class PlaybackService : MediaSessionService() {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (crossfadeSeconds > 0) startFadeIn() else exoPlayer.volume = 1f
             }
+
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                setupEqualizer(audioSessionId)
+            }
         })
         serviceScope.launch {
             while (true) {
@@ -144,6 +160,37 @@ class PlaybackService : MediaSessionService() {
         // startForeground() INMEDIATO: la notificación de MediaSession
         // se publica al arrancar el servicio, antes de cualquier play().
         startForeground(NOTIFICATION_ID, buildPlaceholderNotification())
+    }
+
+    /**
+     * Crea el EQ sobre la sesión de audio REAL del reproductor, cuando
+     * ExoPlayer la anuncia (al preparar la primera pista). Si la sesión
+     * cambia, se suelta el manager viejo y se crea uno nuevo con el
+     * estado guardado del usuario, no en cero.
+     */
+    private fun setupEqualizer(sessionId: Int) {
+        if (sessionId == 0 || sessionId == equalizerSessionId) return
+        equalizer?.release()
+        equalizerSessionId = sessionId
+        val manager = try {
+            EqualizerManager(sessionId)
+        } catch (e: Exception) {
+            // Sin EQ en este dispositivo: se registra y la UI lo dice.
+            ErrorLog.log(this, "EQ no disponible", e)
+            AudioEffects.markUnsupported()
+            null
+        }
+        equalizer = manager
+        AudioEffects.publish(manager)
+        manager?.let { eq ->
+            serviceScope.launch {
+                val saved = EqStateStore(this@PlaybackService).stateFlow.first()
+                eq.setEnabled(saved.enabled)
+                eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+                eq.setBassBoost(saved.bassBoost.toShort())
+                eq.setVirtualizer(saved.virtualizer.toShort())
+            }
+        }
     }
 
     /** Fade-in de 0 a 1 durante los segundos de crossfade. */
@@ -200,7 +247,8 @@ class PlaybackService : MediaSessionService() {
         mediaSession?.release()
         player?.release()
         equalizer?.release()
-        AudioEffects.equalizerManager = null
+        AudioEffects.clear()
+        equalizerSessionId = 0
         mediaSession = null
         player = null
         equalizer = null

@@ -7,6 +7,7 @@ import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.PlaylistEntity
 import com.aurora.player.data.PlaylistSongEntity
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Song
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +36,7 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
     private val dao = db.playlistDao()
     private val libraryDao = db.libraryDao()
     private val repository = MusicRepository(application)
+    private val playerStore = PlayerSettingsStore(application)
 
     private val _playlists = MutableStateFlow<List<PlaylistEntity>>(emptyList())
     val playlists: StateFlow<List<PlaylistEntity>> = _playlists
@@ -64,7 +66,11 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) {
-                    _allSongs.value = if (hasAudioPermission) repository.loadSongs() else emptyList()
+                    // Misma duración mínima que la biblioteca: el
+                    // picker no muestra canciones que la biblioteca
+                    // esconde (RONDA 2, 2026-11-09).
+                    val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+                    _allSongs.value = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
                     _playlists.value = dao.allPlaylists()
                 // Playlists inteligentes: solo con datos reales locales.
                 val songs = _allSongs.value
@@ -124,6 +130,28 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         if (clean.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
             dao.insertPlaylist(PlaylistEntity(name = clean))
+            _playlists.value = dao.allPlaylists()
+        }
+    }
+
+    /**
+     * RONDA 2 (2026-11-09): importar una lista M3U. El parser
+     * (M3u.parse) existía pero NADIE lo llamaba: era código muerto.
+     * Solo entran las pistas que existen en la biblioteca; el resto
+     * se ignora y se dice cuántas entraron.
+     */
+    fun importM3u(name: String, songIds: List<Long>) {
+        val clean = name.trim().ifEmpty { "Importada" }
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = dao.insertPlaylist(PlaylistEntity(name = clean))
+            if (songIds.isNotEmpty()) {
+                dao.replaceSongs(
+                    id,
+                    songIds.mapIndexed { index, songId ->
+                        PlaylistSongEntity(playlistId = id, songId = songId, position = index)
+                    },
+                )
+            }
             _playlists.value = dao.allPlaylists()
         }
     }

@@ -46,14 +46,6 @@
         </service>
 
         <receiver
-            android:name=".playback.HeadsetReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.media.AUDIO_BECOMING_NOISY" />
-            </intent-filter>
-        </receiver>
-
-        <receiver
             android:name=".widget.AuroraWidgetProvider"
             android:exported="false"
             android:label="Aurora Player">

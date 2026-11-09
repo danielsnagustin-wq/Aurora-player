@@ -108,7 +108,22 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
 
-        if (manager == null || !manager.isAvailable) {
+        if (manager == null) {
+            // RONDA 2 (2026-11-09): el manager ya no existe hasta que
+            // suena la primera canción (la sesión real se crea al
+            // preparar). No es que el dispositivo no lo soporte: es
+            // que aún no hay sesión. Se dice, no se finge.
+            Text(
+                if (AudioEffects.equalizerUnsupported) {
+                    "Ecualizador no disponible en este dispositivo."
+                } else {
+                    "Reproduce una canción para activar el ecualizador: se crea sobre la sesión de audio del reproductor."
+                },
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            return@Column
+        }
+        if (!manager.isAvailable) {
             Text(
                 "Ecualizador no disponible en este dispositivo.",
                 modifier = Modifier.padding(top = 16.dp),
