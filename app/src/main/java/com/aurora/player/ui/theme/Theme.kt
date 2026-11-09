@@ -71,6 +71,14 @@ fun brightnessOf(color: Color): Float =
     color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
 
 /**
+ * Texto que se lee sobre un color: negro si es claro, blanco si es
+ * oscuro. Antes vivía solo dentro del tema; ahora es de nivel superior
+ * porque el reproductor también lo necesita para el acento dinámico.
+ */
+fun contrastOn(color: Color): Color =
+    if (brightnessOf(color) > 0.5f) PureBlack else Color.White
+
+/**
  * Canales de personalización (ETAPA 6): valores que no caben en el
  * colorScheme pero tienen efecto real en la UI.
  */
@@ -195,9 +203,6 @@ fun AuroraPlayerTheme(
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
     // esta versión de Compose).
-    fun contrastOn(color: Color): Color {
-        return if (brightnessOf(color) > 0.5f) PureBlack else Color.White
-    }
     val onPrimary = contrastOn(accent)
     // ETAPA 6: color de botones con su propio canal (buttonHex; si no
     // es válido, cae al acento). El texto del botón usa contraste real.

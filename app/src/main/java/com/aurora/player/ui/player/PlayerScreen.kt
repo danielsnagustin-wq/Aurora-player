@@ -1,6 +1,7 @@
 package com.aurora.player.ui.player
 
 import android.net.Uri
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -46,6 +47,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -63,11 +65,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
+import com.aurora.player.model.PlayerBackground
 import com.aurora.player.ui.library.ArtworkImage
+import com.aurora.player.ui.library.rememberArtworkBitmap
 import com.aurora.player.ui.theme.LocalCoverShape
+import com.aurora.player.ui.theme.LocalDynamicColor
+import com.aurora.player.ui.theme.LocalPlayerBackground
+import com.aurora.player.ui.theme.contrastOn
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
+import com.aurora.player.ui.theme.dominantColor
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.TimeFormat
@@ -169,9 +181,62 @@ fun PlayerScreen(
             lyricsListState.animateScrollToItem(currentLine)
         }
     }
+    // DISEÑO PREMIUM (spec 003): fondo y acento siguen a la portada
+    // de la canción que suena. Sin portada (o con el interruptor
+    // apagado) manda el acento elegido en Ajustes, como siempre.
+    val useDynamicColor = LocalDynamicColor.current
+    val playerBackground = LocalPlayerBackground.current
+    val coverBitmap = rememberArtworkBitmap(artworkUri, songUri)
+    val dynamicAccent = remember(useDynamicColor, coverBitmap) {
+        if (useDynamicColor) coverBitmap?.let { dominantColor(it) } else null
+    }
+    val accent = dynamicAccent ?: MaterialTheme.colorScheme.primary
+    val onAccent = if (dynamicAccent != null) contrastOn(dynamicAccent)
+    else MaterialTheme.colorScheme.onPrimary
+    Box(
+        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+    ) {
+        when (playerBackground) {
+            PlayerBackground.COVER -> if (coverBitmap != null) {
+                Image(
+                    bitmap = coverBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    alpha = 0.32f,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            PlayerBackground.GRADIENT -> if (dynamicAccent != null) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(
+                        Brush.verticalGradient(
+                            listOf(
+                                dynamicAccent.copy(alpha = 0.38f),
+                                MaterialTheme.colorScheme.background,
+                            ),
+                        ),
+                    ),
+                )
+            }
+            PlayerBackground.SOLID -> {}
+        }
+        // Sobre la portada de fondo, un degradado a negro para que el
+        // texto y los controles se lean siempre.
+        if (playerBackground == PlayerBackground.COVER && coverBitmap != null) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                            MaterialTheme.colorScheme.background,
+                        ),
+                    ),
+                ),
+            )
+        }
     Column(
-        modifier = modifier.fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+        modifier = Modifier.fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -193,7 +258,7 @@ fun PlayerScreen(
                             tint = if (sleepTimer == SleepTimerOption.OFF) {
                                 MaterialTheme.colorScheme.onSurface
                             } else {
-                                MaterialTheme.colorScheme.primary
+                                accent
                             },
                         )
                     }
@@ -223,7 +288,7 @@ fun PlayerScreen(
                     Icon(
                         if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                         contentDescription = "Favorito",
-                        tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                        tint = if (isFavorite) accent
                         else MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -252,7 +317,8 @@ fun PlayerScreen(
             songUri = songUri,
             letter = title.take(1).uppercase(),
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                .shadow(16.dp, coverCorner)
+                // Resplandor con el color de la portada (spec 003).
+                .shadow(24.dp, coverCorner, ambientColor = accent.copy(alpha = 0.45f), spotColor = accent.copy(alpha = 0.45f))
                 .pointerInput(swipeEnabled) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -302,6 +368,7 @@ fun PlayerScreen(
                 sliderPosition = null
             },
             valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
+            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
         )
         Row(
@@ -322,7 +389,7 @@ fun PlayerScreen(
                     contentDescription = "Aleatorio",
                     modifier = Modifier.size(28.dp),
                     tint = if (shuffleEnabled) {
-                        MaterialTheme.colorScheme.primary
+                        accent
                     } else {
                         MaterialTheme.colorScheme.onSurface
                     },
@@ -336,7 +403,7 @@ fun PlayerScreen(
             Box(
                 modifier = Modifier.size(72.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+                    .background(accent)
                     .clickable { onPlayPause() },
                 contentAlignment = Alignment.Center,
             ) {
@@ -344,7 +411,7 @@ fun PlayerScreen(
                     if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                     contentDescription = if (isPlaying) "Pausar" else "Reproducir",
                     modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = onAccent,
                 )
             }
             IconButton(onClick = onNext) {
@@ -361,7 +428,7 @@ fun PlayerScreen(
                     tint = if (repeatMode == Player.REPEAT_MODE_OFF) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
-                        MaterialTheme.colorScheme.primary
+                        accent
                     },
                 )
             }
@@ -395,7 +462,7 @@ fun PlayerScreen(
                                 "${index + 1}. $queueTitle",
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                color = if (isCurrent) MaterialTheme.colorScheme.primary
+                                color = if (isCurrent) accent
                                 else MaterialTheme.colorScheme.onSurface,
                             )
                         },
@@ -480,7 +547,7 @@ fun PlayerScreen(
                             line.text,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                             textAlign = TextAlign.Center,
-                            color = if (isCurrent) MaterialTheme.colorScheme.primary
+                            color = if (isCurrent) accent
                             else MaterialTheme.colorScheme.onSurfaceVariant,
                             style = if (isCurrent) MaterialTheme.typography.titleMedium
                             else MaterialTheme.typography.bodyMedium,
@@ -489,5 +556,6 @@ fun PlayerScreen(
                 }
             }
         }
+    }
     }
 }

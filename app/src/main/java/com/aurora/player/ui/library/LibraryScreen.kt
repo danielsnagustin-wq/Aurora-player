@@ -1002,14 +1002,17 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
  * MediaStore no da portada, se prueba la incrustada en el archivo
  * ([songUri]); si tampoco hay, la inicial grande.
  */
+/**
+ * Carga la portada (MediaStore o incrustada en el archivo) y la
+ * devuelve como Bitmap. La usan ArtworkImage y el reproductor, que
+ * necesita el bitmap para el fondo y el color dinámico (spec 003).
+ * Un fallo deja null, nunca se cuelga.
+ */
 @Composable
-fun ArtworkImage(
+fun rememberArtworkBitmap(
     uri: android.net.Uri?,
-    letter: String,
-    size: Dp? = null,
-    modifier: Modifier = Modifier,
     songUri: android.net.Uri? = null,
-) {
+): Bitmap? {
     val context = LocalContext.current
     var bitmap by remember(uri, songUri) { mutableStateOf<Bitmap?>(null) }
     LaunchedEffect(uri, songUri) {
@@ -1025,7 +1028,23 @@ fun ArtworkImage(
             bitmap = loadEmbeddedCover(context, songUri)
         }
     }
-    ArtworkImage(bitmap = bitmap, letter = letter, size = size, modifier = modifier)
+    return bitmap
+}
+
+@Composable
+fun ArtworkImage(
+    uri: android.net.Uri?,
+    letter: String,
+    size: Dp? = null,
+    modifier: Modifier = Modifier,
+    songUri: android.net.Uri? = null,
+) {
+    ArtworkImage(
+        bitmap = rememberArtworkBitmap(uri, songUri),
+        letter = letter,
+        size = size,
+        modifier = modifier,
+    )
 }
 
 @Composable
