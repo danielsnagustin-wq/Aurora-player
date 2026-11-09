@@ -18,6 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -66,6 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
@@ -517,7 +519,7 @@ private fun DuplicatesDialog(
 /**
  * Detalles reales de una canción (ETAPA 5): todos los campos que
  * existen, "—" donde no hay dato, nunca inventado. "Editar" cambia
- * título/artista/álbum en MediaStore (en Android 10+ el sistema pide
+ * todos los metadatos en MediaStore (en Android 10+ el sistema pide
  * permiso al usuario con su propio diálogo).
  */
 @Composable
@@ -535,7 +537,15 @@ private fun SongDetailsDialog(
     var editing by remember(song) { mutableStateOf(false) }
     var editTitle by remember(song) { mutableStateOf(song.title) }
     var editArtist by remember(song) { mutableStateOf(song.artist) }
+    var editAlbumArtist by remember(song) { mutableStateOf(song.albumArtist ?: "") }
     var editAlbum by remember(song) { mutableStateOf(song.album) }
+    var editGenre by remember(song) { mutableStateOf(song.genre ?: "") }
+    var editComposer by remember(song) { mutableStateOf(song.composer ?: "") }
+    var editYear by remember(song) { mutableStateOf(song.year?.toString() ?: "") }
+    var editTrack by remember(song) {
+        mutableStateOf(if (song.trackNumber > 0) song.trackNumber.toString() else "")
+    }
+    var editDisc by remember(song) { mutableStateOf(song.discNumber.toString()) }
     var saveError by remember { mutableStateOf<String?>(null) }
     // El sistema pide permiso para editar metadatos (Android 10+):
     // se guarda la petición y se lanza desde un efecto, para no
@@ -552,9 +562,36 @@ private fun SongDetailsDialog(
     val save: () -> Unit = {
         scope.launch(Dispatchers.IO) {
             val values = ContentValues().apply {
-                put(MediaStore.Audio.Media.TITLE, editTitle.trim())
-                put(MediaStore.Audio.Media.ARTIST, editArtist.trim())
-                put(MediaStore.Audio.Media.ALBUM, editAlbum.trim())
+                val title = editTitle.trim()
+                val artist = editArtist.trim()
+                val album = editAlbum.trim()
+                if (title.isNotEmpty()) put(MediaStore.Audio.Media.TITLE, title)
+                if (artist.isNotEmpty()) put(MediaStore.Audio.Media.ARTIST, artist)
+                if (album.isNotEmpty()) put(MediaStore.Audio.Media.ALBUM, album)
+                editYear.trim().toIntOrNull()?.takeIf { it > 0 }?.let {
+                    put(MediaStore.Audio.Media.YEAR, it)
+                }
+                val track = editTrack.trim().toIntOrNull()?.takeIf { it > 0 }
+                val disc = editDisc.trim().toIntOrNull()?.takeIf { it > 0 } ?: 1
+                if (track != null) {
+                    put(MediaStore.Audio.Media.TRACK, disc * 1000 + track)
+                }
+                // Columnas de Android 11+: en versiones viejas el
+                // proveedor no las conoce y el update fallaría.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    val albumArtist = editAlbumArtist.trim()
+                    if (albumArtist.isNotEmpty()) {
+                        put(MediaStore.Audio.Media.ALBUM_ARTIST, albumArtist)
+                    }
+                    val genre = editGenre.trim()
+                    if (genre.isNotEmpty()) put(MediaStore.Audio.Media.GENRE, genre)
+                    val composer = editComposer.trim()
+                    if (composer.isNotEmpty()) put(MediaStore.Audio.Media.COMPOSER, composer)
+                    if (track != null) {
+                        put(MediaStore.Audio.Media.CD_TRACK_NUMBER, track)
+                        put(MediaStore.Audio.Media.DISC_NUMBER, disc)
+                    }
+                }
             }
             try {
                 context.contentResolver.update(song.uri, values, null, null)
@@ -612,10 +649,55 @@ private fun SongDetailsDialog(
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     OutlinedTextField(
+                        value = editAlbumArtist,
+                        onValueChange = { editAlbumArtist = it },
+                        label = { Text("Artista del álbum") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
                         value = editAlbum,
                         onValueChange = { editAlbum = it },
                         label = { Text("Álbum") },
                         singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editGenre,
+                        onValueChange = { editGenre = it },
+                        label = { Text("Género") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editComposer,
+                        onValueChange = { editComposer = it },
+                        label = { Text("Compositor") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editYear,
+                        onValueChange = { editYear = it },
+                        label = { Text("Año") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editTrack,
+                        onValueChange = { editTrack = it },
+                        label = { Text("Pista") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                    OutlinedTextField(
+                        value = editDisc,
+                        onValueChange = { editDisc = it },
+                        label = { Text("Disco") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     )
                     TextButton(onClick = { save() }, modifier = Modifier.padding(top = 8.dp)) {
@@ -624,11 +706,13 @@ private fun SongDetailsDialog(
                     saveError?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
                 } else {
                     DetailRow("Artista", song.artist)
+                    DetailRow("Artista del álbum", song.albumArtist)
                     DetailRow("Álbum", song.album)
                     DetailRow("Año", song.year?.toString())
-                    DetailRow("Género", details?.genre)
-                    DetailRow("Compositor", details?.composer)
+                    DetailRow("Género", details?.genre ?: song.genre)
+                    DetailRow("Compositor", details?.composer ?: song.composer)
                     DetailRow("Pista", if (song.trackNumber > 0) song.trackNumber.toString() else null)
+                    DetailRow("Disco", if (song.discNumber > 1) song.discNumber.toString() else null)
                     DetailRow("Formato", details?.mimeType ?: song.mimeType)
                     DetailRow("Bitrate", details?.bitrateKbps?.let { "$it kbps" })
                     DetailRow("Sample rate", details?.sampleRateHz?.let { "$it Hz" })

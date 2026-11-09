@@ -1,6 +1,7 @@
 package com.aurora.player
 
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.data.trackAndDisc
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
@@ -86,5 +87,20 @@ class AuroraPlayerTest {
         assertEquals(0, LrcParser.currentLineIndex(lines, 3000))
         assertEquals(1, LrcParser.currentLineIndex(lines, 7000))
         assertEquals(-1, LrcParser.currentLineIndex(lines, 1000))
+    }
+
+    @Test
+    fun `TRACK 1003 es pista 3 disco 1`() {
+        assertEquals(3 to 1, trackAndDisc(1003, 0, 0))
+    }
+
+    @Test
+    fun `columnas modernas mandan sobre TRACK`() {
+        assertEquals(5 to 2, trackAndDisc(2005, 5, 2))
+    }
+
+    @Test
+    fun `sin dato de pista el disco es 1`() {
+        assertEquals(0 to 1, trackAndDisc(0, 0, 0))
     }
 }

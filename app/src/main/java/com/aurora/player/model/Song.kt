@@ -26,6 +26,8 @@ data class Song(
     val year: Int? = null,
     val bitrate: Int? = null, // Fase 1b: del extractor; null = no verificado
     val sampleRateHz: Int? = null, // Fase 1b: del extractor; null = no verificado
+    val albumArtist: String? = null, // Android 11+: columna ALBUM_ARTIST
+    val composer: String? = null, // Android 11+: columna COMPOSER
     val isFavorite: Boolean = false,
     val playCount: Int = 0,
     val lastPlayedAt: Long? = null,
