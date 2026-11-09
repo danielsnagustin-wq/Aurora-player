@@ -117,7 +117,7 @@ class PlayerSettingsStore(private val context: Context) {
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
         val LOCAL_RADIO = booleanPreferencesKey("local_radio")
-        val ONLINE_LYRICS = booleanPreferencesKey("online_lyrics")
+        val ONLINE_MODE = booleanPreferencesKey("online_mode")
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
     }
@@ -138,7 +138,7 @@ class PlayerSettingsStore(private val context: Context) {
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
-            onlineLyrics = prefs[Keys.ONLINE_LYRICS] ?: d.onlineLyrics,
+            onlineMode = prefs[Keys.ONLINE_MODE] ?: d.onlineMode,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
         )
@@ -156,7 +156,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
-            prefs[Keys.ONLINE_LYRICS] = settings.onlineLyrics
+            prefs[Keys.ONLINE_MODE] = settings.onlineMode
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
         }

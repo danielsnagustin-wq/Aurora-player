@@ -97,11 +97,11 @@ data class PlayerSettings(
     // seguir con canciones parecidas (mismo artista/género) en vez
     // de parar. Sin internet, solo con la biblioteca del teléfono.
     val localRadio: Boolean = false,
-    // RONDA 7 P2: letras online (OFF por defecto) — con el
-    // interruptor encendido, si la canción no tiene .lrc local, se
-    // busca la letra en LRCLIB. Es el ÚNICO uso de internet del
-    // reproductor; apagado, la app no toca la red jamás.
-    val onlineLyrics: Boolean = false,
+    // RONDA 7 P2 + 002-online-youtube: modo online (OFF por
+    // defecto) — con el interruptor encendido, la app puede usar
+    // internet: letras online (LRCLIB) y escuchar de YouTube. La
+    // música local nunca usa la red. Apagado, nada sale a la red.
+    val onlineMode: Boolean = false,
     // Gestos (Etapa 1: ya existen en el reproductor; el interruptor
     // decide si están activos. El doble toque viene activado porque
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
