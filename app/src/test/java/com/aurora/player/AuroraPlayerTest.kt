@@ -23,11 +23,22 @@ import com.aurora.player.ui.player.swipeDirection
 import com.aurora.player.ui.stats.SongInfo
 import com.aurora.player.ui.stats.computeYearStats
 import com.aurora.player.ui.stats.yearRange
+import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.buildMetadataUpdate
 import com.aurora.player.util.codecDisplayName
+import com.aurora.player.lyrics.LyricsProvider
+import com.aurora.player.lyrics.OnlineLyrics
+import com.aurora.player.lyrics.buildLrclibGetUrl
+import com.aurora.player.lyrics.buildLrclibSearchUrl
+import com.aurora.player.lyrics.extractJsonString
+import com.aurora.player.lyrics.fetchLyricsFirst
+import com.aurora.player.lyrics.parseLrclibResponse
+import com.aurora.player.lyrics.plainToLrcLines
+import com.aurora.player.lyrics.resolveLyrics
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -352,5 +363,109 @@ class AuroraPlayerTest {
         assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource("roto"))
         assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource(null))
         assertEquals(AlarmSource.ShuffleAll, decodeAlarmSource(""))
+    }
+
+    // RONDA 7 P2: letras online (LRCLIB).
+
+    private class FakeLyricsProvider(
+        override val name: String,
+        private val result: OnlineLyrics?,
+        private val fail: Boolean = false,
+    ) : LyricsProvider {
+        override suspend fun fetch(
+            track: String,
+            artist: String,
+            album: String?,
+            durationSec: Long,
+        ): OnlineLyrics? {
+            if (fail) throw RuntimeException("caído")
+            return result
+        }
+    }
+
+    @Test
+    fun buildLrclibGetUrlCodificaTituloArtistaAlbumYDuracion() {
+        assertEquals(
+            "https://lrclib.net/api/get?track_name=Caf%C3%A9+del+Mar&artist_name=Energy+52&album_name=Caf%C3%A9+del+Mar&duration=234",
+            buildLrclibGetUrl("Café del Mar", "Energy 52", "Café del Mar", 234),
+        )
+        assertEquals(
+            "https://lrclib.net/api/get?track_name=Blue&artist_name=Eiffel+65",
+            buildLrclibGetUrl("Blue", "Eiffel 65", null, 0),
+        )
+    }
+
+    @Test
+    fun buildLrclibSearchUrlCodificaLaConsulta() {
+        assertEquals(
+            "https://lrclib.net/api/search?q=Blue+Eiffel+65",
+            buildLrclibSearchUrl("Blue Eiffel 65"),
+        )
+    }
+
+    @Test
+    fun extractJsonStringLeeCampoConEscapesYNull() {
+        val json = """{"syncedLyrics":"[00:01.00]Hola \"mundo\"\nsegunda línea","plainLyrics":null}"""
+        assertEquals("[00:01.00]Hola \"mundo\"\nsegunda línea", extractJsonString(json, "syncedLyrics"))
+        assertNull(extractJsonString(json, "plainLyrics"))
+        assertNull(extractJsonString(json, "noExiste"))
+        assertNull(extractJsonString("""{"a": 5}""", "a"))
+    }
+
+    @Test
+    fun parseLrclibResponseAceptaSnakeCaseYDescartaVacios() {
+        val snake = """{"synced_lyrics":"[00:01.00]Hola","plain_lyrics":"Hola"}"""
+        val parsed = parseLrclibResponse(snake)
+        assertEquals("[00:01.00]Hola", parsed?.syncedLrc)
+        assertEquals("Hola", parsed?.plainText)
+        assertNull(parseLrclibResponse("""{"syncedLyrics":"","plainLyrics":""}"""))
+        assertNull(parseLrclibResponse("""{"trackName":"Blue"}"""))
+    }
+
+    @Test
+    fun plainToLrcLinesConservaOrdenYSinSincronizar() {
+        val lines = plainToLrcLines("uno\ndos\n\ntres")
+        assertEquals(listOf("uno", "dos", "tres"), lines.map { it.text })
+        assertEquals(listOf(Long.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE), lines.map { it.timeMs })
+    }
+
+    @Test
+    fun resolveLyricsPriorizaElLrcLocal() {
+        val lines = resolveLyrics(
+            "[00:01.00]Local",
+            OnlineLyrics("[00:01.00]Online", "Online"),
+        )
+        assertEquals(listOf("Local"), lines.map { it.text })
+    }
+
+    @Test
+    fun resolveLyricsUsaLaOnlineSincronizadaSiNoHayLocal() {
+        val lines = resolveLyrics(null, OnlineLyrics("[00:02.00]Online", null))
+        assertEquals(listOf("Online"), lines.map { it.text })
+        assertEquals(2000L, lines.first().timeMs)
+    }
+
+    @Test
+    fun resolveLyricsUsaLaOnlineSinTiemposComoUltimoRecurso() {
+        val lines = resolveLyrics(null, OnlineLyrics(null, "verso uno\nverso dos"))
+        assertEquals(listOf("verso uno", "verso dos"), lines.map { it.text })
+        assertEquals(Long.MAX_VALUE, lines.first().timeMs)
+        assertEquals(emptyList<LrcLine>(), resolveLyrics(null, null))
+    }
+
+    @Test
+    fun fetchLyricsFirstPruebaProveedoresEnOrdenYSaltaErrores() = runBlocking {
+        val providers = listOf(
+            FakeLyricsProvider("Caido", null, fail = true),
+            FakeLyricsProvider("Vacio", null),
+            FakeLyricsProvider("Bueno", OnlineLyrics(null, "letra")),
+        )
+        assertEquals("letra", fetchLyricsFirst(providers, "Blue", "Eiffel 65", null, 0)?.plainText)
+        assertNull(
+            fetchLyricsFirst(
+                listOf(FakeLyricsProvider("Vacio", null)),
+                "Blue", "Eiffel 65", null, 0,
+            ),
+        )
     }
 }

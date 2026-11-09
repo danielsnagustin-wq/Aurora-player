@@ -92,6 +92,7 @@ import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
+import com.aurora.player.lyrics.loadOnlineLyrics
 import com.aurora.player.util.loadLyricsForPath
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -650,11 +651,26 @@ private fun AuroraApp(
     // Letras (ETAPA 5): al cambiar de canción se busca su .lrc por su
     // ruta y su ajuste de sincronización guardado. Ya no se escanea
     // toda la biblioteca para encontrar la ruta (AUDITORÍA 2026-11-09).
+    // RONDA 7 P2: sin .lrc y con "Letras online" encendido, se busca
+    // en LRCLIB (título/artista/álbum/duración del MediaItem actual);
+    // el .lrc local siempre manda y apagado no se toca la red.
     LaunchedEffect(currentSongId) {
         val id = currentSongId ?: return@LaunchedEffect
         lyrics = emptyList()
         lyricsOffsetMs = offsetStore.offsetFor(id)
         lyrics = loadLyricsForPath(currentSongPath ?: "")
+        if (lyrics.isEmpty() && playerSettings.onlineLyrics) {
+            val meta = controller?.currentMediaItem?.mediaMetadata
+            val track = meta?.title?.toString().orEmpty()
+            val artist = meta?.artist?.toString().orEmpty()
+            val album = meta?.albumTitle?.toString()
+            val durationSec = (controller?.duration ?: 0L).let {
+                if (it > 0) it / 1000 else 0L
+            }
+            if (track.isNotBlank() && artist.isNotBlank()) {
+                lyrics = loadOnlineLyrics(context, id, track, artist, album, durationSec)
+            }
+        }
     }
 
     // Velocidad y tono reales (ETAPA 4 + RONDA 6): se aplican al

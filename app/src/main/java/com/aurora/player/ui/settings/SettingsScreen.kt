@@ -515,6 +515,27 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 4.dp),
         )
 
+        // RONDA 7 P2: letras online (modo online). Apagado por defecto:
+        // con el interruptor apagado la app no toca la red jamás. Con
+        // él encendido, si una canción no tiene .lrc local, su letra se
+        // busca en LRCLIB y se guarda en caché para la próxima vez.
+        Text("Letras", modifier = Modifier.padding(top = 16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Letras online (LRCLIB)", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.onlineLyrics,
+                onCheckedChange = { savePlayer(player.copy(onlineLyrics = it)) },
+            )
+        }
+        Text(
+            "Usa internet solo para buscar letras cuando no hay .lrc. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
         TextButton(
             onClick = {
                 scope.launch {
