@@ -28,6 +28,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.aurora.player.ui.theme.LocalAnimationsEnabled
+import kotlinx.coroutines.delay
 import com.aurora.player.R
 import kotlin.math.PI
 import kotlin.math.sin
@@ -120,9 +122,18 @@ private fun buildParticles(): List<DustParticle> {
 
 @Composable
 fun StartScreen(onFinished: () -> Unit = {}) {
+    // RENDIMIENTO (spec 004): sin animaciones, la figura se muestra
+    // estática (p = 0.5, visible del todo, sin moverse) y sigue a los
+    // 600 ms, en vez de la animación de 3 s.
+    val animationsEnabled = LocalAnimationsEnabled.current
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        progress.animateTo(1f, animationSpec = tween(3000, easing = LinearEasing))
+        if (animationsEnabled) {
+            progress.animateTo(1f, animationSpec = tween(3000, easing = LinearEasing))
+        } else {
+            progress.snapTo(0.5f)
+            delay(600)
+        }
         onFinished()
     }
     val p = progress.value
