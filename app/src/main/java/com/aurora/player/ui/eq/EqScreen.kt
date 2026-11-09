@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -95,6 +96,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 
     Column(
         modifier = modifier.fillMaxSize()
+            .statusBarsPadding()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .padding(16.dp),
@@ -110,38 +112,41 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
 
-        if (manager == null) {
-            // RONDA 2 (2026-11-09): el manager ya no existe hasta que
-            // suena la primera canción (la sesión real se crea al
-            // preparar). No es que el dispositivo no lo soporte: es
-            // que aún no hay sesión. Se dice, no se finge.
-            Text(
-                if (AudioEffects.equalizerUnsupported) {
-                    "Ecualizador no disponible en este dispositivo."
-                } else {
-                    "Reproduce una canción para activar el ecualizador: se crea sobre la sesión de audio del reproductor."
-                },
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            return@Column
-        }
-        if (!manager.isAvailable) {
+        if (manager == null && AudioEffects.equalizerUnsupported) {
             Text(
                 "Ecualizador no disponible en este dispositivo.",
                 modifier = Modifier.padding(top = 16.dp),
             )
             return@Column
         }
-        if (showWizard) {
+        if (manager == null) {
+            // RONDA 2 (2026-11-09): sin sesión todavía (se crea al
+            // preparar la primera canción), la pantalla ya NO se
+            // vacía: los controles se muestran igual, todo se guarda
+            // y se aplica solo en cuanto suene la primera canción
+            // (el LaunchedEffect de arriba lo aplica al aparecer).
+            Text(
+                "Sin sesión todavía: ajusta y guarda; se aplica en cuanto suene una canción.",
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
+        if (manager != null && !manager.isAvailable) {
+            Text(
+                "Ecualizador no disponible en este dispositivo.",
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            return@Column
+        }
+        if (showWizard && manager != null) {
             EqWizardScreen(
                 manager = manager,
                 onClose = { showWizard = false },
                 onApplyCurve = { curve ->
                     if (!enabled) {
                         enabled = true
-                        manager.setEnabled(true)
+                        manager?.setEnabled(true)
                     }
-                    manager.applyPreset(EqualizerManager.Preset("Asistente", curve))
+                    manager?.applyPreset(EqualizerManager.Preset("Asistente", curve))
                     levels = curve
                     selectedPreset = null
                     persist()
@@ -160,21 +165,24 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 checked = enabled,
                 onCheckedChange = {
                     enabled = it
-                    manager.setEnabled(it)
+                    manager?.setEnabled(it)
                     persist()
                 },
             )
         }
 
-        OutlinedButton(
-            onClick = { showWizard = true },
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        ) {
-            Text("Asistente de EQ")
+        if (manager != null) {
+            OutlinedButton(
+                onClick = { showWizard = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text("Asistente de EQ")
+            }
         }
 
-        val freqs = manager.bandFrequenciesHz
-        val bandCount = manager.getBandCount().coerceAtMost(10)
+        val freqs = manager?.bandFrequenciesHz?.takeIf { it.isNotEmpty() }
+            ?: listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
+        val bandCount = (manager?.getBandCount()?.takeIf { it > 0 } ?: levels.size).coerceAtMost(10)
         for (band in 0 until bandCount) {
             val label = freqs.getOrNull(band)?.let { hz ->
                 if (hz >= 1000) "${hz / 1000} kHz" else "$hz Hz"
@@ -183,8 +191,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Slider(
                 value = levels.getOrNull(band) ?: 0f,
                 onValueChange = { db ->
-                    levels = levels.toMutableList().also { it[band] = db }
-                    manager.setBandLevel(band, (db * 100).toInt().toShort())
+                    levels = levels.toMutableList().also {
+                        while (it.size <= band) it.add(0f)
+                        it[band] = db
+                    }
+                    manager?.setBandLevel(band, (db * 100).toInt().toShort())
                     selectedPreset = null
                 },
                 onValueChangeFinished = { persist() },
@@ -199,7 +210,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             value = bass,
             onValueChange = {
                 bass = it
-                manager.setBassBoost(it.toInt().toShort())
+                manager?.setBassBoost(it.toInt().toShort())
             },
             onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
@@ -212,7 +223,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             value = virtualizer,
             onValueChange = {
                 virtualizer = it
-                manager.setVirtualizer(it.toInt().toShort())
+                manager?.setVirtualizer(it.toInt().toShort())
             },
             onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
@@ -236,9 +247,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         // toca para oírlo: enciende el EQ.
                         if (!enabled) {
                             enabled = true
-                            manager.setEnabled(true)
+                            manager?.setEnabled(true)
                         }
-                        manager.applyPreset(preset)
+                        manager?.applyPreset(preset)
                         levels = preset.levelsDb
                         selectedPreset = preset.name
                         persist()
@@ -261,9 +272,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             onClick = {
                                 if (!enabled) {
                                     enabled = true
-                                    manager.setEnabled(true)
+                                    manager?.setEnabled(true)
                                 }
-                                manager.applyPreset(preset)
+                                manager?.applyPreset(preset)
                                 levels = preset.levelsDb
                                 selectedPreset = preset.name
                                 persist()
