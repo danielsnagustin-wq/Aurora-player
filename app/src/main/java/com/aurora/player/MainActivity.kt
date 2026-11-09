@@ -702,6 +702,13 @@ private fun AuroraApp(
             onQueueClick = { index ->
                 controller?.let { it.seekTo(index, 0); it.play() }
             },
+            onQueueRemove = { index ->
+                controller?.removeMediaItem(index)
+            },
+            onQueueMove = { from, to ->
+                val c = controller ?: return@PlayerScreen
+                if (to in 0 until c.mediaItemCount) c.moveMediaItem(from, to)
+            },
             lyrics = lyrics,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
@@ -802,6 +809,13 @@ private fun AuroraApp(
                 },
                 onPlayNext = { song -> playNext(song) },
                 onAddToQueue = { song -> addToQueue(song) },
+                onShuffleAll = { songs ->
+                    val c = controller
+                    if (c != null && songs.isNotEmpty()) {
+                        c.shuffleModeEnabled = true
+                        playSongs(songs.shuffled(), 0)
+                    }
+                },
                 showStart = showStart,
                 onStartFinished = { showStart = false },
                 modifier = Modifier.padding(padding),

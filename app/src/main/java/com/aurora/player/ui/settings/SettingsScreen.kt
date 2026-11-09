@@ -373,6 +373,40 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        // RONDA 2 (2026-11-09): la duración mínima existía en el
+        // modelo y la biblioteca la usaba, pero NO HABÍA control para
+        // cambiarla en Ajustes: era un ajuste muerto. Ahora sí se
+        // puede tocar; se aplica al volver a escanear la biblioteca.
+        Text("Biblioteca", modifier = Modifier.padding(top = 16.dp))
+        Text("Qué canciones entran en la biblioteca. Las muy cortas suelen ser tonos o notas de voz.")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((ms, label) in listOf(
+                0L to "Todo",
+                5_000L to "Desde 5 s",
+                10_000L to "Desde 10 s",
+                30_000L to "Desde 30 s",
+                60_000L to "Desde 1 min",
+            )) {
+                if (player.minDurationMs == ms) {
+                    Button(
+                        onClick = { savePlayer(player.copy(minDurationMs = ms)) },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { savePlayer(player.copy(minDurationMs = ms)) }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        Text(
+            "Se aplica al volver a escanear la biblioteca.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
         TextButton(
             onClick = {
                 scope.launch {

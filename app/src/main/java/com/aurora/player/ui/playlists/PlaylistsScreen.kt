@@ -75,6 +75,42 @@ fun PlaylistsScreen(
     }
 
     val selected = playlists.firstOrNull { it.id == selectedId }
+    // RONDA 2 (2026-11-09): importar M3U. El parser existía pero
+    // nadie lo llamaba. Se elige el archivo, se cruzan sus rutas con
+    // la biblioteca y se crea la playlist con las que existen.
+    val context = LocalContext.current
+    var importMessage by remember { mutableStateOf<String?>(null) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        try {
+            val text = context.contentResolver.openInputStream(uri)?.bufferedReader()
+                ?.use { it.readText() } ?: return@rememberLauncherForActivityResult
+            val entries = M3u.parse(text)
+            val byPath = allSongs.associateBy { it.path }
+            val byFileName = allSongs.associateBy { java.io.File(it.path).name }
+            val matched = entries.mapNotNull { entry ->
+                byPath[entry.path]
+                    ?: byFileName[java.io.File(entry.path).name]
+                    ?: allSongs.firstOrNull { it.title == entry.title }
+            }.distinctBy { it.id }
+            val name = uri.lastPathSegment
+                ?.substringAfterLast("/")
+                ?.removeSuffix(".m3u")
+                ?.removeSuffix(".M3U")
+                ?.ifBlank { "Importada" } ?: "Importada"
+            viewModel.importM3u(name, matched.map { it.id })
+            importMessage = if (matched.isEmpty()) {
+                "El archivo M3U no tenía ninguna canción de tu biblioteca."
+            } else {
+                "Importadas ${matched.size} de ${entries.size} canciones de \"$name\"."
+            }
+        } catch (e: Exception) {
+            ErrorLog.log(context, "Importar M3U", e)
+            importMessage = "No se pudo leer ese archivo M3U."
+        }
+    }
     if (selected != null && picking) {
         SongPicker(
             allSongs = allSongs,
@@ -146,6 +182,23 @@ fun PlaylistsScreen(
             ) {
                 Text("Crear")
             }
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+            OutlinedButton(onClick = { importLauncher.launch("*/*") }) {
+                Text("Importar M3U")
+            }
+            Text(
+                "Trae una lista .m3u de otro reproductor.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+        importMessage?.let { message ->
+            Text(message, modifier = Modifier.padding(top = 8.dp))
         }
         if (smartPlaylists.isNotEmpty()) {
             Text("Inteligentes", modifier = Modifier.padding(top = 16.dp))
