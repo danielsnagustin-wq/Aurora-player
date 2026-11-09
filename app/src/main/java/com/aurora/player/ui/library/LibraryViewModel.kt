@@ -9,7 +9,9 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
+import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
+import com.aurora.player.model.matchesSearchQuery
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,6 +91,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _genreFilter = MutableStateFlow<String?>(null)
     val genreFilter: StateFlow<String?> = _genreFilter
 
+    /** SPEC 005 FR-005: ámbito de la búsqueda (Todo, Canciones, ...). */
+    private val _searchCategory = MutableStateFlow(SearchCategory.ALL)
+    val searchCategory: StateFlow<SearchCategory> = _searchCategory
+
     private val _favoriteIds = MutableStateFlow<Set<Long>>(emptySet())
     val favoriteIds: StateFlow<Set<Long>> = _favoriteIds
 
@@ -110,6 +116,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     val filteredSongs: StateFlow<List<Song>> =
         combine(
             _uiState, _query, _sortOrder, _artistFilter, _albumFilter, _idFilter, _genreFilter,
+            _searchCategory,
         ) { values ->
             // Forma de array (el overload de 6 flujos no resolvía en
             // este Kotlin: el compilador pedía la función de 1 parámetro).
@@ -121,6 +128,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             val albumId = values[4] as Long?
             val ids = values[5] as Set<Long>?
             val genre = values[6] as String?
+            val category = values[7] as SearchCategory
             var songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
             if (ids != null) songs = songs.filter { it.id in ids }
             if (artist != null) songs = songs.filter { it.artist == artist }
@@ -136,9 +144,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             }
             if (q.isNotBlank()) {
                 songs = songs.filter {
-                    it.title.contains(q, ignoreCase = true) ||
-                        it.artist.contains(q, ignoreCase = true) ||
-                        it.album.contains(q, ignoreCase = true)
+                    matchesSearchQuery(it.title, it.artist, it.album, it.genre, q, category)
                 }
             }
             when (sort) {
@@ -208,6 +214,24 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setQuery(q: String) {
         _query.value = q
+    }
+
+    /** SPEC 005 FR-005: cambiar el ámbito de la búsqueda. */
+    fun setSearchCategory(category: SearchCategory) {
+        _searchCategory.value = category
+    }
+
+    /**
+     * SPEC 005 FR-005: mantener pulsado un ámbito lo aísla: busca
+     * solo ahí y quita cualquier otro filtro (artista, álbum,
+     * género, duplicados).
+     */
+    fun isolateSearchCategory(category: SearchCategory) {
+        _searchCategory.value = category
+        _artistFilter.value = null
+        _albumFilter.value = null
+        _idFilter.value = null
+        _genreFilter.value = null
     }
 
     fun setSort(sort: LibrarySort) {
