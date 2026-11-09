@@ -11,11 +11,16 @@ import androidx.compose.runtime.setValue
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Metadata
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.ReplayGainProcessor
+import com.aurora.player.audio.SilenceDetectorAudioProcessor
+import com.aurora.player.audio.replayGainFromMetadata
+import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.data.EqStateStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.util.ErrorLog
@@ -84,6 +89,17 @@ class PlaybackService : MediaSessionService() {
     private var fadingIn = false
     /** Sesión de audio a la que está atado el EQ actual (0 = ninguna). */
     private var equalizerSessionId: Int = 0
+    /** ReplayGain (RONDA 6): procesador en la cadena de audio + la
+     * ganancia de la pista que suena (de su etiqueta, null = sin
+     * etiqueta) + el modo y el preamp elegidos en Ajustes. */
+    private var replayGainProcessor: ReplayGainProcessor? = null
+    private var replayGainMode = "off"
+    private var replayGainPreAmpDb = 0f
+    private var trackGainDb: Float? = null
+    private var albumGainDb: Float? = null
+    /** Saltar silencio (RONDA 6): procesador en la cadena + ajuste. */
+    private var silenceProcessor: SilenceDetectorAudioProcessor? = null
+    private var skipSilenceEnabled = false
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -97,9 +113,17 @@ class PlaybackService : MediaSessionService() {
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
             .build()
+        val gainProcessor = ReplayGainProcessor().also { replayGainProcessor = it }
+        val silenceDetector = SilenceDetectorAudioProcessor(
+            onLongSilence = { onLongSilenceDetected() },
+        ).also { silenceProcessor = it }
         val exoPlayer = ExoPlayer.Builder(this)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true) // auto-pausa al quitar auriculares
+            // RONDA 6: ReplayGain real en la cadena de audio (antes el
+            // ajuste existía en el modelo pero nada lo aplicaba) y
+            // detector de silencio (pasa el audio sin tocarlo).
+            .setAudioProcessors(gainProcessor, silenceDetector)
             .build()
         player = exoPlayer
         // RONDA 2 (2026-11-09): el EQ NO se crea aquí. Al arrancar,
@@ -125,6 +149,15 @@ class PlaybackService : MediaSessionService() {
                     fadingIn = false
                     exoPlayer.volume = 1f
                 }
+                // RONDA 6: el modo/preamp de ReplayGain se aplica al
+                // cambiar en Ajustes, con la etiqueta de la pista que
+                // suena (si la hay).
+                replayGainMode = settings.replayGainMode
+                replayGainPreAmpDb = settings.replayGainPreAmpDb
+                applyReplayGain()
+                // RONDA 6: saltar silencio se enciende/apaga en vivo.
+                skipSilenceEnabled = settings.skipSilence
+                silenceProcessor?.enabled = settings.skipSilence
             }
         }
         // Crossfade real (ETAPA 4): fade-in al cambiar de pista y
@@ -132,6 +165,21 @@ class PlaybackService : MediaSessionService() {
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 if (crossfadeSeconds > 0) startFadeIn() else exoPlayer.volume = 1f
+                // RONDA 6: pista nueva, etiquetas nuevas: se resetea
+                // la ganancia a 0 hasta que llegue su metadata.
+                trackGainDb = null
+                albumGainDb = null
+                applyReplayGain()
+            }
+
+            override fun onMetadata(metadata: Metadata) {
+                // RONDA 6: la etiqueta ReplayGain llega con los
+                // metadatos del archivo (FLAC/MP3). Sin etiqueta, la
+                // ganancia queda en 0 y no se finge nada.
+                val (track, album) = replayGainFromMetadata(metadata)
+                trackGainDb = track
+                albumGainDb = album
+                applyReplayGain()
             }
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -159,6 +207,41 @@ class PlaybackService : MediaSessionService() {
         // startForeground() INMEDIATO: la notificación de MediaSession
         // se publica al arrancar el servicio, antes de cualquier play().
         startForeground(NOTIFICATION_ID, buildPlaceholderNotification())
+    }
+
+    /**
+     * RONDA 6: aplica la ganancia ReplayGain según el modo, las
+     * etiquetas de la pista que suena y el preamp. Sin modo o sin
+     * etiqueta aplicable, el procesador queda en ganancia 0 (apagado).
+     */
+    private fun applyReplayGain() {
+        val processor = replayGainProcessor ?: return
+        val gainDb = selectReplayGainDb(replayGainMode, trackGainDb, albumGainDb, replayGainPreAmpDb)
+        processor.enabled = replayGainMode != "off" && gainDb != 0f
+        processor.setTargetGainDb(gainDb)
+    }
+
+    /**
+     * RONDA 6: el detector encontró 2 s de silencio. Al final de la
+     * pista (últimos 30 s) pasa a la siguiente; en mitad de la pista
+     * salta 3 s hacia adelante (el detector necesita otros 2 s de
+     * silencio para volver a avisar, así que no se encadena solo).
+     * Se llama desde el hilo de audio: los métodos de ExoPlayer son
+     * seguros desde cualquier hilo.
+     */
+    private fun onLongSilenceDetected() {
+        val p = player ?: return
+        if (!skipSilenceEnabled) return
+        val duration = p.duration
+        if (duration <= 0) return
+        val remaining = duration - p.currentPosition
+        if (remaining <= 30_000L) {
+            if (p.currentMediaItemIndex < p.mediaItemCount - 1) {
+                p.seekToNextMediaItem()
+            }
+        } else {
+            p.seekTo((p.currentPosition + 3000).coerceAtMost(duration))
+        }
     }
 
     /**
@@ -248,6 +331,8 @@ class PlaybackService : MediaSessionService() {
         equalizer?.release()
         AudioEffects.clear()
         equalizerSessionId = 0
+        replayGainProcessor = null
+        silenceProcessor = null
         mediaSession = null
         player = null
         equalizer = null
@@ -257,7 +342,11 @@ class PlaybackService : MediaSessionService() {
 
 /** Ajustes de reproducción con efecto real sobre el ExoPlayer. */
 object PlayerControls {
-    fun setSpeed(player: Player, speed: Float) {
-        player.playbackParameters = player.playbackParameters.withSpeed(speed.coerceIn(0.5f, 2.0f))
+    /** Velocidad y tono juntos: ExoPlayer conserva el tono al cambiar
+     * la velocidad (pitch 1.0) y el tono se cambia aparte (RONDA 6). */
+    fun setSpeedAndPitch(player: Player, speed: Float, pitch: Float) {
+        player.playbackParameters = player.playbackParameters
+            .withSpeed(speed.coerceIn(0.5f, 2.0f))
+            .withPitch(pitch.coerceIn(0.5f, 2.0f))
     }
 }
