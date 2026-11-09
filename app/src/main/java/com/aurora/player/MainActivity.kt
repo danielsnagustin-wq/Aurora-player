@@ -57,10 +57,10 @@ import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayHistoryEntity
-import com.aurora.player.data.PlayerSettings
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
+import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService

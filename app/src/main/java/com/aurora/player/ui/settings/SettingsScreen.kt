@@ -34,9 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.aurora.player.data.PlayerSettings
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
+import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.ui.theme.parseHexOrNull
