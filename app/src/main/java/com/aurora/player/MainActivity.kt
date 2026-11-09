@@ -63,8 +63,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
@@ -80,6 +78,7 @@ import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService
 import com.aurora.player.playback.PlayerControls
+import com.aurora.player.playback.songToMediaItem
 import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.LibraryScreen
@@ -239,25 +238,6 @@ private enum class Tab(val label: String) {
     STATS("Estadísticas"),
     SETTINGS("Ajustes"),
 }
-
-/** Construye el MediaItem de una canción (metadatos + portada real). */
-private fun songToMediaItem(context: android.content.Context, song: Song): MediaItem =
-    MediaItem.Builder()
-        .setUri(song.uri)
-        .setMediaId(song.id.toString())
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setTitle(song.title)
-                .setArtist(song.artist)
-                .setAlbumTitle(song.album)
-                .setArtworkUri(MusicRepository(context).albumArtUri(song.albumId))
-                // La ruta viaja en el MediaItem: las letras (.lrc) se
-                // leen directas, sin escanear toda la biblioteca al
-                // cambiar de pista (AUDITORÍA 2026-11-09).
-                .setExtras(Bundle().apply { putString("aurora_path", song.path) })
-                .build(),
-        )
-        .build()
 
 /** Pantalla de inicio: qué es la app y por qué pide el permiso. */
 @Composable
