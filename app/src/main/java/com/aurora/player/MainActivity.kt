@@ -84,10 +84,12 @@ import androidx.media3.session.SessionToken
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
+import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
@@ -559,6 +561,11 @@ private fun AuroraApp(
         BackupManager.maybeAutoBackup(context)
     }
     val db = remember { AuroraDatabase.getInstance(context) }
+    // SPEC 005 FR-007: colas guardadas con nombre.
+    val namedQueueDao = remember { db.namedQueueDao() }
+    val savedQueues by namedQueueDao.allQueuesWithCount()
+        .collectAsState(initial = emptyList())
+    var savedQueueMessage by remember { mutableStateOf<String?>(null) }
     var speed by remember { mutableStateOf(1f) }
     // RONDA 6: tono (pitch) independiente de la velocidad.
     var pitch by remember { mutableStateOf(1f) }
@@ -1012,6 +1019,71 @@ private fun AuroraApp(
         c.play()
     }
 
+    // SPEC 005 FR-007: colas guardadas con nombre (hasta 20). La
+    // cola activa sigue en QueueStore; estas son plantillas.
+    fun saveCurrentQueueAs(name: String) {
+        val c = controller ?: return
+        scope.launch {
+            val dao = db.namedQueueDao()
+            // Las pistas online ("yt:...") no son canciones locales:
+            // no se guardan (el mensaje cuenta solo las guardadas).
+            val ids = (0 until c.mediaItemCount)
+                .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }
+            if (ids.isEmpty()) {
+                savedQueueMessage = "La cola actual está vacía."
+                return@launch
+            }
+            if (dao.count() >= MAX_NAMED_QUEUES) {
+                savedQueueMessage = "Ya tienes $MAX_NAMED_QUEUES colas guardadas."
+                return@launch
+            }
+            val existing = dao.allQueues()
+                .firstOrNull { it.name.equals(name, ignoreCase = true) }
+            if (existing != null) {
+                dao.setSongs(existing.id, ids)
+                dao.touchQueue(existing.id, System.currentTimeMillis())
+                savedQueueMessage = "Cola «$name» actualizada con ${ids.size} canciones."
+            } else {
+                val id = dao.insertQueue(NamedQueueEntity(name = name))
+                dao.setSongs(id, ids)
+                savedQueueMessage = "Cola «$name» guardada con ${ids.size} canciones."
+            }
+        }
+    }
+
+    fun loadSavedQueue(queueId: Long) {
+        scope.launch {
+            val ids = db.namedQueueDao().songIdsOf(queueId)
+            if (ids.isEmpty()) {
+                savedQueueMessage = "Esa cola está vacía."
+                return@launch
+            }
+            val settings = playerStore.settingsFlow.first()
+            val songs = withContext(Dispatchers.IO) {
+                MusicRepository(context).loadSongs(settings.minDurationMs)
+            }
+            val ordered = ids.mapNotNull { id -> songs.firstOrNull { it.id == id } }
+            if (ordered.isEmpty()) {
+                savedQueueMessage = "Esa cola ya no tiene canciones en tu biblioteca."
+                return@launch
+            }
+            playSongs(ordered, 0)
+            val missing = ids.size - ordered.size
+            savedQueueMessage = if (missing > 0) {
+                "Cola cargada: ${ordered.size} canciones ($missing ya no están en tu biblioteca)."
+            } else {
+                "Cola cargada: ${ordered.size} canciones."
+            }
+        }
+    }
+
+    fun deleteSavedQueue(queueId: Long) {
+        scope.launch {
+            db.namedQueueDao().deleteQueueWithSongs(queueId)
+            savedQueueMessage = "Cola borrada."
+        }
+    }
+
     /** 002-online-youtube: suena una pista de YouTube con su URL ya
      * resuelta (las URLs caducan: se resuelven al tocar, nunca se
      * guardan). El mediaId "yt:<videoId>" la marca como online: no
@@ -1084,6 +1156,12 @@ private fun AuroraApp(
                 val c = controller ?: return@PlayerScreen
                 if (to in 0 until c.mediaItemCount) c.moveMediaItem(from, to)
             },
+            savedQueues = savedQueues,
+            savedQueueMessage = savedQueueMessage,
+            onSaveQueue = { saveCurrentQueueAs(it) },
+            onLoadSavedQueue = { loadSavedQueue(it) },
+            onDeleteSavedQueue = { deleteSavedQueue(it) },
+            onSavedQueueMessageConsumed = { savedQueueMessage = null },
             lyrics = lyrics,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
