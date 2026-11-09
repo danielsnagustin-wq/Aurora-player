@@ -99,7 +99,7 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.IO) {
                     val minDurationMs = playerStore.settingsFlow.first().minDurationMs
                     val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
-                    val byId = songs.associateBy { it.id }
+                    val byId = songs.associate { it.id to SongInfo(it.title, it.artist, it.genre) }
                     val (start, end) = yearRange(year)
                     val history = db.libraryDao().historyInYear(start, end)
                     computeYearStats(year, history, byId)
