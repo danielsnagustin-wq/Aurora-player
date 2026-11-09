@@ -33,6 +33,33 @@ class EqualizerManager(audioSessionId: Int) {
             Preset("Graves", listOf(8f, 7f, 5f, 2f, 0f, -2f, -1f, 0f, 1f, 2f)),
             Preset("Agudos", listOf(-2f, -1f, 0f, 1f, 2f, 3f, 4f, 6f, 7f, 8f)),
             Preset("Vocal", listOf(-2f, -1f, 0f, 2f, 5f, 5f, 3f, 1f, 0f, -1f)),
+            Preset("Electrónica", listOf(7f, 5f, 2f, 0f, -1f, 0f, 2f, 4f, 6f, 7f)),
+            Preset("Reggaeton", listOf(7f, 6f, 3f, 1f, 0f, 0f, 1f, 2f, 4f, 5f)),
+            Preset("Hip-Hop", listOf(7f, 6f, 4f, 1f, -1f, -1f, 1f, 2f, 4f, 5f)),
+            Preset("R&B", listOf(5f, 4f, 2f, 1f, 1f, 2f, 3f, 4f, 5f, 4f)),
+            Preset("Blues", listOf(3f, 2f, 1f, 2f, 0f, 0f, 2f, 3f, 4f, 4f)),
+            Preset("Salsa", listOf(4f, 3f, 1f, 2f, 3f, 3f, 2f, 3f, 4f, 5f)),
+            Preset("Bachata", listOf(4f, 3f, 2f, 2f, 3f, 3f, 2f, 2f, 3f, 4f)),
+            Preset("Merengue", listOf(5f, 4f, 2f, 1f, 2f, 2f, 3f, 4f, 5f, 5f)),
+            Preset("Metal", listOf(6f, 5f, 3f, 0f, -2f, -2f, 1f, 4f, 6f, 7f)),
+            Preset("Punk", listOf(5f, 4f, 2f, 0f, -1f, -1f, 2f, 4f, 5f, 6f)),
+            Preset("Dance", listOf(6f, 5f, 2f, 0f, -1f, 0f, 2f, 4f, 6f, 7f)),
+            Preset("House", listOf(7f, 5f, 2f, 0f, -1f, 0f, 1f, 3f, 5f, 6f)),
+            Preset("Techno", listOf(7f, 6f, 3f, 0f, -1f, 0f, 2f, 4f, 6f, 7f)),
+            Preset("Trance", listOf(6f, 5f, 2f, 0f, -1f, 0f, 2f, 4f, 6f, 8f)),
+            Preset("Dubstep", listOf(8f, 7f, 4f, 1f, -2f, -1f, 1f, 3f, 5f, 6f)),
+            Preset("Trap", listOf(8f, 6f, 3f, 0f, -1f, -1f, 1f, 3f, 5f, 6f)),
+            Preset("Lo-Fi", listOf(4f, 3f, 2f, 1f, 0f, -1f, -2f, -1f, 1f, 2f)),
+            Preset("K-Pop", listOf(-1f, 0f, 2f, 4f, 5f, 4f, 3f, 2f, 1f, 0f)),
+            Preset("Country", listOf(2f, 1f, 0f, 1f, 2f, 3f, 3f, 2f, 2f, 3f)),
+            Preset("Folk", listOf(2f, 1f, 0f, 1f, 2f, 2f, 2f, 2f, 3f, 3f)),
+            Preset("Reggae", listOf(6f, 5f, 3f, 0f, -1f, 0f, 2f, 3f, 4f, 5f)),
+            Preset("Soul", listOf(4f, 3f, 2f, 2f, 2f, 3f, 3f, 3f, 4f, 4f)),
+            Preset("Funk", listOf(5f, 4f, 2f, 1f, 1f, 2f, 3f, 4f, 5f, 5f)),
+            Preset("Gospel", listOf(3f, 2f, 1f, 2f, 3f, 4f, 3f, 2f, 3f, 4f)),
+            Preset("Indie", listOf(2f, 1f, 0f, 1f, 2f, 2f, 2f, 3f, 4f, 4f)),
+            Preset("Alternativo", listOf(5f, 4f, 2f, 0f, -1f, 0f, 2f, 4f, 5f, 6f)),
+            Preset("Acústica", listOf(2f, 1f, 0f, 1f, 2f, 3f, 3f, 3f, 3f, 3f)),
         )
     }
 
@@ -85,6 +112,42 @@ class EqualizerManager(audioSessionId: Int) {
 
     fun setBandLevel(band: Int, milliBel: Short) {
         equalizer?.setBandLevel(band.toShort(), milliBel)
+    }
+
+    /** Nivel actual de una banda, en centésimas de dB (0 si no disponible). */
+    fun getBandLevel(band: Int): Short {
+        return try {
+            equalizer?.getBandLevel(band.toShort()) ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** Número de bandas reales del dispositivo (0 si no disponible). */
+    fun getBandCount(): Int {
+        return try {
+            equalizer?.numberOfBands?.toInt() ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** Fuerza actual del refuerzo de graves, 0..1000 (0 si no disponible). */
+    fun getBassBoostStrength(): Short {
+        return try {
+            bassBoost?.strength ?: 0
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** Fuerza actual del virtualizador, 0..1000 (0 si no disponible). */
+    fun getVirtualizerStrength(): Short {
+        return try {
+            virtualizer?.strength ?: 0
+        } catch (_: Exception) {
+            0
+        }
     }
 
     fun setBassBoost(strength: Short) { // 0..1000

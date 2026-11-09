@@ -33,6 +33,11 @@ import com.aurora.player.model.RepeatMode
  *   El crossfade real de mezcla (Retro, hasta 12 s) va en Fase 1b con
  *   dos instancias o con audio processor, y se prueba en el teléfono.
  */
+/** Puente UI <-> efectos: el servicio publica aquí su EqualizerManager real. */
+object AudioEffects {
+    var equalizerManager: EqualizerManager? = null
+}
+
 class PlaybackService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
@@ -61,6 +66,7 @@ class PlaybackService : MediaSessionService() {
         } catch (_: Exception) {
             null // sin EQ en este dispositivo: la UI lo dice, no se finge
         }
+        AudioEffects.equalizerManager = equalizer
         mediaSession = MediaSession.Builder(this, exoPlayer).build()
         // startForeground() INMEDIATO: la notificación de MediaSession
         // se publica al arrancar el servicio, antes de cualquier play().
@@ -101,6 +107,7 @@ class PlaybackService : MediaSessionService() {
         mediaSession?.release()
         player?.release()
         equalizer?.release()
+        AudioEffects.equalizerManager = null
         mediaSession = null
         player = null
         equalizer = null

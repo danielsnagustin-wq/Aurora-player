@@ -58,7 +58,7 @@ class AuroraPlayerTest {
 
     @Test
     fun `presets de EQ tienen 10 bandas y estan en rango`() {
-        assertEquals(8, EqualizerManager.PRESETS.size)
+        assertEquals(35, EqualizerManager.PRESETS.size)
         for (preset in EqualizerManager.PRESETS) {
             assertEquals(10, preset.levelsDb.size)
             assertTrue(preset.levelsDb.all { it in -15f..15f })

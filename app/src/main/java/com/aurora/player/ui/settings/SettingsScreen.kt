@@ -4,13 +4,17 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,106 +42,123 @@ import kotlinx.coroutines.launch
  *
  * Regla del usuario: cada ajuste con efecto real.
  * - Modo de tema (Claro/Oscuro/AMOLED/Sistema) y TODOS los colores
- *   SÍ tienen efecto: AuroraPlayerTheme se construye desde estos
- *   valores guardados en DataStore (ver Theme.kt).
+ *   se aplican AL TOCAR: se guardan en DataStore al instante, sin
+ *   botón "Aplicar" que bloquee nada. La lista hace scroll y los
+ *   chips usan FlowRow (nada se corta ni se escribe en vertical).
  * - Tamaño de texto / forma de portada / densidad: existen en el
  *   modelo como datos de Fase 1b, pero NO aparecen aquí todavía porque
  *   su efecto en las listas aún no está cableado. Cuando se cablee,
  *   aparecerá su control; antes no (nada decorativo).
  * - Material You: Fase 1b, apagado por defecto — tampoco aparece aún.
- * - Vista previa: se edita una COPIA (draft); la tarjeta de ejemplo
- *   muestra el draft sin tocar la app. Solo "Aplicar" guarda.
- *   "Descartar" no escribe nada. "Restablecer" vuelve a los valores
- *   de fábrica de Aurora Player.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
     val scope = rememberCoroutineScope()
     val applied by store.settingsFlow.collectAsState(initial = ThemeSettings.DEFAULT)
-    var draft by remember(applied) { mutableStateOf(applied) }
-    val dirty = draft != applied
+    var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+    fun save(next: ThemeSettings) {
+        scope.launch { store.save(next) }
+    }
+
+    Column(
+        modifier = modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+    ) {
         Text("Ajustes")
         Text("Aurora Player 0.1.0 — reproductor local, sin anuncios, sin cuenta, sin internet.")
 
         Text("Tema", modifier = Modifier.padding(top = 16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             for (mode in ThemeMode.entries) {
-                val selected = draft.themeMode == mode
+                val selected = applied.themeMode == mode
                 if (selected) {
-                    Button(onClick = { draft = draft.copy(themeMode = mode) }) { Text(mode.name) }
+                    Button(onClick = { save(applied.copy(themeMode = mode)) }) {
+                        Text(mode.label)
+                    }
                 } else {
-                    OutlinedButton(onClick = { draft = draft.copy(themeMode = mode) }) { Text(mode.name) }
+                    OutlinedButton(onClick = { save(applied.copy(themeMode = mode)) }) {
+                        Text(mode.label)
+                    }
                 }
             }
         }
 
         Text("Color principal (acento)", modifier = Modifier.padding(top = 16.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             for ((name, hex) in ThemeSettings.ACCENT_PRESETS) {
                 val color = parseHexOrNull(hex)
-                OutlinedButton(onClick = { draft = draft.copy(accentHex = hex) }) {
-                    if (color != null) {
-                        Box(
-                            Modifier.size(16.dp).clip(RoundedCornerShape(8.dp))
-                                .background(color),
-                        )
+                val selected = applied.accentHex.equals(hex, ignoreCase = true)
+                if (selected) {
+                    Button(onClick = { save(applied.copy(accentHex = hex)) }) {
+                        if (color != null) {
+                            Box(
+                                Modifier.size(16.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(color),
+                            )
+                        }
+                        Text(name)
                     }
-                    Text(name)
+                } else {
+                    OutlinedButton(onClick = { save(applied.copy(accentHex = hex)) }) {
+                        if (color != null) {
+                            Box(
+                                Modifier.size(16.dp).clip(RoundedCornerShape(8.dp))
+                                    .background(color),
+                            )
+                        }
+                        Text(name)
+                    }
                 }
             }
         }
-        HexField(
-            label = "Color personalizado (HEX, ej. #8CCBEB)",
-            value = draft.accentHex,
-            onValueChange = { draft = draft.copy(accentHex = it) },
+        OutlinedTextField(
+            value = hexText,
+            onValueChange = {
+                hexText = it
+                if (ThemeSettings.isValidHex(it)) {
+                    save(applied.copy(accentHex = it))
+                }
+            },
+            label = { Text("Color personalizado (HEX, ej. #8CCBEB)") },
+            singleLine = true,
+            isError = !ThemeSettings.isValidHex(hexText),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
-
-        Text("Vista previa (sin aplicar todavía)", modifier = Modifier.padding(top = 16.dp))
-        PreviewCard(draft)
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
-            Button(
-                onClick = { scope.launch { store.save(draft) } },
-                enabled = dirty && ThemeSettings.isValidHex(draft.accentHex),
-            ) { Text("Aplicar") }
-            OutlinedButton(
-                onClick = { draft = applied },
-                enabled = dirty,
-            ) { Text("Descartar") }
-            TextButton(onClick = { scope.launch { store.resetToDefault() } }) {
-                Text("Restablecer por defecto")
-            }
-        }
-        if (!ThemeSettings.isValidHex(draft.accentHex)) {
+        if (!ThemeSettings.isValidHex(hexText)) {
             Text("HEX no válido: usa #RRGGBB con 6 cifras hexadecimales.")
+        }
+
+        Text("Así se ve ahora", modifier = Modifier.padding(top = 16.dp))
+        PreviewCard(applied)
+
+        TextButton(
+            onClick = { scope.launch { store.resetToDefault() } },
+            modifier = Modifier.padding(top = 16.dp),
+        ) {
+            Text("Restablecer por defecto")
         }
     }
 }
 
+/** Tarjeta de ejemplo con los colores aplicados: portada, título, botón y barra. */
 @Composable
-private fun HexField(label: String, value: String, onValueChange: (String) -> Unit) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label) },
-        singleLine = true,
-        isError = !ThemeSettings.isValidHex(value),
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-    )
-}
-
-/** Tarjeta de ejemplo con los colores del draft: portada, título, botón y barra. */
-@Composable
-private fun PreviewCard(draft: ThemeSettings) {
-    val bg = parseHexOrNull(draft.backgroundHex) ?: return
-    val card = parseHexOrNull(draft.cardHex) ?: return
-    val accent = parseHexOrNull(draft.accentHex) ?: return
-    val text = parseHexOrNull(draft.textHex) ?: return
-    val bar = parseHexOrNull(draft.playerBarHex) ?: return
+private fun PreviewCard(applied: ThemeSettings) {
+    val bg = parseHexOrNull(applied.backgroundHex) ?: return
+    val card = parseHexOrNull(applied.cardHex) ?: return
+    val accent = parseHexOrNull(applied.accentHex) ?: return
+    val text = parseHexOrNull(applied.textHex) ?: return
+    val bar = parseHexOrNull(applied.playerBarHex) ?: return
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).padding(12.dp),
     ) {

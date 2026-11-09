@@ -7,13 +7,19 @@ package com.aurora.player.model
  * - Cada campo tiene efecto real: el tema se construye desde aquí
  *   (ver ui/theme/Theme.kt). Si un campo no se aplica en ningún sitio,
  *   no existe.
- * - Vista previa antes de aplicar: la pantalla de ajustes trabaja con
- *   una COPIA (draft); solo "Aplicar" guarda. "Descartar" no toca nada.
+ * - Aplicar al tocar: cada cambio se guarda en DataStore al instante,
+ *   sin botón "Aplicar" que bloquee nada. La vista previa muestra los
+ *   valores aplicados en ese momento.
  * - Restablecer: DEFAULT devuelve todos los valores de fábrica.
  * - Sin dorado/amarillo en presets: solo si el usuario escribe el HEX
  *   a mano es su elección y se aplica.
  */
-enum class ThemeMode { LIGHT, DARK, AMOLED, SYSTEM }
+enum class ThemeMode(val label: String) {
+    LIGHT("Claro"),
+    DARK("Oscuro"),
+    AMOLED("AMOLED"),
+    SYSTEM("Sistema"),
+}
 enum class CoverShape { SQUARE, ROUNDED, CIRCLE }
 enum class ListDensity { COMPACT, COMFORTABLE }
 enum class TextSize { SMALL, MEDIUM, LARGE }
