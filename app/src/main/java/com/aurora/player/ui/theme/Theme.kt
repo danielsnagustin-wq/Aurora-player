@@ -3,6 +3,7 @@ package com.aurora.player.ui.theme
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -62,6 +63,10 @@ fun Color.toHex(): String {
     val b = (blue * 255).toInt()
     return "#%02X%02X%02X".format(r, g, b)
 }
+
+/** Brillo percibido 0..1 (0.299 R + 0.587 G + 0.114 B). */
+fun brightnessOf(color: Color): Float =
+    color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
 
 /** Movimiento premium (PLAN §16): transiciones de 250 ms, press scale 0.97. */
 object AuroraMotion {
@@ -139,22 +144,36 @@ fun AuroraPlayerTheme(
         !useDark -> Color(0xFFF2F2F2)
         else -> parseHexOrNull(settings.cardHex) ?: CardBlack
     }
-    val onBackground = parseHexOrNull(settings.textHex) ?: if (useDark) Silver else Color.Black
+    // BUG REAL (prueba en teléfono 2026-11-08): el color de texto
+    // guardado (#DCE8F5, claro) se usaba también en modo claro, así que
+    // el texto quedaba claro sobre fondo blanco, ilegible. En modo
+    // claro el texto es oscuro siempre, salvo que el usuario haya
+    // elegido un color oscuro que sí se lea; en oscuro/AMOLED manda el
+    // color elegido por el usuario.
+    val onBackground = if (useDark) {
+        parseHexOrNull(settings.textHex) ?: Silver
+    } else {
+        val custom = parseHexOrNull(settings.textHex)
+        if (custom != null && brightnessOf(custom) < 0.6f) custom else Color(0xFF1A1C1E)
+    }
     val onSurface = onBackground
     // ETAPA 2 (renovación): colores guardados que el tema no usaba y
     // ahora tienen efecto real: texto secundario -> onSurfaceVariant,
     // barra del reproductor -> surfaceVariant (oscuro/AMOLED). El color
     // de botones se cablea en ETAPA 6 (necesita su propio canal).
-    val secondaryText = parseHexOrNull(settings.secondaryTextHex)
-        ?: if (useDark) Color(0xFF9AA7B8) else Color(0xFF5A6470)
+    val secondaryText = if (useDark) {
+        parseHexOrNull(settings.secondaryTextHex) ?: Color(0xFF9AA7B8)
+    } else {
+        val custom = parseHexOrNull(settings.secondaryTextHex)
+        if (custom != null && brightnessOf(custom) < 0.6f) custom else Color(0xFF5A6470)
+    }
     val playerBar = if (useDark) parseHexOrNull(settings.playerBarHex) ?: surface else surface
     // Contraste real del texto sobre el color principal: acento claro
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
-    // esta versión de Compose): brillo percibido 0.299 R + 0.587 G + 0.114 B.
+    // esta versión de Compose).
     fun contrastOn(color: Color): Color {
-        val brightness = color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
-        return if (brightness > 0.5f) PureBlack else Color.White
+        return if (brightnessOf(color) > 0.5f) PureBlack else Color.White
     }
     val onPrimary = contrastOn(accent)
     // ETAPA 6: color de botones con su propio canal (buttonHex; si no
@@ -195,6 +214,9 @@ fun AuroraPlayerTheme(
             tertiary = Turquoise,
             background = background,
             surface = surface,
+            // Sin esto, surfaceVariant cae al lavanda por defecto de
+            // Material 3 (la barra del reproductor se veía lavanda).
+            surfaceVariant = surface,
             onBackground = onBackground,
             onSurface = onSurface,
             onSurfaceVariant = secondaryText,
@@ -202,6 +224,13 @@ fun AuroraPlayerTheme(
         )
     }
     CompositionLocalProvider(
+        // BUG REAL (prueba en teléfono 2026-11-08): las pantallas que
+        // se dibujan fuera del Scaffold (reproductor, ecualizador,
+        // inicio) no reciben el color de contenido del Scaffold y
+        // Compose pone negro por defecto: título, botones y textos
+        // quedaban negros sobre negro, invisibles. Se fija aquí, para
+        // todas las pantallas a la vez.
+        LocalContentColor provides colors.onBackground,
         LocalButtonColor provides buttonColor,
         LocalOnButtonColor provides onButton,
         LocalCoverShape provides settings.coverShape,

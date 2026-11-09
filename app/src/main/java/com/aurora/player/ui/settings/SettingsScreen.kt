@@ -2,22 +2,26 @@ package com.aurora.player.ui.settings
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -35,6 +39,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.PlayerSettingsStore
@@ -45,7 +50,9 @@ import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
+import com.aurora.player.ui.theme.PureBlack
 import com.aurora.player.ui.theme.auroraButtonColors
+import com.aurora.player.ui.theme.brightnessOf
 import com.aurora.player.ui.theme.parseHexOrNull
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
@@ -109,6 +116,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         Text("Aurora Player 0.1.0 — reproductor local, sin anuncios, sin cuenta, sin internet.")
 
         Text("Tema", modifier = Modifier.padding(top = 16.dp))
+        Text("Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -131,6 +139,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
 
         Text("Color principal (acento)", modifier = Modifier.padding(top = 16.dp))
+        Text("El color que tiñe botones, iconos y detalles. Toca un preset o escribe tu HEX abajo.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -187,6 +196,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         // ETAPA 6: personalización avanzada. Cada color se aplica al
         // tocar (HEX válido); cada selector cambia la UI de verdad.
         Text("Personalización avanzada", modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Cada color es un código HEX (ej. #8CCBEB). El círculo muestra el color actual de cada parte de la app: toca el campo y escribe otro código para cambiarlo.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
         HexField("Fondo", applied.backgroundHex) { save(applied.copy(backgroundHex = it)) }
         HexField("Tarjetas", applied.cardHex) { save(applied.copy(cardHex = it)) }
         HexField("Texto principal", applied.textHex) { save(applied.copy(textHex = it)) }
@@ -288,6 +301,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
         Text("Reproducción", modifier = Modifier.padding(top = 16.dp))
+        Text("Cómo suena y qué pasa al quitar los auriculares o al reabrir la app.")
         Text(
             "Crossfade: ${player.crossfadeSeconds} s (0 = apagado)",
             modifier = Modifier.padding(top = 8.dp),
@@ -389,17 +403,34 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 @Composable
 private fun HexField(label: String, value: String, onChange: (String) -> Unit) {
     var text by remember(value) { mutableStateOf(value) }
-    OutlinedTextField(
-        value = text,
-        onValueChange = {
-            text = it
-            if (ThemeSettings.isValidHex(it)) onChange(it)
-        },
-        label = { Text("$label (HEX)") },
-        singleLine = true,
-        isError = !ThemeSettings.isValidHex(text),
+    val color = parseHexOrNull(text)
+    Row(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Muestra del color actual: así se entiende qué es cada código.
+        Box(
+            modifier = Modifier.size(40.dp)
+                .clip(CircleShape)
+                .background(color ?: Color.Transparent)
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f),
+                    CircleShape,
+                ),
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                if (ThemeSettings.isValidHex(it)) onChange(it)
+            },
+            label = { Text("$label (HEX)") },
+            singleLine = true,
+            isError = !ThemeSettings.isValidHex(text),
+            modifier = Modifier.weight(1f).padding(start = 12.dp),
+        )
+    }
     if (!ThemeSettings.isValidHex(text)) {
         Text("HEX no válido: usa #RRGGBB con 6 cifras hexadecimales.")
     }
@@ -414,6 +445,10 @@ private fun PreviewCard(applied: ThemeSettings) {
     val text = parseHexOrNull(applied.textHex) ?: return
     val bar = parseHexOrNull(applied.playerBarHex) ?: return
     val button = parseHexOrNull(applied.buttonHex) ?: accent
+    // El texto del botón usa contraste real: botón claro -> texto
+    // negro. Antes usaba el color de texto claro sobre botón claro y
+    // no se leía nada.
+    val onButton = if (brightnessOf(button) > 0.5f) PureBlack else Color.White
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).padding(12.dp),
     ) {
@@ -424,22 +459,39 @@ private fun PreviewCard(applied: ThemeSettings) {
                 Text("Artista · Álbum", color = text)
             }
         }
+        // Barra de progreso de ejemplo: pista + avance.
         Box(
-            Modifier.fillMaxWidth().height(8.dp).padding(top = 8.dp)
+            Modifier.fillMaxWidth().height(8.dp).padding(top = 12.dp)
                 .clip(RoundedCornerShape(4.dp)).background(card),
-        )
-        Box(
-            Modifier.fillMaxWidth().height(40.dp).padding(top = 12.dp)
-                .clip(RoundedCornerShape(20.dp)).background(bar),
         ) {
-            Text("▶  Barra de reproducción", color = accent, modifier = Modifier.padding(10.dp))
+            Box(
+                Modifier.fillMaxWidth(0.6f).fillMaxHeight()
+                    .clip(RoundedCornerShape(4.dp)).background(accent),
+            )
+        }
+        // Mini-reproductor de ejemplo: barra + canción + play.
+        Row(
+            Modifier.fillMaxWidth().padding(top = 12.dp)
+                .clip(RoundedCornerShape(20.dp)).background(bar).padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(accent))
+            Column(Modifier.weight(1f).padding(start = 10.dp)) {
+                Text(
+                    "Canción de ejemplo",
+                    color = text,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text("Artista", color = text, style = MaterialTheme.typography.bodySmall)
+            }
+            Text("▶", color = accent)
         }
         Box(
             Modifier.fillMaxWidth().height(40.dp).padding(top = 8.dp)
                 .clip(RoundedCornerShape(20.dp)).background(button),
             contentAlignment = Alignment.Center,
         ) {
-            Text("Botón", color = text)
+            Text("Botón", color = onButton)
         }
     }
 }

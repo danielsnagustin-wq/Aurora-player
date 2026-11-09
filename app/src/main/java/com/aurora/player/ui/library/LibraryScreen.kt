@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -64,8 +65,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.MusicRepository
@@ -78,6 +81,7 @@ import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
+import com.aurora.player.util.loadEmbeddedCover
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
 import kotlinx.coroutines.Dispatchers
@@ -677,8 +681,9 @@ private object AlbumArtCache {
 }
 
 /**
- * Portada real del álbum vía MediaStore, o la inicial del título.
- * La carga corre en IO; un fallo deja la inicial, nunca se cuelga.
+ * Portada real del álbum vía MediaStore, o la incrustada en el archivo,
+ * o la inicial del título. La carga corre en IO; un fallo deja la
+ * inicial, nunca se cuelga.
  */
 @Composable
 fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
@@ -693,7 +698,7 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
                 } catch (_: Exception) {
                     null
                 }
-            }
+            } ?: loadEmbeddedCover(context, song.uri)
             if (loaded != null) {
                 AlbumArtCache.put(song.albumId, loaded)
                 bitmap = loaded
@@ -711,7 +716,9 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
 /**
  * Imagen de portada (bitmap ya cargado) o la inicial del título.
  * La usa también la mini-barra y el reproductor, que reciben la
- * portada desde los metadatos del MediaItem, no desde un Song.
+ * portada desde los metadatos del MediaItem, no desde un Song. Si
+ * MediaStore no da portada, se prueba la incrustada en el archivo
+ * ([songUri]); si tampoco hay, la inicial grande.
  */
 @Composable
 fun ArtworkImage(
@@ -719,10 +726,11 @@ fun ArtworkImage(
     letter: String,
     size: Dp? = null,
     modifier: Modifier = Modifier,
+    songUri: android.net.Uri? = null,
 ) {
     val context = LocalContext.current
-    var bitmap by remember(uri) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(uri) {
+    var bitmap by remember(uri, songUri) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri, songUri) {
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             bitmap = withContext(Dispatchers.IO) {
                 try {
@@ -730,7 +738,9 @@ fun ArtworkImage(
                 } catch (_: Exception) {
                     null
                 }
-            }
+            } ?: songUri?.let { loadEmbeddedCover(context, it) }
+        } else if (songUri != null) {
+            bitmap = loadEmbeddedCover(context, songUri)
         }
     }
     ArtworkImage(bitmap = bitmap, letter = letter, size = size, modifier = modifier)
@@ -755,15 +765,21 @@ private fun ArtworkImage(
             modifier = sized.clip(corner),
         )
     } else {
-        Box(
+        // Inicial GRANDE sobre el color de acento suave: antes era una
+        // letra pequeña gris sobre fondo oscuro, casi invisible y fea.
+        BoxWithConstraints(
             modifier = sized
                 .clip(corner)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 letter,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge.copy(
+                    fontSize = (maxWidth.value * 0.38f).sp,
+                    fontWeight = FontWeight.Bold,
+                ),
+                color = MaterialTheme.colorScheme.primary,
             )
         }
     }

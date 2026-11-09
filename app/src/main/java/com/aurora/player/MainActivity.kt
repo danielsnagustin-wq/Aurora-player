@@ -1,14 +1,18 @@
 package com.aurora.player
 
 import android.Manifest
+import android.content.ContentUris
 import android.content.ComponentName
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,8 +22,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -45,10 +51,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -78,6 +90,7 @@ import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.loadLyricsFor
+import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -111,8 +124,27 @@ class MainActivity : ComponentActivity() {
         hasAudioPermission = grants[audioPermissionName] == true
     }
 
+    /** Acción del widget pendiente de aplicar cuando el reproductor esté listo. */
+    private var pendingWidgetAction by mutableStateOf<String?>(null)
+
+    companion object {
+        const val ACTION_WIDGET_TOGGLE = "com.aurora.player.WIDGET_TOGGLE"
+        const val ACTION_WIDGET_NEXT = "com.aurora.player.WIDGET_NEXT"
+        const val ACTION_WIDGET_PREV = "com.aurora.player.WIDGET_PREV"
+        const val ACTION_WIDGET_OPEN = "com.aurora.player.WIDGET_OPEN"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Botones del teléfono ocultos mientras se usa la app: la barra
+        // de navegación se esconde y vuelve con un deslizamiento desde
+        // el borde inferior.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        handleWidgetAction(intent)
         // Registro de errores (depuración, se quitará en el release):
         // un cierre inesperado queda guardado y sanitizado en el
         // teléfono, y se puede ver y compartir desde Ajustes.
@@ -133,7 +165,11 @@ class MainActivity : ComponentActivity() {
             )
             AuroraPlayerTheme(settings = themeSettings) {
                 if (hasAudioPermission) {
-                    AuroraApp(hasAudioPermission = hasAudioPermission)
+                    AuroraApp(
+                        hasAudioPermission = hasAudioPermission,
+                        widgetAction = pendingWidgetAction,
+                        onWidgetActionHandled = { pendingWidgetAction = null },
+                    )
                 } else {
                     WelcomeScreen(
                         onGrant = {
@@ -145,6 +181,20 @@ class MainActivity : ComponentActivity() {
                         },
                     )
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleWidgetAction(intent)
+    }
+
+    private fun handleWidgetAction(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_WIDGET_TOGGLE, ACTION_WIDGET_NEXT, ACTION_WIDGET_PREV -> {
+                pendingWidgetAction = intent.action
             }
         }
     }
@@ -183,29 +233,41 @@ private fun songToMediaItem(context: android.content.Context, song: Song): Media
 @Composable
 private fun WelcomeScreen(onGrant: () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(32.dp),
+        modifier = Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(
-            Icons.Filled.MusicNote,
-            contentDescription = null,
-            modifier = Modifier.size(72.dp),
-            tint = MaterialTheme.colorScheme.primary,
+        Image(
+            painter = painterResource(R.mipmap.ic_launcher),
+            contentDescription = "Aurora Player",
+            modifier = Modifier.size(128.dp).clip(RoundedCornerShape(28.dp)),
         )
         Text(
             "Aurora Player",
             style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(top = 16.dp),
+            modifier = Modifier.padding(top = 24.dp),
         )
         Text(
-            "Tu música, sin anuncios ni cuentas",
+            "El amor por la música no tiene que tener precio",
             style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
         )
+        Column(
+            modifier = Modifier.padding(top = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            FeatureRow("Toda tu música local, todos los formatos")
+            FeatureRow("Sin anuncios, sin cuentas, sin internet")
+            FeatureRow("Todo queda en tu teléfono, nada se sube")
+        }
         Text(
-            "Para mostrar tus canciones necesitamos acceso a los archivos de audio de tu teléfono. Todo queda en tu teléfono, nada se sube a ningún servidor.",
+            "Para mostrar tus canciones necesitamos acceso a los archivos de audio de tu teléfono.",
             style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 24.dp),
         )
         Button(
@@ -215,7 +277,7 @@ private fun WelcomeScreen(onGrant: () -> Unit) {
             Text("Permitir acceso a la música")
         }
         Text(
-            "Sin internet · Sin anuncios · Gratis siempre",
+            "Gratis siempre",
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 16.dp),
         )
@@ -223,7 +285,24 @@ private fun WelcomeScreen(onGrant: () -> Unit) {
 }
 
 @Composable
-private fun AuroraApp(hasAudioPermission: Boolean) {
+private fun FeatureRow(text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Filled.Check,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(20.dp),
+        )
+        Text(text, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+@Composable
+private fun AuroraApp(
+    hasAudioPermission: Boolean,
+    widgetAction: String? = null,
+    onWidgetActionHandled: () -> Unit = {},
+) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
     var showPlayer by remember { mutableStateOf(false) }
@@ -258,10 +337,26 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
 
     // ETAPA 5: letras del .lrc de la canción actual y temporizador.
     var currentSongId by remember { mutableStateOf<Long?>(null) }
+    val songUri = currentSongId?.let {
+        ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
+    }
     var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
     var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
     var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
     var sleepAtSongEnd by remember { mutableStateOf(false) }
+
+    // Acción del widget (play/pausa/siguiente/anterior): se aplica en
+    // cuanto el reproductor está listo.
+    LaunchedEffect(widgetAction, controller) {
+        val action = widgetAction ?: return@LaunchedEffect
+        val c = controller ?: return@LaunchedEffect
+        when (action) {
+            MainActivity.ACTION_WIDGET_TOGGLE -> if (c.isPlaying) c.pause() else c.play()
+            MainActivity.ACTION_WIDGET_NEXT -> c.seekToNextMediaItem()
+            MainActivity.ACTION_WIDGET_PREV -> c.seekToPreviousMediaItem()
+        }
+        onWidgetActionHandled()
+    }
 
     fun onSleepTimerSelected(option: SleepTimerOption) {
         sleepTimer = option
@@ -302,6 +397,12 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                 repeatMode = c.repeatMode
                 positionMs = c.currentPosition
                 durationMs = c.duration
+                // Widget: guarda lo que suena para mostrarlo en el inicio.
+                AuroraWidgetProvider.saveNowPlaying(
+                    context,
+                    meta?.title?.toString(),
+                    meta?.artist?.toString(),
+                )
                 queueTitles = (0 until c.mediaItemCount).map {
                     c.getMediaItemAt(it).mediaMetadata.title?.toString() ?: ""
                 }
@@ -468,6 +569,7 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
             artist = currentArtist,
             album = currentAlbum,
             artworkUri = currentArtwork,
+            songUri = songUri,
             isPlaying = isPlaying,
             positionMs = positionMs,
             durationMs = durationMs,
@@ -519,6 +621,7 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                             uri = currentArtwork,
                             letter = title.take(1).uppercase(),
                             size = 48.dp,
+                            songUri = songUri,
                         )
                         Column(
                             modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
@@ -548,7 +651,7 @@ private fun AuroraApp(hasAudioPermission: Boolean) {
                         }
                     }
                 }
-                NavigationBar {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     NavigationBarItem(
                         selected = tab == Tab.LIBRARY,
                         onClick = { tab = Tab.LIBRARY },
