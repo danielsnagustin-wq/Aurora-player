@@ -48,7 +48,7 @@ class FoldersTest {
         val music = childFolders(paths, "/storage/emulated/0/Music")
         assertEquals(listOf("pop", "rock"), music.map { it.name })
         assertEquals(2, music.first { it.name == "rock" }.songCount)
-        assertEquals(emptyList(), childFolders(paths, "/storage/emulated/0/Music/rock"))
+        assertTrue(childFolders(paths, "/storage/emulated/0/Music/rock").isEmpty())
     }
 
     @Test
