@@ -83,7 +83,7 @@ private fun refToJson(r: BackupSongRef): JsonValue.Obj = JsonValue.Obj(
     ),
 )
 
-private fun themeToJson(t: ThemeSettings): JsonValue.Obj = JsonValue.Obj(
+fun themeSettingsToJsonValue(t: ThemeSettings): JsonValue.Obj = JsonValue.Obj(
     linkedMapOf(
         "themeMode" to JsonValue.Str(t.themeMode.name),
         "amoledWhenSystemDark" to JsonValue.Bool(t.amoledWhenSystemDark),
@@ -153,7 +153,7 @@ fun BackupData.toJsonValue(): JsonValue.Obj = JsonValue.Obj(
                 ),
             )
         }),
-        "theme" to themeToJson(theme),
+        "theme" to themeSettingsToJsonValue(theme),
         "player" to playerToJson(player),
         "queue" to JsonValue.Obj(
             linkedMapOf(
@@ -186,7 +186,7 @@ private fun refFromJson(v: JsonValue?): BackupSongRef? {
 private fun <T : Enum<T>> enumFrom(name: String?, values: Array<T>, default: T): T =
     values.find { it.name == name } ?: default
 
-private fun themeFromJson(v: JsonValue?): ThemeSettings {
+fun themeSettingsFromJsonValue(v: JsonValue?): ThemeSettings {
     val d = ThemeSettings.DEFAULT
     val hex = { key: String, def: String ->
         ThemeSettings.normalizeHex(v.obj(key).str() ?: def) ?: def
@@ -267,7 +267,7 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
                 durationListenedMs = h.obj("durationListenedMs").long() ?: 0L,
             )
         },
-        theme = themeFromJson(root.obj("theme")),
+        theme = themeSettingsFromJsonValue(root.obj("theme")),
         player = playerFromJson(root.obj("player")),
         queue = BackupQueue(
             songs = queueObj.obj("songs").arr()?.mapNotNull(::refFromJson) ?: emptyList(),
