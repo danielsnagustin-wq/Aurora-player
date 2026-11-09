@@ -54,7 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -82,6 +82,8 @@ import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.Song
+import com.aurora.player.online.OnlineTrack
+import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalListDensity
@@ -123,6 +125,10 @@ fun LibraryScreen(
     // reproductores open source lo tienen. Mezcla lo que se ve
     // (búsqueda/filtro incluidos) y suena en aleatorio.
     onShuffleAll: (List<Song>) -> Unit = {},
+    // 002-online-youtube: pestaña Online (YouTube). Apagada, la
+    // pestaña solo explica dónde se enciende el modo online.
+    onlineMode: Boolean = false,
+    onPlayOnlineTrack: (OnlineTrack, String) -> Unit = { _, _ -> },
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -170,14 +176,25 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             singleLine = true,
         )
-        TabRow(selectedTabIndex = tab) {
+        // 6 pestañas con Online: TabRow las aplastaría; con scroll
+        // caben todas sin recortar los nombres.
+        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Canciones") })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Artistas") })
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Álbumes") })
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
             Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Géneros") })
+            Tab(selected = tab == 5, onClick = { tab = 5 }, text = { Text("Online") })
         }
-        when (val state = uiState) {
+        // 002-online-youtube: la pestaña Online no depende de la
+        // biblioteca local (funciona hasta sin canciones en el teléfono).
+        if (tab == 5) {
+            OnlineScreen(
+                onlineMode = onlineMode,
+                onPlayTrack = onPlayOnlineTrack,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else when (val state = uiState) {
             LibraryUiState.Loading -> {
                 // Si la biblioteca tarda más que la animación de
                 // inicio, un indicador simple hasta que aparezca.
