@@ -107,6 +107,10 @@ data class PlayerSettings(
     // ganancia es 0 y no se finge ningún cambio de volumen.
     val replayGainMode: String = "off",
     val replayGainPreAmpDb: Float = 0f,
+    // Audio (SPEC 005 FR-001): balance izquierda/derecha (-1 = todo
+    // a la izquierda, 0 = centro, +1 = todo a la derecha). Solo
+    // estéreo; mono o multicanal no se tocan.
+    val channelBalance: Float = 0f,
     // Auriculares / Bluetooth (Etapa 1)
     val autoPauseOnDisconnect: Boolean = true,
     // Biblioteca (Etapa 1: minDuration + rescan; 1b: carpetas)
