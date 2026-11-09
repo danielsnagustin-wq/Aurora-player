@@ -25,9 +25,12 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -130,6 +133,11 @@ fun PlayerScreen(
     queueTitles: List<String> = emptyList(),
     queueIndex: Int = 0,
     onQueueClick: (Int) -> Unit = {},
+    // RONDA 2 (2026-11-09): la cola solo se podía tocar para saltar.
+    // Phonograph/Retro permiten reordenarla y quitar pistas: ahora
+    // cada fila sube, baja o se quita.
+    onQueueRemove: (Int) -> Unit = {},
+    onQueueMove: (Int, Int) -> Unit = {},
     lyrics: List<LrcLine> = emptyList(),
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
@@ -378,6 +386,34 @@ fun PlayerScreen(
                                 color = if (isCurrent) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurface,
                             )
+                        },
+                        trailingContent = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(
+                                    onClick = { onQueueMove(index, index - 1) },
+                                    enabled = index > 0,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowUp,
+                                        contentDescription = "Subir en la cola",
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onQueueMove(index, index + 1) },
+                                    enabled = index < queueTitles.size - 1,
+                                ) {
+                                    Icon(
+                                        Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Bajar en la cola",
+                                    )
+                                }
+                                IconButton(onClick = { onQueueRemove(index) }) {
+                                    Icon(
+                                        Icons.Filled.Delete,
+                                        contentDescription = "Quitar de la cola",
+                                    )
+                                }
+                            }
                         },
                         modifier = Modifier.clickable { onQueueClick(index) },
                     )

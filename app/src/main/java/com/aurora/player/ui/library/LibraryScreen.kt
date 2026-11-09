@@ -4,6 +4,7 @@ package com.aurora.player.ui.library
 import android.app.Activity
 import android.app.RecoverableSecurityException
 import android.content.ContentValues
+import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Build
 import android.provider.MediaStore
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -116,6 +118,10 @@ fun LibraryScreen(
     onSongClick: (Song, List<Song>) -> Unit,
     onPlayNext: (Song) -> Unit = {},
     onAddToQueue: (Song) -> Unit = {},
+    // RONDA 2 (2026-11-09): "Mezclar todo" no existía: todos los
+    // reproductores open source lo tienen. Mezcla lo que se ve
+    // (búsqueda/filtro incluidos) y suena en aleatorio.
+    onShuffleAll: (List<Song>) -> Unit = {},
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -130,6 +136,7 @@ fun LibraryScreen(
     val artistFilter by viewModel.artistFilter.collectAsState()
     val albumFilter by viewModel.albumFilter.collectAsState()
     val idFilter by viewModel.idFilter.collectAsState()
+    val genreFilter by viewModel.genreFilter.collectAsState()
     val duplicateGroups by viewModel.duplicateGroups.collectAsState()
     var tab by remember { mutableStateOf(0) }
     var showDuplicates by remember { mutableStateOf(false) }
@@ -167,6 +174,7 @@ fun LibraryScreen(
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Artistas") })
             Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Álbumes") })
             Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
+            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Géneros") })
         }
         when (val state = uiState) {
             LibraryUiState.Loading -> {
@@ -200,11 +208,13 @@ fun LibraryScreen(
                         artistFilter = artistFilter,
                         albumFilter = albumFilter,
                         idFilter = idFilter,
+                        genreFilter = genreFilter,
                         duplicateGroups = duplicateGroups,
                         albums = state.albums,
                         onSongClick = onSongClick,
                         onShowDuplicates = { showDuplicates = true },
                         onDetails = { detailsSong = it },
+                        onShuffleAll = onShuffleAll,
                     )
                     1 -> ArtistsTab(
                         artists = state.artists,
@@ -227,6 +237,13 @@ fun LibraryScreen(
                         onToggleFavorite = { viewModel.toggleFavorite(it) },
                         onSongClick = onSongClick,
                         onDetails = { detailsSong = it },
+                    )
+                    4 -> GenresTab(
+                        songs = state.songs,
+                        onGenreClick = {
+                            viewModel.filterByGenre(it)
+                            tab = 0
+                        },
                     )
                 }
             }
@@ -264,11 +281,13 @@ private fun SongsTab(
     artistFilter: String?,
     albumFilter: Long?,
     idFilter: Set<Long>?,
+    genreFilter: String?,
     duplicateGroups: List<DuplicateGroup>,
     albums: List<Album>,
     onSongClick: (Song, List<Song>) -> Unit,
     onShowDuplicates: () -> Unit,
     onDetails: (Song) -> Unit,
+    onShuffleAll: (List<Song>) -> Unit = {},
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -278,6 +297,16 @@ private fun SongsTab(
     ) {
         Text("${songs.size} canciones")
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (songs.isNotEmpty()) {
+                TextButton(onClick = { onShuffleAll(songs) }) {
+                    Icon(
+                        Icons.Filled.Shuffle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text("Mezclar todo", modifier = Modifier.padding(start = 4.dp))
+                }
+            }
             if (duplicateGroups.isNotEmpty()) {
                 TextButton(onClick = onShowDuplicates) {
                     Text("Duplicados (${duplicateGroups.size})")
@@ -317,6 +346,7 @@ private fun SongsTab(
         idFilter != null -> "Duplicados"
         artistFilter != null -> "Artista: $artistFilter"
         albumFilter != null -> "Álbum: ${albums.firstOrNull { it.id == albumFilter }?.name ?: ""}"
+        genreFilter != null -> "Género: $genreFilter"
         else -> null
     }
     if (filterLabel != null) {
@@ -419,6 +449,42 @@ private fun AlbumsTab(
                     if (coverSong != null) AlbumCover(coverSong, size = 56.dp)
                 },
                 modifier = Modifier.clickable { onAlbumClick(album) },
+            )
+            Divider()
+        }
+    }
+}
+
+@Composable
+private fun GenresTab(
+    songs: List<Song>,
+    onGenreClick: (String) -> Unit,
+) {
+    // RONDA 2 (2026-11-09): la tabla de paridad open source pedía
+    // géneros en la Etapa 1 y no había pestaña. El género viene de
+    // MediaStore; sin género, "Sin género".
+    val genres = songs.groupBy { it.genre?.takeIf { g -> g.isNotBlank() } ?: "Sin género" }
+        .map { (name, list) -> name to list.size }
+        .sortedBy { it.first.lowercase() }
+    if (genres.isEmpty()) {
+        Text("No hay géneros.", modifier = Modifier.padding(16.dp))
+        return
+    }
+    LazyColumn(modifier = Modifier.fillMaxSize()) {
+        items(genres, key = { it.first }) { (name, count) ->
+            ListItem(
+                headlineContent = {
+                    Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                },
+                supportingContent = {
+                    Text(
+                        "$count canciones",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                modifier = Modifier.clickable { onGenreClick(name) },
             )
             Divider()
         }
@@ -799,6 +865,21 @@ private fun SongDetailsDialog(
                     }
                     TextButton(onClick = { onAddToQueue(song); onDismiss() }) {
                         Text("Añadir a la cola")
+                    }
+                    // RONDA 2 (2026-11-09): compartir el archivo de
+                    // audio (Retro/Namida lo tienen). Se envía la Uri
+                    // de MediaStore con permiso de lectura temporal.
+                    TextButton(onClick = {
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = song.mimeType.ifBlank { "audio/*" }
+                            putExtra(Intent.EXTRA_STREAM, song.uri)
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(
+                            Intent.createChooser(intent, "Compartir ${song.title}"),
+                        )
+                    }) {
+                        Text("Compartir archivo")
                     }
                 }
             }
