@@ -1,14 +1,17 @@
 package com.aurora.player
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -59,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +111,7 @@ import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
+import com.aurora.player.util.resolveEffective
 import com.aurora.player.lyrics.loadOnlineLyrics
 import com.aurora.player.util.loadLyricsForPath
 import com.aurora.player.widget.AuroraWidgetProvider
@@ -255,7 +261,70 @@ class MainActivity : ComponentActivity() {
                 val themeSettings by themeStore.settingsFlow.collectAsState(
                     initial = ThemeSettings.DEFAULT,
                 )
-                AuroraPlayerTheme(settings = themeSettings) {
+                // RENDIMIENTO (spec 004): valores visuales EFECTIVOS.
+                // La bajada automática (ahorro de energía del sistema,
+                // temperatura severa, app no visible) solo cambia lo que
+                // se ve; lo guardado en DataStore no se toca nunca.
+                val powerManager = remember {
+                    applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                }
+                var batterySaver by remember { mutableStateOf(powerManager.isPowerSaveMode) }
+                var thermalSevere by remember {
+                    mutableStateOf(
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                            powerManager.currentThermalStatus.let {
+                                it == PowerManager.THERMAL_STATUS_SEVERE ||
+                                    it == PowerManager.THERMAL_STATUS_CRITICAL
+                            },
+                    )
+                }
+                var appVisible by remember { mutableStateOf(true) }
+                DisposableEffect(Unit) {
+                    val receiver = object : BroadcastReceiver() {
+                        override fun onReceive(context: Context?, intent: Intent?) {
+                            batterySaver = powerManager.isPowerSaveMode
+                        }
+                    }
+                    val filter = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        applicationContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        applicationContext.registerReceiver(receiver, filter)
+                    }
+                    onDispose { applicationContext.unregisterReceiver(receiver) }
+                }
+                DisposableEffect(Unit) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val listener = PowerManager.OnThermalStatusChangedListener { status ->
+                            thermalSevere = status == PowerManager.THERMAL_STATUS_SEVERE ||
+                                status == PowerManager.THERMAL_STATUS_CRITICAL
+                        }
+                        powerManager.addThermalStatusListener(listener)
+                        onDispose { powerManager.removeThermalStatusListener(listener) }
+                    } else {
+                        onDispose { }
+                    }
+                }
+                DisposableEffect(Unit) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        when (event) {
+                            Lifecycle.Event.ON_RESUME -> appVisible = true
+                            Lifecycle.Event.ON_PAUSE -> appVisible = false
+                            else -> Unit
+                        }
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
+                val effective = resolveEffective(themeSettings, batterySaver, thermalSevere, appVisible)
+                val effectiveSettings = themeSettings.copy(
+                    dynamicColor = effective.dynamicColor,
+                    playerBackground = effective.playerBackground,
+                    cornerRadiusDp = effective.cornerRadiusDp,
+                    animationsEnabled = effective.animationsEnabled,
+                )
+                AuroraPlayerTheme(settings = effectiveSettings) {
                     if (hasAudioPermission) {
                         AuroraApp(
                             hasAudioPermission = hasAudioPermission,
