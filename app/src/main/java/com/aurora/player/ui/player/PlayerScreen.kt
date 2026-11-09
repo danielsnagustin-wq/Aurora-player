@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -40,12 +41,14 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -70,8 +73,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.media3.common.Player
+import com.aurora.player.data.NamedQueueWithCount
+import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
+import com.aurora.player.model.normalizeQueueName
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.rememberArtworkBitmap
 import com.aurora.player.ui.theme.LocalAnimationsEnabled
@@ -155,6 +164,13 @@ fun PlayerScreen(
     // cada fila sube, baja o se quita.
     onQueueRemove: (Int) -> Unit = {},
     onQueueMove: (Int, Int) -> Unit = { _, _ -> },
+    // SPEC 005 FR-007: colas guardadas con nombre.
+    savedQueues: List<NamedQueueWithCount> = emptyList(),
+    savedQueueMessage: String? = null,
+    onSaveQueue: (String) -> Unit = {},
+    onLoadSavedQueue: (Long) -> Unit = {},
+    onDeleteSavedQueue: (Long) -> Unit = {},
+    onSavedQueueMessageConsumed: () -> Unit = {},
     lyrics: List<LrcLine> = emptyList(),
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
@@ -168,6 +184,7 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
 ) {
     var showQueue by remember { mutableStateOf(false) }
+    var showSavedQueues by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
@@ -456,6 +473,11 @@ fun PlayerScreen(
                     Text(if (showQueue) "Ocultar cola" else "Cola (${queueTitles.size})")
                 }
             }
+            if (queueTitles.isNotEmpty() || savedQueues.isNotEmpty()) {
+                TextButton(onClick = { showSavedQueues = true }) {
+                    Text("Colas guardadas")
+                }
+            }
         }
         if (showQueue && queueTitles.isNotEmpty()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
@@ -562,5 +584,125 @@ fun PlayerScreen(
             }
         }
     }
+    }
+    // SPEC 005 FR-007: diálogo de colas guardadas.
+    if (showSavedQueues) {
+        SavedQueuesDialog(
+            savedQueues = savedQueues,
+            queueSize = queueTitles.size,
+            message = savedQueueMessage,
+            onSaveQueue = onSaveQueue,
+            onLoadSavedQueue = onLoadSavedQueue,
+            onDeleteSavedQueue = onDeleteSavedQueue,
+            onDismiss = {
+                showSavedQueues = false
+                onSavedQueueMessageConsumed()
+            },
+        )
+    }
+}
+
+/**
+ * SPEC 005 FR-007: colas guardadas con nombre. Tocar una cola la
+ * carga como cola activa (reemplaza la actual); mantener pulsada
+ * pregunta antes de borrarla. Guardar con un nombre que ya existe
+ * reemplaza esa cola.
+ */
+@Composable
+private fun SavedQueuesDialog(
+    savedQueues: List<NamedQueueWithCount>,
+    queueSize: Int,
+    message: String?,
+    onSaveQueue: (String) -> Unit,
+    onLoadSavedQueue: (Long) -> Unit,
+    onDeleteSavedQueue: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    var toDelete by remember { mutableStateOf<NamedQueueWithCount?>(null) }
+    val dateFormat = remember {
+        SimpleDateFormat("d MMM yyyy", Locale.getDefault())
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Colas guardadas (${savedQueues.size}/$MAX_NAMED_QUEUES)") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nombre de la cola") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    onClick = {
+                        normalizeQueueName(name)?.let {
+                            onSaveQueue(it)
+                            name = ""
+                        }
+                    },
+                    enabled = normalizeQueueName(name) != null &&
+                        queueSize > 0 && savedQueues.size < MAX_NAMED_QUEUES,
+                    modifier = Modifier.padding(top = 4.dp),
+                ) { Text("Guardar cola actual") }
+                if (savedQueues.size >= MAX_NAMED_QUEUES) {
+                    Text(
+                        "Ya tienes $MAX_NAMED_QUEUES colas guardadas; borra una para guardar otra.",
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+                message?.let {
+                    Text(it, modifier = Modifier.padding(top = 8.dp))
+                }
+                if (savedQueues.isEmpty()) {
+                    Text(
+                        "Aún no hay colas guardadas. Ponle un nombre arriba y guarda la cola que suena.",
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                        itemsIndexed(savedQueues) { _, item ->
+                            ListItem(
+                                headlineContent = { Text(item.queue.name) },
+                                supportingContent = {
+                                    Text(
+                                        "${item.songCount} canciones · " +
+                                            dateFormat.format(Date(item.queue.updatedAt)),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                                modifier = Modifier.combinedClickable(
+                                    onClick = { onLoadSavedQueue(item.queue.id) },
+                                    onLongClick = { toDelete = item },
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cerrar") }
+        },
+    )
+    if (toDelete != null) {
+        val item = toDelete!!
+        AlertDialog(
+            onDismissRequest = { toDelete = null },
+            title = { Text("Borrar cola") },
+            text = { Text("¿Borrar «${item.queue.name}» con sus ${item.songCount} canciones?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    toDelete = null
+                    onDeleteSavedQueue(item.queue.id)
+                }) { Text("Borrar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { toDelete = null }) { Text("Cancelar") }
+            },
+        )
     }
 }
