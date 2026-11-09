@@ -135,13 +135,24 @@ fun AuroraPlayerTheme(
         (settings.themeMode == ThemeMode.SYSTEM && darkTheme && settings.amoledWhenSystemDark)
 
     val accent = parseHexOrNull(settings.accentHex) ?: IceBlue
+    // AUDITORÍA (2026-11-09): en modo claro el fondo, las tarjetas,
+    // la barra y el visualizador IGNORABAN el color elegido por el
+    // usuario (blanco y grises fijos): esos ajustes no hacían nada en
+    // claro. Ahora se aplica el color del usuario cuando es claro
+    // (brillo > 0,5, para que el texto oscuro se siga leyendo); si es
+    // oscuro, se usa el valor claro por defecto, nunca se rompe la
+    // lectura.
+    fun lightOrDefault(hex: String, default: Color): Color {
+        val custom = parseHexOrNull(hex)
+        return if (custom != null && brightnessOf(custom) > 0.5f) custom else default
+    }
     val background = when {
-        !useDark -> Color.White
+        !useDark -> lightOrDefault(settings.backgroundHex, Color.White)
         isAmoled -> parseHexOrNull(settings.backgroundHex) ?: PureBlack
         else -> Color(0xFF121212)
     }
     val surface = when {
-        !useDark -> Color(0xFFF2F2F2)
+        !useDark -> lightOrDefault(settings.cardHex, Color(0xFFF2F2F2))
         else -> parseHexOrNull(settings.cardHex) ?: CardBlack
     }
     // BUG REAL (prueba en teléfono 2026-11-08): el color de texto
@@ -167,7 +178,11 @@ fun AuroraPlayerTheme(
         val custom = parseHexOrNull(settings.secondaryTextHex)
         if (custom != null && brightnessOf(custom) < 0.6f) custom else Color(0xFF5A6470)
     }
-    val playerBar = if (useDark) parseHexOrNull(settings.playerBarHex) ?: surface else surface
+    val playerBar = if (useDark) {
+        parseHexOrNull(settings.playerBarHex) ?: surface
+    } else {
+        lightOrDefault(settings.playerBarHex, surface)
+    }
     // Contraste real del texto sobre el color principal: acento claro
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
@@ -210,7 +225,9 @@ fun AuroraPlayerTheme(
     } else {
         lightColorScheme(
             primary = accent,
-            secondary = Lavender,
+            // El visualizador también vale en claro (es un acento: un
+            // color oscuro sobre fondo claro se lee bien).
+            secondary = parseHexOrNull(settings.visualizerHex) ?: Lavender,
             tertiary = Turquoise,
             background = background,
             surface = surface,

@@ -48,9 +48,16 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
  * Si no existe o no se puede leer (p. ej. por el acceso a archivos en
  * Android 13+), devuelve lista vacía y la UI dice "Sin letras".
  */
-suspend fun loadLyricsFor(song: Song): List<LrcLine> = withContext(Dispatchers.IO) {
+suspend fun loadLyricsFor(song: Song): List<LrcLine> = loadLyricsForPath(song.path)
+
+/**
+ * AUDITORÍA (2026-11-09): buscar las letras pedía escanear TODA la
+ * biblioteca (1471 canciones) en cada cambio de pista, solo para
+ * encontrar la ruta de la canción actual. Ahora la ruta viaja en el
+ * MediaItem y las letras se leen directas, sin escaneo.
+ */
+suspend fun loadLyricsForPath(path: String): List<LrcLine> = withContext(Dispatchers.IO) {
     try {
-        val path = song.path
         if (path.isBlank()) return@withContext emptyList()
         val audio = java.io.File(path)
         val lrc = java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc")

@@ -75,10 +75,8 @@ data class ThemeSettings(
  */
 data class PlayerSettings(
     // Audio (Etapa 1)
-    val gapless: Boolean = true,
     val crossfadeSeconds: Int = 0, // 0 = OFF, 1..12
     val playbackSpeed: Float = 1.0f,
-    val equalizerEnabled: Boolean = false, // Plano = sin efecto; OFF por defecto
     // Audio (Fase 1b)
     val replayGainMode: String = "off", // off | track | album | smart
     val replayGainPreAmpDb: Float = 0f,
@@ -92,9 +90,11 @@ data class PlayerSettings(
     // Reproducción (Etapa 1: temporizador; 1b: resto)
     val resumeWhereLeft: Boolean = true,
     val persistentQueue: Boolean = true,
-    // Gestos (Fase 1b)
+    // Gestos (Etapa 1: ya existen en el reproductor; el interruptor
+    // decide si están activos. El doble toque viene activado porque
+    // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
     val swipeToChangeTrack: Boolean = true,
-    val doubleTapToFavorite: Boolean = false,
+    val doubleTapToFavorite: Boolean = true,
     val verticalSwipeVolume: Boolean = false,
 ) {
     companion object {

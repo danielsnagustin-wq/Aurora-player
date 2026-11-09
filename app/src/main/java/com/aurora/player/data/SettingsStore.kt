@@ -107,13 +107,13 @@ class ThemeSettingsStore(private val context: Context) {
 class PlayerSettingsStore(private val context: Context) {
 
     private object Keys {
-        val GAPLESS = booleanPreferencesKey("gapless")
         val CROSSFADE = intPreferencesKey("crossfade_seconds")
         val SPEED = stringPreferencesKey("playback_speed")
-        val EQ = booleanPreferencesKey("equalizer_enabled")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause_on_disconnect")
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
+        val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
+        val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
     }
 
     val settingsFlow: Flow<PlayerSettings> = context.playerDataStore.data
@@ -121,25 +121,28 @@ class PlayerSettingsStore(private val context: Context) {
         .map { prefs ->
         val d = PlayerSettings.DEFAULT
         d.copy(
-            gapless = prefs[Keys.GAPLESS] ?: d.gapless,
             crossfadeSeconds = (prefs[Keys.CROSSFADE] ?: d.crossfadeSeconds).coerceIn(0, 12),
             playbackSpeed = (prefs[Keys.SPEED]?.toFloatOrNull() ?: d.playbackSpeed).coerceIn(0.5f, 2.0f),
-            equalizerEnabled = prefs[Keys.EQ] ?: d.equalizerEnabled,
             autoPauseOnDisconnect = prefs[Keys.AUTO_PAUSE] ?: d.autoPauseOnDisconnect,
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
+            swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
+            doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
         )
     }
 
     suspend fun save(settings: PlayerSettings) {
         context.playerDataStore.edit { prefs ->
-            prefs[Keys.GAPLESS] = settings.gapless
             prefs[Keys.CROSSFADE] = settings.crossfadeSeconds
             prefs[Keys.SPEED] = settings.playbackSpeed.toString()
-            prefs[Keys.EQ] = settings.equalizerEnabled
             prefs[Keys.AUTO_PAUSE] = settings.autoPauseOnDisconnect
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
+            prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
+            prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
         }
     }
+
+    /** "Restablecer por defecto" también restablece la reproducción. */
+    suspend fun resetToDefault() = save(PlayerSettings.DEFAULT)
 }

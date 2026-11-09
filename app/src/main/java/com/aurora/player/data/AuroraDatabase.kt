@@ -7,8 +7,12 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
+import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Transaction
 import androidx.room.Update
+import android.content.Context
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Aurora Player — persistencia local con Room (Etapa 1).
@@ -63,6 +67,24 @@ interface PlaylistDao {
 
     @Query("DELETE FROM playlist_songs WHERE playlistId = :id")
     suspend fun clearSongs(id: Long)
+
+    /**
+     * AUDITORÍA (2026-11-09): cambiar las canciones de una playlist
+     * era borrar + insertar en dos llamadas sueltas; si la app moría
+     * entre medias, la playlist quedaba vacía. Ahora es una transacción.
+     */
+    @Transaction
+    suspend fun replaceSongs(id: Long, songs: List<PlaylistSongEntity>) {
+        clearSongs(id)
+        setSongs(songs)
+    }
+
+    /** Borrar una playlist con sus canciones, también en transacción. */
+    @Transaction
+    suspend fun deletePlaylistWithSongs(id: Long) {
+        clearSongs(id)
+        deletePlaylist(id)
+    }
 }
 
 @Dao
@@ -75,6 +97,15 @@ interface LibraryDao {
 
     @Query("SELECT songId FROM favorites")
     suspend fun favoriteIds(): List<Long>
+
+    /**
+     * AUDITORÍA (2026-11-09): la biblioteca cargaba los favoritos una
+     * sola vez y el reproductor los cambiaba por otro lado: el corazón
+     * quedaba desincronizado hasta reiniciar. Con este flujo, cualquier
+     * cambio (biblioteca, reproductor, playlists) se ve en todos lados.
+     */
+    @Query("SELECT songId FROM favorites")
+    fun favoriteIdsFlow(): Flow<List<Long>>
 
     @Insert
     suspend fun addHistory(h: PlayHistoryEntity)
@@ -118,4 +149,26 @@ data class PlayCount(val songId: Long, val c: Int)
 abstract class AuroraDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun libraryDao(): LibraryDao
+
+    companion object {
+        /**
+         * AUDITORÍA (2026-11-09): había CUATRO instancias de Room sobre
+         * el mismo archivo (MainActivity, biblioteca, playlists y
+         * estadísticas). Sin invalidación entre instancias, lo que
+         * escribía una no lo veía otra: favoritos y playlists quedaban
+         * desactualizados hasta reiniciar. Ahora hay UNA sola instancia
+         * compartida por toda la app.
+         */
+        @Volatile
+        private var INSTANCE: AuroraDatabase? = null
+
+        fun getInstance(context: Context): AuroraDatabase =
+            INSTANCE ?: synchronized(this) {
+                INSTANCE ?: Room.databaseBuilder(
+                    context.applicationContext,
+                    AuroraDatabase::class.java,
+                    "aurora-player.db",
+                ).build().also { INSTANCE = it }
+            }
+    }
 }

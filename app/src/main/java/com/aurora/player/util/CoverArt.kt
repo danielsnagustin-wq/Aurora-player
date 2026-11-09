@@ -26,7 +26,17 @@ fun loadEmbeddedCoverSync(context: Context, songUri: Uri): Bitmap? {
     return try {
         retriever.setDataSource(context, songUri)
         val bytes = retriever.embeddedPicture ?: return null
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+        // AUDITORÍA (2026-11-09): la portada incrustada se decodificaba
+        // a tamaño completo (una de 2000x2000 son 16 MB) y la caché
+        // guardaba 32 sin límite de bytes. Ahora se reduce a 512 px
+        // de lado mayor: sobra para la lista y el reproductor.
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        var sample = 1
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        while (longest / sample > 512) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     } catch (_: Exception) {
         null
     } finally {

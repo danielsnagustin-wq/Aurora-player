@@ -39,10 +39,11 @@ class AuroraWidgetProvider : AppWidgetProvider() {
             for (id in ids) updateWidget(context, manager, id)
         }
 
-        fun saveNowPlaying(context: Context, title: String?, artist: String?) {
+        fun saveNowPlaying(context: Context, title: String?, artist: String?, isPlaying: Boolean = false) {
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putString("title", title ?: "Aurora Player")
                 .putString("artist", artist ?: "")
+                .putBoolean("playing", isPlaying)
                 .apply()
             requestUpdate(context)
         }
@@ -52,9 +53,17 @@ class AuroraWidgetProvider : AppWidgetProvider() {
             val title = prefs.getString("title", "Aurora Player") ?: "Aurora Player"
             val artist = prefs.getString("artist", "Toca una canción para empezar")
                 ?: "Toca una canción para empezar"
+            // AUDITORÍA (2026-11-09): el botón siempre mostraba "play",
+            // sonara o no. Ahora muestra pausa mientras suena.
+            val playing = prefs.getBoolean("playing", false)
             val views = RemoteViews(context.packageName, R.layout.widget_player)
             views.setTextViewText(R.id.widget_title, title)
             views.setTextViewText(R.id.widget_artist, artist)
+            views.setImageViewResource(
+                R.id.widget_play,
+                if (playing) android.R.drawable.ic_media_pause
+                else android.R.drawable.ic_media_play,
+            )
             fun action(action: String): PendingIntent {
                 val intent = Intent(context, MainActivity::class.java).setAction(action)
                 return PendingIntent.getActivity(

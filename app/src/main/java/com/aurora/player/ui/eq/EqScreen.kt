@@ -189,6 +189,14 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     name = preset.name,
                     selected = selectedPreset == preset.name,
                     onClick = {
+                        // AUDITORÍA (2026-11-09): tocar un preset con el
+                        // EQ apagado cambiaba los niveles en silencio,
+                        // sin que se oyera nada distinto. Un preset se
+                        // toca para oírlo: enciende el EQ.
+                        if (!enabled) {
+                            enabled = true
+                            manager.setEnabled(true)
+                        }
                         manager.applyPreset(preset)
                         levels = preset.levelsDb
                         selectedPreset = preset.name
@@ -210,6 +218,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             name = preset.name,
                             selected = selectedPreset == preset.name,
                             onClick = {
+                                if (!enabled) {
+                                    enabled = true
+                                    manager.setEnabled(true)
+                                }
                                 manager.applyPreset(preset)
                                 levels = preset.levelsDb
                                 selectedPreset = preset.name
