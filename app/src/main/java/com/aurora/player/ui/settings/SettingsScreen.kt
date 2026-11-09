@@ -306,21 +306,21 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
-+            ) {
-+                Text(
-+                    "Negro AMOLED cuando el sistema está en oscuro",
-+                    modifier = Modifier.weight(1f),
-+                )
-+                Switch(
-+                    checked = applied.amoledWhenSystemDark,
-+                    onCheckedChange = { save(applied.copy(amoledWhenSystemDark = it)) },
-+                )
-+            }
-+            Text(
-+                "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
-+                modifier = Modifier.padding(top = 4.dp),
-+            )
-+        }
+            ) {
+                Text(
+                    "Negro AMOLED cuando el sistema está en oscuro",
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(
+                    checked = applied.amoledWhenSystemDark,
+                    onCheckedChange = { save(applied.copy(amoledWhenSystemDark = it)) },
+                )
+            }
+            Text(
+                "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
 
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
@@ -346,6 +346,52 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             steps = 11,
             modifier = Modifier.fillMaxWidth(),
         )
+        // RONDA 6: ReplayGain de verdad (antes el ajuste existía en
+        // el modelo pero nada lo aplicaba). Usa la etiqueta ReplayGain
+        // del archivo: sin etiqueta, no cambia el volumen.
+        Text("ReplayGain (normalización de volumen)", modifier = Modifier.padding(top = 16.dp))
+        Text("Iguala el volumen entre canciones con la etiqueta ReplayGain del archivo. Sin etiqueta, no cambia nada.")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((mode, label) in listOf(
+                "off" to "Apagado",
+                "track" to "Por canción",
+                "album" to "Por álbum",
+                "smart" to "Inteligente",
+            )) {
+                if (player.replayGainMode == mode) {
+                    Button(
+                        onClick = { savePlayer(player.copy(replayGainMode = mode)) },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { savePlayer(player.copy(replayGainMode = mode)) }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        if (player.replayGainMode != "off") {
+            var preamp by remember(player.replayGainPreAmpDb) {
+                mutableStateOf(player.replayGainPreAmpDb)
+            }
+            Text(
+                "Preamp: ${if (preamp >= 0) "+" else ""}${preamp.toInt()} dB",
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Slider(
+                value = preamp,
+                onValueChange = { preamp = it },
+                onValueChangeFinished = {
+                    savePlayer(player.copy(replayGainPreAmpDb = preamp))
+                },
+                valueRange = -12f..12f,
+                steps = 23,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -368,6 +414,37 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 onCheckedChange = { savePlayer(player.copy(resumeWhereLeft = it)) },
             )
         }
+        // RONDA 6: saltar silencio (idea de Metrolist) y radio local.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Saltar silencios largos", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.skipSilence,
+                onCheckedChange = { savePlayer(player.copy(skipSilence = it)) },
+            )
+        }
+        Text(
+            "Salta los silencios de más de 2 segundos: al final de la pista pasa a la siguiente; en mitad, avanza 3 s.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Radio local al acabar la cola", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.localRadio,
+                onCheckedChange = { savePlayer(player.copy(localRadio = it)) },
+            )
+        }
+        Text(
+            "Cuando se acaba la cola y la repetición está apagada, sigue con canciones parecidas de tu biblioteca.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
 
         // AUDITORÍA (2026-11-09): los gestos del reproductor existían
         // pero no se podían apagar; sus ajustes vivían muertos en el
