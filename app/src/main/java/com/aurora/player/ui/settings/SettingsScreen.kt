@@ -42,6 +42,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.alarm.AlarmScreen
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.CoverShape
@@ -86,6 +87,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var reportText by remember { mutableStateOf<String?>(null) }
     var showReport by remember { mutableStateOf(false) }
     var hasLog by remember { mutableStateOf(false) }
+    // RONDA 7 P4: alarma musical.
+    var showAlarm by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         hasLog = withContext(Dispatchers.IO) { ErrorLog.hasEntries(context) }
     }
@@ -113,6 +116,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             .padding(16.dp),
     ) {
         Text("Ajustes")
+        if (showAlarm) {
+            AlarmScreen(onClose = { showAlarm = false })
+            return@Column
+        }
         Text("Aurora Player 0.1.0 — reproductor local, sin anuncios, sin cuenta, sin internet.")
 
         Text("Tema", modifier = Modifier.padding(top = 16.dp))
@@ -518,6 +525,20 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(top = 16.dp),
         ) {
             Text("Restablecer por defecto")
+        }
+
+        // RONDA 7 P4: alarma musical.
+        Text("Alarma", modifier = Modifier.padding(top = 24.dp))
+        Text(
+            "Despiértate con tu música: elige una hora y qué suena. Suena aunque la app esté cerrada y sobrevive a un reinicio.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Button(
+            onClick = { showAlarm = true },
+            colors = auroraButtonColors(),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text("Programar alarma")
         }
 
         // Reporte de errores (depuración): se quitará en el release.
