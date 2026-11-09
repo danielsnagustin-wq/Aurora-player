@@ -103,6 +103,7 @@ import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
+import com.aurora.player.util.StartupTimer
 import com.aurora.player.util.buildMetadataUpdate
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadEmbeddedCover
@@ -164,6 +165,13 @@ fun LibraryScreen(
 
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
+    }
+
+    // RENDIMIENTO (spec 004): marca el primer dibujo real de la
+    // biblioteca (después de la animación de inicio, si la hay).
+    // StartupTimer solo guarda la primera marca.
+    LaunchedEffect(showStart) {
+        if (!showStart) StartupTimer.markFirstFrame()
     }
 
     Column(modifier = modifier.fillMaxSize()) {
