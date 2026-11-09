@@ -137,7 +137,7 @@ fun PlayerScreen(
     // Phonograph/Retro permiten reordenarla y quitar pistas: ahora
     // cada fila sube, baja o se quita.
     onQueueRemove: (Int) -> Unit = {},
-    onQueueMove: (Int, Int) -> Unit = {},
+    onQueueMove: (Int, Int) -> Unit = { _, _ -> },
     lyrics: List<LrcLine> = emptyList(),
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
