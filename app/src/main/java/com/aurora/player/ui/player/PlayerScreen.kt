@@ -1,6 +1,9 @@
 package com.aurora.player.ui.player
 
+@file:OptIn(ExperimentalFoundationApi::class)
+
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
