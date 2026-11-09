@@ -18,19 +18,22 @@ import kotlinx.coroutines.withContext
  * inicial grande, nunca la portada de otra canción.
  */
 suspend fun loadEmbeddedCover(context: Context, songUri: Uri): Bitmap? =
-    withContext(Dispatchers.IO) {
-        val retriever = MediaMetadataRetriever()
+    withContext(Dispatchers.IO) { loadEmbeddedCoverSync(context, songUri) }
+
+/** Versión síncrona (la usa el cargador de portadas de la notificación). */
+fun loadEmbeddedCoverSync(context: Context, songUri: Uri): Bitmap? {
+    val retriever = MediaMetadataRetriever()
+    return try {
+        retriever.setDataSource(context, songUri)
+        val bytes = retriever.embeddedPicture ?: return null
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } catch (_: Exception) {
+        null
+    } finally {
         try {
-            retriever.setDataSource(context, songUri)
-            val bytes = retriever.embeddedPicture ?: return@withContext null
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+            retriever.release()
         } catch (_: Exception) {
-            null
-        } finally {
-            try {
-                retriever.release()
-            } catch (_: Exception) {
-                // Nada que liberar.
-            }
+            // Nada que liberar.
         }
     }
+}

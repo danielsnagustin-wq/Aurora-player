@@ -98,7 +98,11 @@ class PlaybackService : MediaSessionService() {
                 it.setVirtualizer(saved.virtualizer.toShort())
             }
         }
-        mediaSession = MediaSession.Builder(this, exoPlayer).build()
+        mediaSession = MediaSession.Builder(this, exoPlayer)
+            // Portadas de la notificación: MediaStore, incrustada en el
+            // archivo o inicial de Aurora; nunca sin carátula.
+            .setBitmapLoader(AuroraBitmapLoader(this))
+            .build()
         // Ajustes vivos (ETAPA 4): crossfade y auto-pausa se aplican
         // cuando cambian en Ajustes, sin reiniciar nada.
         serviceScope.launch {
