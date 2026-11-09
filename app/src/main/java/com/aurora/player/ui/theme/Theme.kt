@@ -68,16 +68,6 @@ fun Color.toHex(): String {
 fun brightnessOf(color: Color): Float =
     color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
 
-/** Movimiento premium (PLAN §16): transiciones de 250 ms, press scale 0.97. */
-object AuroraMotion {
-    /** Duración estándar de transición, en ms. */
-    const val TRANSITION_MS = 250
-    /** Escala al presionar una tarjeta o un botón. */
-    const val PRESS_SCALE = 0.97f
-    /** Retraso entre filas al aparecer la lista, en ms (con límite en listas largas). */
-    const val STAGGER_MS = 30
-}
-
 /**
  * Canales de personalización (ETAPA 6): valores que no caben en el
  * colorScheme pero tienen efecto real en la UI.
