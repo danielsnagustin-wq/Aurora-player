@@ -83,6 +83,7 @@ import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
+import com.aurora.player.util.buildMetadataUpdate
 import com.aurora.player.util.loadEmbeddedCover
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
@@ -561,35 +562,16 @@ private fun SongDetailsDialog(
 
     val save: () -> Unit = {
         scope.launch(Dispatchers.IO) {
+            val updates = buildMetadataUpdate(
+                editTitle, editArtist, editAlbumArtist, editAlbum,
+                editGenre, editComposer, editYear, editTrack, editDisc,
+                api30 = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R,
+            )
             val values = ContentValues().apply {
-                val title = editTitle.trim()
-                val artist = editArtist.trim()
-                val album = editAlbum.trim()
-                if (title.isNotEmpty()) put(MediaStore.Audio.Media.TITLE, title)
-                if (artist.isNotEmpty()) put(MediaStore.Audio.Media.ARTIST, artist)
-                if (album.isNotEmpty()) put(MediaStore.Audio.Media.ALBUM, album)
-                editYear.trim().toIntOrNull()?.takeIf { it > 0 }?.let {
-                    put(MediaStore.Audio.Media.YEAR, it)
-                }
-                val track = editTrack.trim().toIntOrNull()?.takeIf { it > 0 }
-                val disc = editDisc.trim().toIntOrNull()?.takeIf { it > 0 } ?: 1
-                if (track != null) {
-                    put(MediaStore.Audio.Media.TRACK, disc * 1000 + track)
-                }
-                // Columnas de Android 11+: en versiones viejas el
-                // proveedor no las conoce y el update fallaría.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    val albumArtist = editAlbumArtist.trim()
-                    if (albumArtist.isNotEmpty()) {
-                        put(MediaStore.Audio.Media.ALBUM_ARTIST, albumArtist)
-                    }
-                    val genre = editGenre.trim()
-                    if (genre.isNotEmpty()) put(MediaStore.Audio.Media.GENRE, genre)
-                    val composer = editComposer.trim()
-                    if (composer.isNotEmpty()) put(MediaStore.Audio.Media.COMPOSER, composer)
-                    if (track != null) {
-                        put(MediaStore.Audio.Media.CD_TRACK_NUMBER, track)
-                        put(MediaStore.Audio.Media.DISC_NUMBER, disc)
+                for ((key, value) in updates) {
+                    when (value) {
+                        is String -> put(key, value)
+                        is Int -> put(key, value)
                     }
                 }
             }

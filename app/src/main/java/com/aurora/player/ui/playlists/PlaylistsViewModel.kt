@@ -9,6 +9,7 @@ import com.aurora.player.data.PlaylistEntity
 import com.aurora.player.data.PlaylistSongEntity
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Song
+import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,9 +66,10 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
         loaded = true
         loadedPermission = hasAudioPermission
         viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                _allSongs.value = if (hasAudioPermission) repository.loadSongs() else emptyList()
-                _playlists.value = dao.allPlaylists()
+            try {
+                withContext(Dispatchers.IO) {
+                    _allSongs.value = if (hasAudioPermission) repository.loadSongs() else emptyList()
+                    _playlists.value = dao.allPlaylists()
                 // Playlists inteligentes: solo con datos reales locales.
                 val songs = _allSongs.value
                 val byId = songs.associateBy { it.id }
@@ -104,6 +106,11 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                             .sortedByDescending { it.dateAdded }.take(25),
                     ),
                 ).filter { it.songs.isNotEmpty() }
+                }
+            } catch (e: Exception) {
+                // Un fallo de la base de datos no deja las playlists
+                // en blanco para siempre: se registra y se queda lo que había.
+                ErrorLog.log(getApplication(), "Cargar playlists", e)
             }
         }
     }

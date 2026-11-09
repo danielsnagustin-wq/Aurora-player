@@ -5,6 +5,7 @@ import com.aurora.player.data.trackAndDisc
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
+import com.aurora.player.util.buildMetadataUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -102,5 +103,36 @@ class AuroraPlayerTest {
     @Test
     fun `sin dato de pista el disco es 1`() {
         assertEquals(0 to 1, trackAndDisc(0, 0, 0))
+    }
+
+    @Test
+    fun `editor solo escribe campos con valor`() {
+        val out = buildMetadataUpdate("X", "", "", "", "", "", "", "", "", true)
+        assertEquals(1, out.size)
+        assertEquals("X", out["title"])
+    }
+
+    @Test
+    fun `editor combina pista y disco en TRACK`() {
+        val out = buildMetadataUpdate("", "", "", "", "", "", "", "3", "2", true)
+        assertEquals(2003, out["track"])
+        assertEquals(3, out["cd_track_number"])
+        assertEquals(2, out["disc_number"])
+    }
+
+    @Test
+    fun `sin API 30 no hay columnas nuevas`() {
+        val out = buildMetadataUpdate("", "", "Y", "", "Rock", "", "", "5", "1", false)
+        assertTrue(!out.containsKey("album_artist"))
+        assertTrue(!out.containsKey("genre"))
+        assertTrue(!out.containsKey("cd_track_number"))
+        assertEquals(1005, out["track"])
+    }
+
+    @Test
+    fun `ano invalido no se escribe`() {
+        assertTrue(!buildMetadataUpdate("", "", "", "", "", "", "abc", "", "", true).containsKey("year"))
+        assertTrue(!buildMetadataUpdate("", "", "", "", "", "", "0", "", "", true).containsKey("year"))
+        assertEquals(2020, buildMetadataUpdate("", "", "", "", "", "", "2020", "", "", true)["year"])
     }
 }

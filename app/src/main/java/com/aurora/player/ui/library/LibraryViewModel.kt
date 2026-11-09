@@ -11,6 +11,7 @@ import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
+import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -160,16 +161,23 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         loaded = true
         _uiState.value = LibraryUiState.Loading
         viewModelScope.launch {
-            val (songs, albums, artists) = withContext(Dispatchers.IO) {
-                // ETAPA 4: la duración mínima guardada en Ajustes sí se
-                // usa (antes loadSongs() siempre usaba 5 s fijos).
-                val minDurationMs = playerStore.settingsFlow.first().minDurationMs
-                val loadedSongs = repository.loadSongs(minDurationMs)
-                Triple(
-                    loadedSongs,
-                    repository.loadAlbums(loadedSongs),
-                    repository.loadArtists(loadedSongs),
-                )
+            val (songs, albums, artists) = try {
+                withContext(Dispatchers.IO) {
+                    // ETAPA 4: la duración mínima guardada en Ajustes sí se
+                    // usa (antes loadSongs() siempre usaba 5 s fijos).
+                    val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+                    val loadedSongs = repository.loadSongs(minDurationMs)
+                    Triple(
+                        loadedSongs,
+                        repository.loadAlbums(loadedSongs),
+                        repository.loadArtists(loadedSongs),
+                    )
+                }
+            } catch (e: Exception) {
+                // La biblioteca nunca se queda en "Cargando…" para
+                // siempre: un fallo muestra el estado vacío.
+                ErrorLog.log(getApplication(), "Cargar biblioteca", e)
+                Triple(emptyList(), emptyList(), emptyList())
             }
             _duplicateGroups.value = songs
                 .groupBy { Triple(it.title.lowercase(), it.artist.lowercase(), it.durationMs) }

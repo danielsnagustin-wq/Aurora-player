@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
+import com.aurora.player.util.ErrorLog
 
 /**
  * Aurora Player — biblioteca local con MediaStore (Etapa 1).
@@ -19,7 +20,33 @@ import com.aurora.player.model.Song
  */
 class MusicRepository(private val context: Context) {
 
+    /**
+     * Carga con reintento: primero con las columnas de Android 11+ y,
+     * si algún dispositivo no las conoce (la consulta lanza
+     * IllegalArgumentException), sin ellas. Un fallo total devuelve
+     * lista vacía y se registra, nunca cuelga la biblioteca.
+     */
     fun loadSongs(minDurationMs: Long = 5_000L): List<Song> {
+        return try {
+            loadSongsWithProjection(minDurationMs, extended = true)
+        } catch (e: IllegalArgumentException) {
+            ErrorLog.log(context, "Escaneo sin columnas nuevas", e)
+            try {
+                loadSongsWithProjection(minDurationMs, extended = false)
+            } catch (e2: Exception) {
+                ErrorLog.log(context, "Cargar biblioteca", e2)
+                emptyList()
+            }
+        } catch (e: Exception) {
+            ErrorLog.log(context, "Cargar biblioteca", e)
+            emptyList()
+        }
+    }
+
+    private fun loadSongsWithProjection(
+        minDurationMs: Long,
+        extended: Boolean,
+    ): List<Song> {
         val songs = mutableListOf<Song>()
         val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         // Columnas de Android 11+ (ALBUM_ARTIST, COMPOSER, GENRE,
@@ -39,7 +66,7 @@ class MusicRepository(private val context: Context) {
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.YEAR,
         )
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        if (extended && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
             projection += MediaStore.Audio.Media.ALBUM_ARTIST
             projection += MediaStore.Audio.Media.COMPOSER
             projection += MediaStore.Audio.Media.GENRE

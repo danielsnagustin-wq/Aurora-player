@@ -34,6 +34,7 @@ import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Song
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.TimeFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,29 +83,36 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         loaded = true
         loadedPermission = hasAudioPermission
         viewModelScope.launch {
-            val data = withContext(Dispatchers.IO) {
-                val songs = if (hasAudioPermission) repository.loadSongs() else emptyList()
-                val byId = songs.associateBy { it.id }
-                val dao = db.libraryDao()
-                val top = dao.mostPlayed().take(10).mapNotNull { row ->
-                    byId[row.songId]?.let { it to row.c }
+            val data = try {
+                withContext(Dispatchers.IO) {
+                    val songs = if (hasAudioPermission) repository.loadSongs() else emptyList()
+                    val byId = songs.associateBy { it.id }
+                    val dao = db.libraryDao()
+                    val top = dao.mostPlayed().take(10).mapNotNull { row ->
+                        byId[row.songId]?.let { it to row.c }
+                    }
+                    // Gráfico semanal: reproducciones por día, últimos 7 días.
+                    val now = System.currentTimeMillis()
+                    val dayMs = 24L * 60 * 60 * 1000
+                    val perDay = MutableList(7) { 0 }
+                    for (ts in dao.historyPlayedAt()) {
+                        val daysAgo = ((now - ts) / dayMs).toInt()
+                        if (daysAgo in 0..6) perDay[6 - daysAgo]++
+                    }
+                    StatsData(
+                        totalPlays = dao.totalPlays(),
+                        totalListenedMs = dao.totalListenedMs(),
+                        mostPlayed = top,
+                        favoriteCount = dao.favoriteIds().size,
+                        totalSongs = songs.size,
+                        playsLast7Days = perDay,
+                    )
                 }
-                // Gráfico semanal: reproducciones por día, últimos 7 días.
-                val now = System.currentTimeMillis()
-                val dayMs = 24L * 60 * 60 * 1000
-                val perDay = MutableList(7) { 0 }
-                for (ts in dao.historyPlayedAt()) {
-                    val daysAgo = ((now - ts) / dayMs).toInt()
-                    if (daysAgo in 0..6) perDay[6 - daysAgo]++
-                }
-                StatsData(
-                    totalPlays = dao.totalPlays(),
-                    totalListenedMs = dao.totalListenedMs(),
-                    mostPlayed = top,
-                    favoriteCount = dao.favoriteIds().size,
-                    totalSongs = songs.size,
-                    playsLast7Days = perDay,
-                )
+            } catch (e: Exception) {
+                // Un fallo no deja las estadísticas colgadas: se
+                // registra y la pantalla muestra su estado vacío.
+                ErrorLog.log(getApplication(), "Cargar estadísticas", e)
+                null
             }
             _stats.value = data
         }
