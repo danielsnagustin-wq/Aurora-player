@@ -141,6 +141,7 @@ class PlayerSettingsStore(private val context: Context) {
         val REPLAY_GAIN_PREAMP = stringPreferencesKey("replay_gain_preamp_db")
         val CHANNEL_BALANCE = stringPreferencesKey("channel_balance")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause_on_disconnect")
+        val AUTOPLAY_ON_CONNECT = booleanPreferencesKey("autoplay_on_connect")
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
         val LOCAL_RADIO = booleanPreferencesKey("local_radio")
@@ -163,6 +164,7 @@ class PlayerSettingsStore(private val context: Context) {
             replayGainPreAmpDb = (prefs[Keys.REPLAY_GAIN_PREAMP]?.toFloatOrNull() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
             channelBalance = (prefs[Keys.CHANNEL_BALANCE]?.toFloatOrNull() ?: d.channelBalance).coerceIn(-1f, 1f),
             autoPauseOnDisconnect = prefs[Keys.AUTO_PAUSE] ?: d.autoPauseOnDisconnect,
+            autoplayOnConnect = prefs[Keys.AUTOPLAY_ON_CONNECT] ?: d.autoplayOnConnect,
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
@@ -182,6 +184,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.REPLAY_GAIN_PREAMP] = settings.replayGainPreAmpDb.toString()
             prefs[Keys.CHANNEL_BALANCE] = settings.channelBalance.toString()
             prefs[Keys.AUTO_PAUSE] = settings.autoPauseOnDisconnect
+            prefs[Keys.AUTOPLAY_ON_CONNECT] = settings.autoplayOnConnect
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
