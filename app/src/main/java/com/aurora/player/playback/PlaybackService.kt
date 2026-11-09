@@ -12,8 +12,12 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
+import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.aurora.player.audio.EqualizerManager
@@ -117,13 +121,34 @@ class PlaybackService : MediaSessionService() {
         val silenceDetector = SilenceDetectorAudioProcessor(
             onLongSilence = { onLongSilenceDetected() },
         ).also { silenceProcessor = it }
-        val exoPlayer = ExoPlayer.Builder(this)
+        // RONDA 6 (fix run #67): los procesadores NO van en
+        // ExoPlayer.Builder — no tiene setAudioProcessors en Media3
+        // 1.4.1. La vía documentada es sobreescribir buildAudioSink
+        // en DefaultRenderersFactory y ponerlos en
+        // DefaultAudioSink.Builder. El resto replica el
+        // comportamiento por defecto (salida float, parámetros de
+        // pista y offload gapless).
+        val renderersFactory = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+                enableOffload: Boolean,
+            ): AudioSink? {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setOffloadMode(
+                        if (enableOffload) DefaultAudioSink.OFFLOAD_MODE_ENABLED_GAPLESS_REQUIRED
+                        else DefaultAudioSink.OFFLOAD_MODE_DISABLED,
+                    )
+                    .setAudioProcessors(arrayOf(gainProcessor, silenceDetector))
+                    .build()
+            }
+        }
+        val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true) // auto-pausa al quitar auriculares
-            // RONDA 6: ReplayGain real en la cadena de audio (antes el
-            // ajuste existía en el modelo pero nada lo aplicaba) y
-            // detector de silencio (pasa el audio sin tocarlo).
-            .setAudioProcessors(gainProcessor, silenceDetector)
             .build()
         player = exoPlayer
         // RONDA 2 (2026-11-09): el EQ NO se crea aquí. Al arrancar,
@@ -342,11 +367,13 @@ class PlaybackService : MediaSessionService() {
 
 /** Ajustes de reproducción con efecto real sobre el ExoPlayer. */
 object PlayerControls {
-    /** Velocidad y tono juntos: ExoPlayer conserva el tono al cambiar
-     * la velocidad (pitch 1.0) y el tono se cambia aparte (RONDA 6). */
+    /** Velocidad y tono juntos (fix run #67: PlaybackParameters
+     * NO tiene withPitch en Media3 1.4.1; se construye directo
+     * con los dos valores, como dice la referencia oficial). */
     fun setSpeedAndPitch(player: Player, speed: Float, pitch: Float) {
-        player.playbackParameters = player.playbackParameters
-            .withSpeed(speed.coerceIn(0.5f, 2.0f))
-            .withPitch(pitch.coerceIn(0.5f, 2.0f))
+        player.playbackParameters = PlaybackParameters(
+            speed.coerceIn(0.5f, 2.0f),
+            pitch.coerceIn(0.5f, 2.0f),
+        )
     }
 }
