@@ -82,6 +82,18 @@ fun contrastOn(color: Color): Color =
     if (brightnessOf(color) > 0.5f) PureBlack else Color.White
 
 /**
+ * RONDA PULIDO (2026-11-09): en modo claro el acento se usa como
+ * color de TEXTO sobre blanco (chips sin elegir, iconos, enlaces).
+ * El azul hielo #8CCBEB sobre blanco casi no se lee. Se oscurece
+ * a la mitad para que el texto se lea; el color elegido sigue
+ * valiendo como relleno de botones y como acento en oscuro.
+ */
+fun darkenForLight(color: Color): Color {
+    val factor = 0.5f
+    return Color(color.red * factor, color.green * factor, color.blue * factor, color.alpha)
+}
+
+/**
  * Canales de personalización (ETAPA 6): valores que no caben en el
  * colorScheme pero tienen efecto real en la UI.
  */
@@ -242,8 +254,12 @@ fun AuroraPlayerTheme(
             onPrimary = onPrimary,
         )
     } else {
+        // RONDA PULIDO (2026-11-09): en claro el primary es color de
+        // texto sobre blanco: el acento claro no se leía. Se usa la
+        // versión oscurecida; el acento elegido sigue como relleno.
+        val lightPrimary = darkenForLight(accent)
         lightColorScheme(
-            primary = accent,
+            primary = lightPrimary,
             // El visualizador también vale en claro (es un acento: un
             // color oscuro sobre fondo claro se lee bien).
             secondary = parseHexOrNull(settings.visualizerHex) ?: Lavender,
@@ -258,7 +274,7 @@ fun AuroraPlayerTheme(
             onBackground = onBackground,
             onSurface = onSurface,
             onSurfaceVariant = secondaryText,
-            onPrimary = onPrimary,
+            onPrimary = contrastOn(lightPrimary),
         )
     }
     CompositionLocalProvider(
