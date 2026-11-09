@@ -2,7 +2,6 @@ package com.aurora.player.util
 
 import android.content.Context
 import android.os.Build
-import com.aurora.player.BuildConfig
 import java.io.File
 
 /**
@@ -88,7 +87,15 @@ object ErrorLog {
 
     /** Texto listo para ver o compartir: cabecera + entradas, sanitizado. */
     fun buildReportText(context: Context): String {
-        val header = "Aurora Player ${BuildConfig.VERSION_NAME} · " +
+        // La versión se lee del paquete instalado: BuildConfig no se
+        // genera en este proyecto (AGP 8 la tiene apagada por defecto).
+        val versionName = try {
+            context.packageManager
+                .getPackageInfo(context.packageName, 0).versionName ?: "?"
+        } catch (_: Exception) {
+            "?"
+        }
+        val header = "Aurora Player $versionName · " +
             "Android ${Build.VERSION.RELEASE} (SDK ${Build.VERSION.SDK_INT})\n" +
             "Reporte de errores (depuración, se quitará en el release). " +
             "Sanitizado: sin rutas, sin nombres de canciones, sin datos personales.\n\n"
