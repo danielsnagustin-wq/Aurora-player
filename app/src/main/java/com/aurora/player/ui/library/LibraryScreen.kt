@@ -136,7 +136,6 @@ import java.util.Locale
  * (persistentes en Room) y detección de duplicados (solo se muestran,
  * nada se borra).
  */
-@Composable
 /**
  * Pestañas del inicio, en orden. Los índices 0..6 son estables: se
  * guardan en LibraryPrefsStore (visibles + última abierta).
@@ -145,6 +144,7 @@ private val LIBRARY_TABS = listOf(
     "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
 )
 
+@Composable
 fun LibraryScreen(
     hasAudioPermission: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
