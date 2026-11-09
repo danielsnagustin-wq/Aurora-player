@@ -1,7 +1,6 @@
 package com.aurora.player.ui.stats
 
 import com.aurora.player.data.PlayHistoryEntity
-import com.aurora.player.model.Song
 import java.util.Calendar
 
 /**
@@ -9,12 +8,20 @@ import java.util.Calendar
  * Todo sale del historial real (play_history, 30 s por escucha): nada
  * inventado, nada en la nube. El año se delimita por playedAt en
  * [1 de enero 00:00, 1 de enero del año siguiente).
+ *
+ * Lección (run #80): un Song NO se puede construir en un unit test
+ * porque su Uri es una clase de Android y en los tests Uri.EMPTY es
+ * null (android.jar stub). Por eso el resumen trabaja con SongInfo,
+ * los 3 datos que de verdad necesita (título, artista, género), y el
+ * ViewModel traduce Song → SongInfo.
  */
+data class SongInfo(val title: String, val artist: String, val genre: String?)
+
 data class YearStats(
     val year: Int,
     val totalPlays: Int,
     val totalListenedMs: Long,
-    val topSongs: List<Pair<Song, Int>>,
+    val topSongs: List<Pair<SongInfo, Int>>,
     val topArtists: List<Pair<String, Int>>,
     val topGenres: List<Pair<String, Int>>,
     val distinctDays: Int,
@@ -44,7 +51,7 @@ fun yearRange(year: Int): Pair<Long, Long> {
 fun computeYearStats(
     year: Int,
     history: List<PlayHistoryEntity>,
-    songsById: Map<Long, Song>,
+    songsById: Map<Long, SongInfo>,
 ): YearStats {
     val dayMs = 24L * 60 * 60 * 1000
     val bySong = history.groupingBy { it.songId }.eachCount()
