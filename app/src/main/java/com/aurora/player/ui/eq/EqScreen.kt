@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.data.CustomPresetStore
 import com.aurora.player.playback.AudioEffects
+import com.aurora.player.ui.theme.auroraButtonColors
 import kotlinx.coroutines.launch
 
 /**
@@ -217,6 +218,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     }
                 },
                 enabled = newPresetName.isNotBlank(),
+                colors = auroraButtonColors(),
             ) {
                 Text("Guardar")
             }
@@ -227,7 +229,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun PresetChip(name: String, selected: Boolean, onClick: () -> Unit) {
     if (selected) {
-        Button(onClick = onClick) { Text(name) }
+        Button(onClick = onClick, colors = auroraButtonColors()) { Text(name) }
     } else {
         OutlinedButton(onClick = onClick) { Text(name) }
     }

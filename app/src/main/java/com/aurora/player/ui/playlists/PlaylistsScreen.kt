@@ -37,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.model.Song
+import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
 
@@ -133,6 +134,7 @@ fun PlaylistsScreen(
                     newName = ""
                 },
                 enabled = newName.isNotBlank(),
+                colors = auroraButtonColors(),
                 modifier = Modifier.padding(start = 8.dp),
             ) {
                 Text("Crear")
@@ -236,7 +238,9 @@ private fun PlaylistDetail(
         }
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             if (!readOnly) {
-                Button(onClick = onAddSongs) { Text("Añadir canciones") }
+                Button(onClick = onAddSongs, colors = auroraButtonColors()) {
+                    Text("Añadir canciones")
+                }
             }
             OutlinedButton(
                 onClick = { exportLauncher.launch("$name.m3u") },
@@ -303,10 +307,13 @@ private fun SongPicker(
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text("Añadir canciones")
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Button(onClick = {
-                val ordered = allSongs.filter { it.id in picked }.map { it.id }
-                onSave(ordered)
-            }) {
+            Button(
+                onClick = {
+                    val ordered = allSongs.filter { it.id in picked }.map { it.id }
+                    onSave(ordered)
+                },
+                colors = auroraButtonColors(),
+            ) {
                 Text("Guardar (${picked.size})")
             }
             OutlinedButton(

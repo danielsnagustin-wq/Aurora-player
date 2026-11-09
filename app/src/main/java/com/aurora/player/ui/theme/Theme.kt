@@ -1,17 +1,25 @@
 package com.aurora.player.ui.theme
 
+import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
 
@@ -65,6 +73,37 @@ object AuroraMotion {
     const val STAGGER_MS = 30
 }
 
+/**
+ * Canales de personalización (ETAPA 6): valores que no caben en el
+ * colorScheme pero tienen efecto real en la UI.
+ */
+val LocalButtonColor = staticCompositionLocalOf { IceBlue }
+val LocalOnButtonColor = staticCompositionLocalOf { PureBlack }
+val LocalCoverShape = staticCompositionLocalOf { CoverShape.ROUNDED }
+val LocalListDensity = staticCompositionLocalOf { ListDensity.COMFORTABLE }
+
+/** Colores de botón reales: fondo = buttonHex, texto con contraste. */
+@Composable
+fun auroraButtonColors() = ButtonDefaults.buttonColors(
+    containerColor = LocalButtonColor.current,
+    contentColor = LocalOnButtonColor.current,
+)
+
+/** Tipografía escalada por el tamaño de texto elegido (ETAPA 6). */
+private fun scaledTypography(scale: Float): Typography {
+    fun TextStyle.scaled(): TextStyle = copy(
+        fontSize = fontSize * scale,
+        lineHeight = lineHeight * scale,
+    )
+    return Typography(
+        titleLarge = AuroraTypography.titleLarge.scaled(),
+        titleMedium = AuroraTypography.titleMedium.scaled(),
+        bodyLarge = AuroraTypography.bodyLarge.scaled(),
+        bodyMedium = AuroraTypography.bodyMedium.scaled(),
+        labelMedium = AuroraTypography.labelMedium.scaled(),
+    )
+}
+
 /** Tipografía cuidada (PLAN §16): jerarquía título > artista > álbum, sin textos amontonados. */
 val AuroraTypography = Typography(
     titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
@@ -80,6 +119,7 @@ fun AuroraPlayerTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
+    val context = LocalContext.current
     val useDark = when (settings.themeMode) {
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
@@ -112,10 +152,30 @@ fun AuroraPlayerTheme(
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
     // esta versión de Compose): brillo percibido 0.299 R + 0.587 G + 0.114 B.
-    val accentBrightness = accent.red * 0.299f + accent.green * 0.587f + accent.blue * 0.114f
-    val onPrimary = if (accentBrightness > 0.5f) PureBlack else Color.White
+    fun contrastOn(color: Color): Color {
+        val brightness = color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
+        return if (brightness > 0.5f) PureBlack else Color.White
+    }
+    val onPrimary = contrastOn(accent)
+    // ETAPA 6: color de botones con su propio canal (buttonHex; si no
+    // es válido, cae al acento). El texto del botón usa contraste real.
+    val buttonColor = parseHexOrNull(settings.buttonHex) ?: accent
+    val onButton = contrastOn(buttonColor)
+    val textScale = when (settings.textSize) {
+        TextSize.SMALL -> 0.85f
+        TextSize.MEDIUM -> 1f
+        TextSize.LARGE -> 1.15f
+    }
 
-    val colors = if (useDark) {
+    // ETAPA 6: Material You (Android 12+): el esquema viene del fondo
+    // de pantalla del sistema. En Android 11 o menos el interruptor no
+    // tiene efecto y se usan los colores de Aurora. El color de botones
+    // elegido por el usuario sigue valiendo en ambos casos.
+    val useDynamic = settings.useMaterialYou &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val colors = if (useDynamic) {
+        if (useDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    } else if (useDark) {
         darkColorScheme(
             primary = accent,
             secondary = parseHexOrNull(settings.visualizerHex) ?: Lavender,
@@ -141,7 +201,14 @@ fun AuroraPlayerTheme(
             onPrimary = onPrimary,
         )
     }
-    MaterialTheme(colorScheme = colors, typography = AuroraTypography, content = content)
+    CompositionLocalProvider(
+        LocalButtonColor provides buttonColor,
+        LocalOnButtonColor provides onButton,
+        LocalCoverShape provides settings.coverShape,
+        LocalListDensity provides settings.listDensity,
+    ) {
+        MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale), content = content)
+    }
 }
 
 /** Forma de portada real (Fase 1b): se aplica en la lista y en el reproductor. */

@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -71,6 +72,10 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
+import com.aurora.player.ui.theme.LocalCoverShape
+import com.aurora.player.ui.theme.LocalListDensity
+import com.aurora.player.ui.theme.coverShapeToCornerPercent
+import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.SongDetails
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
@@ -449,10 +454,12 @@ private fun SongRow(
             }
         },
         leadingContent = { AlbumCover(song, size = 56.dp) },
-        modifier = Modifier.combinedClickable(
-            onClick = onClick,
-            onLongClick = { onDetails(song) },
-        ),
+        modifier = Modifier
+            .heightIn(min = listDensityToRowHeightDp(LocalListDensity.current).dp)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = { onDetails(song) },
+            ),
     )
 }
 
@@ -735,16 +742,20 @@ private fun ArtworkImage(
     modifier: Modifier = Modifier,
 ) {
     val sized = if (size != null) modifier.size(size) else modifier
+    // ETAPA 6: la forma de portada elegida en Ajustes (cuadrada,
+    // redondeada o circular) se aplica aquí, en la lista, la mini-barra
+    // y el reproductor: es el mismo componente en los tres sitios.
+    val corner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
     if (bitmap != null) {
         Image(
             bitmap = bitmap.asImageBitmap(),
             contentDescription = null,
-            modifier = sized.clip(RoundedCornerShape(8.dp)),
+            modifier = sized.clip(corner),
         )
     } else {
         Box(
             modifier = sized
-                .clip(RoundedCornerShape(8.dp))
+                .clip(corner)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center,
         ) {
