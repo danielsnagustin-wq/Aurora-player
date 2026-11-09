@@ -3,6 +3,7 @@ package com.aurora.player.playback
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import androidx.compose.runtime.getValue
@@ -20,12 +21,19 @@ import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.aurora.player.MainActivity
+import com.aurora.player.alarm.AlarmScheduler
+import com.aurora.player.alarm.AlarmSettings
+import com.aurora.player.alarm.AlarmSource
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.ReplayGainProcessor
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
 import com.aurora.player.audio.replayGainFromMetadata
 import com.aurora.player.audio.selectReplayGainDb
+import com.aurora.player.data.AlarmStore
+import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.EqStateStore
+import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.CoroutineScope
@@ -108,11 +116,17 @@ class PlaybackService : MediaSessionService() {
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
         const val NOTIFICATION_ID = 1
+        /** RONDA 7 P4: la alarma la dispara el receptor con estas acciones. */
+        const val ACTION_PLAY_ALARM = "com.aurora.player.PLAY_ALARM"
+        const val ACTION_STOP_ALARM = "com.aurora.player.STOP_ALARM"
+        const val ALARM_CHANNEL_ID = "aurora_player_alarm"
+        const val ALARM_NOTIFICATION_ID = 2
     }
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        createAlarmChannel()
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -320,6 +334,129 @@ class PlaybackService : MediaSessionService() {
             NotificationManager.IMPORTANCE_LOW,
         ).apply { description = "Controles de reproducción de Aurora Player" }
         getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+    }
+
+    /** RONDA 7 P4: canal de la alarma (alta importancia, sin sonido
+     * propio: el sonido ES la música, por el canal de alarma). */
+    private fun createAlarmChannel() {
+        val channel = NotificationChannel(
+            ALARM_CHANNEL_ID,
+            "Alarma",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Alarma musical de Aurora Player"
+            setSound(null, null)
+        }
+        getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+    }
+
+    /**
+     * RONDA 7 P4: la alarma llega como intent al servicio.
+     * PLAY_ALARM suena la música elegida; STOP_ALARM la apaga.
+     * El resto de intents sigue su camino normal de MediaSession.
+     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_PLAY_ALARM -> serviceScope.launch { playAlarm() }
+            ACTION_STOP_ALARM -> stopAlarm()
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    /** Suena la alarma: resuelve qué música, la pone por el canal de
+     * alarma (se oye aunque el teléfono esté en silencio) y publica
+     * la notificación con el botón "Apagar". */
+    private suspend fun playAlarm() {
+        val settings = withContext(Dispatchers.IO) {
+            AlarmStore(this@PlaybackService).settingsFlow.first()
+        }
+        if (!settings.enabled) return
+        val items = withContext(Dispatchers.IO) { resolveAlarmItems(settings) }
+        if (items.isEmpty()) {
+            ErrorLog.log(this, "Alarma sin música", null)
+            return
+        }
+        val p = player ?: return
+        p.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_ALARM)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true,
+        )
+        p.setMediaItems(items)
+        p.prepare()
+        p.play()
+        showAlarmNotification(settings)
+    }
+
+    /** Canción / playlist / mezcla de la alarma; si lo elegido ya no
+     * existe (canción borrada, playlist vacía), mezcla todo: la
+     * alarma suena igual, nunca en silencio. */
+    private suspend fun resolveAlarmItems(settings: AlarmSettings): List<MediaItem> {
+        val minDurationMs = PlayerSettingsStore(this).settingsFlow.first().minDurationMs
+        val songs = MusicRepository(this).loadSongs(minDurationMs)
+        if (songs.isEmpty()) return emptyList()
+        return when (val source = settings.source) {
+            AlarmSource.ShuffleAll -> songs.shuffled().map { songToMediaItem(this, it) }
+            is AlarmSource.Song -> {
+                val song = songs.firstOrNull { it.id == source.songId }
+                    ?: return songs.shuffled().map { songToMediaItem(this, it) }
+                listOf(songToMediaItem(this, song))
+            }
+            is AlarmSource.Playlist -> {
+                val ids = AuroraDatabase.getInstance(this).playlistDao()
+                    .songsOf(source.playlistId).map { it.songId }.toSet()
+                val picked = songs.filter { it.id in ids }
+                if (picked.isEmpty()) songs.shuffled().map { songToMediaItem(this, it) }
+                else picked.map { songToMediaItem(this, it) }
+            }
+        }
+    }
+
+    /** Apaga la alarma: pausa, vuelve al canal multimedia y quita la
+     * notificación; si no suena nada, el servicio se detiene solo. */
+    private fun stopAlarm() {
+        val p = player
+        p?.pause()
+        p?.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(C.USAGE_MEDIA)
+                .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                .build(),
+            true,
+        )
+        getSystemService(NotificationManager::class.java)?.cancel(ALARM_NOTIFICATION_ID)
+        if (p == null || !p.playWhenReady) stopSelf()
+    }
+
+    private fun showAlarmNotification(settings: AlarmSettings) {
+        val what = when (val source = settings.source) {
+            is AlarmSource.Song -> source.title
+            is AlarmSource.Playlist -> source.name
+            AlarmSource.ShuffleAll -> "Mezcla de tu biblioteca"
+        }
+        val openIntent = PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = Notification.Builder(this, ALARM_CHANNEL_ID)
+            .setContentTitle("Alarma · Aurora Player")
+            .setContentText(what)
+            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setContentIntent(openIntent)
+            .setOngoing(true)
+            .addAction(
+                Notification.Action.Builder(
+                    null,
+                    "Apagar",
+                    AlarmScheduler.stopPendingIntent(this),
+                ).build(),
+            )
+            .build()
+        getSystemService(NotificationManager::class.java)?.notify(ALARM_NOTIFICATION_ID, notification)
     }
 
     private fun buildPlaceholderNotification(): Notification {
