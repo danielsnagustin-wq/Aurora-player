@@ -1264,20 +1264,24 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
 fun rememberArtworkBitmap(
     uri: android.net.Uri?,
     songUri: android.net.Uri? = null,
+    // RONDA PULIDO (2026-11-09): la portada del reproductor se
+    // veía borrosa porque se cargaba a 288 px y se estiraba a
+    // todo el ancho. El reproductor pide 1024; la lista sigue a 288.
+    sizePx: Int = 288,
 ): Bitmap? {
     val context = LocalContext.current
-    var bitmap by remember(uri, songUri) { mutableStateOf<Bitmap?>(null) }
-    LaunchedEffect(uri, songUri) {
+    var bitmap by remember(uri, songUri, sizePx) { mutableStateOf<Bitmap?>(null) }
+    LaunchedEffect(uri, songUri, sizePx) {
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             bitmap = withContext(Dispatchers.IO) {
                 try {
-                    context.contentResolver.loadThumbnail(uri, Size(288, 288), null)
+                    context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
                 } catch (_: Exception) {
                     null
                 }
-            } ?: songUri?.let { loadEmbeddedCover(context, it) }
+            } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
         } else if (songUri != null) {
-            bitmap = loadEmbeddedCover(context, songUri)
+            bitmap = loadEmbeddedCover(context, songUri, maxPx = sizePx)
         }
     }
     return bitmap
@@ -1290,9 +1294,10 @@ fun ArtworkImage(
     size: Dp? = null,
     modifier: Modifier = Modifier,
     songUri: android.net.Uri? = null,
+    sizePx: Int = 288,
 ) {
     ArtworkImage(
-        bitmap = rememberArtworkBitmap(uri, songUri),
+        bitmap = rememberArtworkBitmap(uri, songUri, sizePx = sizePx),
         letter = letter,
         size = size,
         modifier = modifier,
