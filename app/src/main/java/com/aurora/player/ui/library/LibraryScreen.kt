@@ -1,6 +1,5 @@
-package com.aurora.player.ui.library
-
 @file:OptIn(ExperimentalFoundationApi::class)
+package com.aurora.player.ui.library
 
 import android.app.Activity
 import android.app.RecoverableSecurityException
