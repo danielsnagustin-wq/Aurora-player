@@ -20,7 +20,12 @@
     <!-- RONDA 7 P4: alarma musical (sin internet, todo local). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- Sin INTERNET: a propósito. Aurora Player no necesita red. -->
+    <!-- RONDA 7 P2: INTERNET solo para las letras online (LRCLIB),
+         y solo si el usuario enciende "Letras online" en Ajustes.
+         La música local no usa la red jamás. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- INTERNET solo para letras online (P2), con interruptor
+         apagado por defecto. La música local no usa la red jamás. -->
 
     <application
         android:allowBackup="true"
