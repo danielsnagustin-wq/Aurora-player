@@ -89,6 +89,19 @@ interface PlaylistDao {
         clearSongs(id)
         deletePlaylist(id)
     }
+
+    /** SPEC 005 FR-004: vaciar todas las listas (restaurar respaldo). */
+    @Query("DELETE FROM playlist_songs")
+    suspend fun clearAllSongs()
+
+    @Query("DELETE FROM playlists")
+    suspend fun clearAllPlaylists()
+
+    @Transaction
+    suspend fun clearAll() {
+        clearAllSongs()
+        clearAllPlaylists()
+    }
 }
 
 @Dao
@@ -101,6 +114,14 @@ interface LibraryDao {
 
     @Query("SELECT songId FROM favorites")
     suspend fun favoriteIds(): List<Long>
+
+    /** SPEC 005 FR-004: vaciar favoritos (restaurar respaldo). */
+    @Query("DELETE FROM favorites")
+    suspend fun clearFavorites()
+
+    /** SPEC 005 FR-004: todo el historial (respaldo). */
+    @Query("SELECT * FROM play_history ORDER BY playedAt ASC")
+    suspend fun allHistory(): List<PlayHistoryEntity>
 
     /**
      * AUDITORÍA (2026-11-09): la biblioteca cargaba los favoritos una
