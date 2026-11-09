@@ -23,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
@@ -162,27 +161,15 @@ fun StartScreen(onFinished: () -> Unit = {}) {
         else -> 1f - ((p - 0.50f) / 0.33f).coerceIn(0f, 1f)
     }
     val logoScale = 0.97f + 0.03f * (p / 0.27f).coerceIn(0f, 1f)
-    val glowAlpha = 0.35f * logoAlpha
 
     Box(
         modifier = Modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .clickable { onFinished() },
     ) {
-        // Brillo detrás de la figura, que se apaga con ella.
-        Box(
-            modifier = Modifier.fillMaxSize()
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            Color(0xFF8CCBEB),
-                            Color(0xFFA99ACD),
-                            Color.Transparent,
-                        ),
-                    ),
-                )
-                .graphicsLayer { alpha = glowAlpha },
-        )
+        // RONDA PULIDO (2026-11-09): la luz morada detrás de la
+        // figura se quitó (el usuario la pidió fuera). La animación
+        // (vuelo, polvo) queda igual.
         Column(
             modifier = Modifier.fillMaxSize().padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
