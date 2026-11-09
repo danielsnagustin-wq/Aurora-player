@@ -68,6 +68,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.room.Room
 import com.aurora.player.data.AuroraDatabase
+import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.PlayerSettingsStore
@@ -89,6 +90,7 @@ import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
+import com.aurora.player.util.LyricsOffsetStore
 import com.aurora.player.util.loadLyricsFor
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -345,6 +347,38 @@ private fun AuroraApp(
     var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
     var sleepAtSongEnd by remember { mutableStateOf(false) }
 
+    // Ideas open source: favorito de la canción actual y ajuste de
+    // sincronización de letras por canción (se guarda en DataStore).
+    var isFavorite by remember { mutableStateOf(false) }
+    val offsetStore = remember { LyricsOffsetStore(context) }
+    var lyricsOffsetMs by remember { mutableStateOf(0) }
+
+    fun toggleFavorite() {
+        val id = currentSongId ?: return
+        scope.launch(Dispatchers.IO) {
+            val dao = db.libraryDao()
+            if (dao.favoriteIds().contains(id)) {
+                dao.removeFavorite(id)
+                isFavorite = false
+            } else {
+                dao.addFavorite(FavoriteEntity(id))
+                isFavorite = true
+            }
+        }
+    }
+
+    /** Cola flexible (ideas de Namida/Auxio): suena justo después. */
+    fun playNext(song: Song) {
+        val c = controller ?: return
+        val at = (c.currentMediaItemIndex + 1).coerceIn(0, c.mediaItemCount)
+        c.addMediaItem(at, songToMediaItem(context, song))
+    }
+
+    /** Cola flexible: se añade al final de la cola actual. */
+    fun addToQueue(song: Song) {
+        controller?.addMediaItem(songToMediaItem(context, song))
+    }
+
     // Acción del widget (play/pausa/siguiente/anterior): se aplica en
     // cuanto el reproductor está listo.
     LaunchedEffect(widgetAction, controller) {
@@ -408,6 +442,14 @@ private fun AuroraApp(
                 }
                 queueIndex = c.currentMediaItemIndex
                 currentSongId = c.currentMediaItem?.mediaId?.toLongOrNull()
+                // Favorito de la canción actual (para el corazón del
+                // reproductor y el doble toque en la portada).
+                val songId = c.currentMediaItem?.mediaId?.toLongOrNull()
+                if (songId != null) {
+                    scope.launch(Dispatchers.IO) {
+                        isFavorite = db.libraryDao().favoriteIds().contains(songId)
+                    }
+                }
                 // Cola persistente: se guarda en cada cambio de pista.
                 scope.launch {
                     queueStore.save(
@@ -501,10 +543,12 @@ private fun AuroraApp(
         }
     }
 
-    // Letras (ETAPA 5): al cambiar de canción se busca su .lrc.
+    // Letras (ETAPA 5): al cambiar de canción se busca su .lrc y su
+    // ajuste de sincronización guardado.
     LaunchedEffect(currentSongId) {
         val id = currentSongId ?: return@LaunchedEffect
         lyrics = emptyList()
+        lyricsOffsetMs = offsetStore.offsetFor(id)
         val songs = withContext(Dispatchers.IO) { MusicRepository(context).loadSongs() }
         val song = songs.firstOrNull { it.id == id } ?: return@LaunchedEffect
         lyrics = loadLyricsFor(song)
@@ -601,6 +645,14 @@ private fun AuroraApp(
             lyrics = lyrics,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
+            isFavorite = isFavorite,
+            onToggleFavorite = { toggleFavorite() },
+            lyricsOffsetMs = lyricsOffsetMs,
+            onLyricsOffsetChange = { newOffset ->
+                val id = currentSongId ?: return@PlayerScreen
+                lyricsOffsetMs = newOffset
+                scope.launch(Dispatchers.IO) { offsetStore.saveOffset(id, newOffset) }
+            },
         )
         return
     }
@@ -684,6 +736,8 @@ private fun AuroraApp(
             Tab.LIBRARY -> LibraryScreen(
                 hasAudioPermission = hasAudioPermission,
                 onSongClick = { song, songs -> playSongs(songs, songs.indexOf(song)) },
+                onPlayNext = { song -> playNext(song) },
+                onAddToQueue = { song -> addToQueue(song) },
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(

@@ -2,6 +2,7 @@ package com.aurora.player
 
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.data.trackAndDisc
+import com.aurora.player.ui.player.swipeDirection
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
@@ -134,5 +135,13 @@ class AuroraPlayerTest {
         assertTrue(!buildMetadataUpdate("", "", "", "", "", "", "abc", "", "", true).containsKey("year"))
         assertTrue(!buildMetadataUpdate("", "", "", "", "", "", "0", "", "", true).containsKey("year"))
         assertEquals(2020, buildMetadataUpdate("", "", "", "", "", "", "2020", "", "", true)["year"])
+    }
+
+    @Test
+    fun `deslizar a la izquierda es siguiente y a la derecha anterior`() {
+        assertEquals(1, swipeDirection(-150f))
+        assertEquals(-1, swipeDirection(150f))
+        assertEquals(0, swipeDirection(50f))
+        assertEquals(0, swipeDirection(-99f))
     }
 }

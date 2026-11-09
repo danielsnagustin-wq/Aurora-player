@@ -110,6 +110,8 @@ import java.util.Locale
 fun LibraryScreen(
     hasAudioPermission: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
+    onPlayNext: (Song) -> Unit = {},
+    onAddToQueue: (Song) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val viewModel: LibraryViewModel = viewModel()
@@ -230,6 +232,8 @@ fun LibraryScreen(
             viewModel = viewModel,
             onDismiss = { detailsSong = null },
             onLibraryChanged = { viewModel.refresh() },
+            onPlayNext = onPlayNext,
+            onAddToQueue = onAddToQueue,
         )
     }
 }
@@ -529,6 +533,8 @@ private fun SongDetailsDialog(
     viewModel: LibraryViewModel,
     onDismiss: () -> Unit,
     onLibraryChanged: () -> Unit,
+    onPlayNext: (Song) -> Unit = {},
+    onAddToQueue: (Song) -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -704,6 +710,30 @@ private fun SongDetailsDialog(
                     DetailRow("Reproducciones", playCount?.toString())
                     DetailRow("Última escucha", lastPlayed?.let { formatDate(it) })
                     DetailRow("Ruta", song.path)
+                    // Ruta de audio (idea de Namida): lo que el archivo
+                    // trae y lo que el sistema saca de verdad. Android
+                    // remuestrea la salida a la frecuencia del sistema.
+                    val audioManager = context.getSystemService(
+                        android.media.AudioManager::class.java,
+                    )
+                    DetailRow(
+                        "Salida del sistema",
+                        audioManager?.getProperty(
+                            android.media.AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE,
+                        )?.let { "$it Hz" },
+                    )
+                    DetailRow(
+                        "Búfer de salida",
+                        audioManager?.getProperty(
+                            android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER,
+                        )?.let { "$it muestras" },
+                    )
+                    TextButton(onClick = { onPlayNext(song); onDismiss() }) {
+                        Text("Reproducir a continuación")
+                    }
+                    TextButton(onClick = { onAddToQueue(song); onDismiss() }) {
+                        Text("Añadir a la cola")
+                    }
                 }
             }
         },

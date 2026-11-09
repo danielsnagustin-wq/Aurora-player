@@ -3,6 +3,8 @@ package com.aurora.player.ui.player
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +24,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Equalizer
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -47,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,6 +84,17 @@ enum class SleepTimerOption(val label: String, val minutes: Int) {
     END_OF_SONG("Al terminar la canción", -1),
 }
 
+/**
+ * Gesto de cambio de pista: deslizamiento horizontal sobre la portada.
+ * Devuelve 1 = siguiente (deslizar a la izquierda), -1 = anterior
+ * (deslizar a la derecha), 0 = no hay gesto suficiente.
+ */
+fun swipeDirection(totalPx: Float, threshold: Float = 100f): Int = when {
+    totalPx < -threshold -> 1
+    totalPx > threshold -> -1
+    else -> 0
+}
+
 @Composable
 fun PlayerScreen(
     title: String?,
@@ -107,13 +123,18 @@ fun PlayerScreen(
     lyrics: List<LrcLine> = emptyList(),
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
+    lyricsOffsetMs: Int = 0,
+    onLyricsOffsetChange: (Int) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
+    var dragTotal by remember { mutableStateOf(0f) }
     val lyricsListState = rememberLazyListState()
-    val currentLine = LrcParser.currentLineIndex(lyrics, positionMs)
+    val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
     LaunchedEffect(showLyrics, currentLine) {
         if (showLyrics && currentLine >= 0) {
             lyricsListState.animateScrollToItem(currentLine)
@@ -168,6 +189,14 @@ fun PlayerScreen(
                 IconButton(onClick = onOpenEq) {
                     Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
                 }
+                IconButton(onClick = onToggleFavorite) {
+                    Icon(
+                        if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = "Favorito",
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
         if (title == null) {
@@ -181,13 +210,30 @@ fun PlayerScreen(
             return@Column
         }
         // Portada grande con sombra y la forma elegida en Ajustes.
+        // Gestos (ideas de Retro/Gramophone): deslizar a los lados
+        // cambia de pista y doble toque marca la canción como favorita.
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
         ArtworkImage(
             uri = artworkUri,
             songUri = songUri,
             letter = title.take(1).uppercase(),
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
-                .shadow(16.dp, coverCorner),
+                .shadow(16.dp, coverCorner)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            when (swipeDirection(dragTotal)) {
+                                1 -> onNext()
+                                -1 -> onPrevious()
+                            }
+                            dragTotal = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount -> dragTotal += dragAmount },
+                    )
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(onDoubleTap = { onToggleFavorite() })
+                },
         )
         Spacer(Modifier.height(24.dp))
         Text(
@@ -327,6 +373,26 @@ fun PlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
+                // Ajuste de sincronización: el .lrc puede venir unos
+                // ms desplazado; se corrige por canción y se guarda.
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = { onLyricsOffsetChange((lyricsOffsetMs - 100).coerceIn(-5000, 5000)) },
+                    ) { Text("−100 ms") }
+                    Text(
+                        if (lyricsOffsetMs == 0) "En tiempo"
+                        else "${if (lyricsOffsetMs > 0) "+" else ""}$lyricsOffsetMs ms",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(
+                        onClick = { onLyricsOffsetChange((lyricsOffsetMs + 100).coerceIn(-5000, 5000)) },
+                    ) { Text("+100 ms") }
+                }
                 LazyColumn(
                     state = lyricsListState,
                     modifier = Modifier.fillMaxWidth().height(240.dp),
