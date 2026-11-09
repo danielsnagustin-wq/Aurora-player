@@ -1,6 +1,10 @@
 package com.aurora.player
 
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.clampGainDb
+import com.aurora.player.audio.dbToLinear
+import com.aurora.player.audio.parseReplayGainDb
+import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.data.trackAndDisc
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
@@ -8,7 +12,9 @@ import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.buildMetadataUpdate
+import com.aurora.player.util.codecDisplayName
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -153,5 +159,56 @@ class AuroraPlayerTest {
         assertEquals("1.5", formatSpeed(1.5f))
         assertEquals("0.75", formatSpeed(0.75f))
         assertEquals("2", formatSpeed(2f))
+    }
+
+    // RONDA 6: ReplayGain real (funciones puras del procesador).
+
+    @Test
+    fun `la etiqueta ReplayGain se lee como numero`() {
+        assertEquals(-6.23f, parseReplayGainDb("-6.23 dB")!!, 0.001f)
+        assertEquals(0f, parseReplayGainDb("0 dB")!!, 0.001f)
+        assertEquals(3.5f, parseReplayGainDb("+3.5 dB")!!, 0.001f)
+        assertNull(parseReplayGainDb("sin numero"))
+    }
+
+    @Test
+    fun `el modo ReplayGain elige la ganancia correcta`() {
+        assertEquals(0f, selectReplayGainDb("off", -6f, -8f, 0f), 0.001f)
+        assertEquals(-6f, selectReplayGainDb("track", -6f, -8f, 0f), 0.001f)
+        assertEquals(-8f, selectReplayGainDb("album", -6f, -8f, 0f), 0.001f)
+        assertEquals(-6f, selectReplayGainDb("smart", -6f, -8f, 0f), 0.001f)
+        assertEquals(-8f, selectReplayGainDb("smart", null, -8f, 0f), 0.001f)
+        assertEquals(0f, selectReplayGainDb("smart", null, null, 0f), 0.001f)
+        assertEquals(-4f, selectReplayGainDb("track", -6f, null, 2f), 0.001f)
+    }
+
+    @Test
+    fun `la ganancia se recorta para no distorsionar`() {
+        assertEquals(12f, clampGainDb(20f), 0.001f)
+        assertEquals(-30f, clampGainDb(-40f), 0.001f)
+        assertEquals(12f, selectReplayGainDb("track", 10f, null, 5f), 0.001f)
+        assertEquals(1.0, dbToLinear(0f), 0.001)
+        assertEquals(0.1, dbToLinear(-20f), 0.001)
+    }
+
+    @Test
+    fun `LRC con varias etiquetas en una linea da una linea por tiempo`() {
+        val lines = LrcParser.parse("[00:01.00][00:05.00]coro\n[ti:Prueba]\n[00:10.00]fin")
+        assertEquals(3, lines.size)
+        assertEquals(1000L, lines[0].timeMs)
+        assertEquals("coro", lines[0].text)
+        assertEquals(5000L, lines[1].timeMs)
+        assertEquals("coro", lines[1].text)
+        assertEquals(10000L, lines[2].timeMs)
+        assertEquals("fin", lines[2].text)
+    }
+
+    @Test
+    fun `el nombre del codec se lee en claro`() {
+        assertEquals("FLAC", codecDisplayName("audio/flac"))
+        assertEquals("MP3", codecDisplayName("audio/mpeg"))
+        assertEquals("AAC", codecDisplayName("audio/mp4"))
+        assertEquals("WAV", codecDisplayName("audio/x-wav"))
+        assertEquals("audio/xyz", codecDisplayName("audio/xyz"))
     }
 }
