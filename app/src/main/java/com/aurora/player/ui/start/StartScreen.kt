@@ -10,14 +10,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -25,28 +22,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aurora.player.R
 import kotlin.math.PI
 import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
- * Aurora Player — inicio propio con animación (~5 s).
- * Lógica de Child of Light: Aurora se disuelve en polvo luminoso
- * (los oculis: chispas de luz) y un viento que sopla de izquierda
- * a derecha los arrastra y los borra hasta dejar la pantalla
+ * Aurora Player — inicio propio con animación (3 s, corta).
+ * SIN NOMBRE: solo la figura, EN POLVO SUAVE (sin bloques).
+ * ANIMACIÓN DE MOVIMIENTO de verdad, no balanceo en el sitio:
+ * la figura ENTRA VOLANDO desde la derecha, luego SUBE mientras
+ * se convierte en polvo azul suave (lógica de Child of Light:
+ * los oculis): se deshace desde los bordes hacia adentro, con
+ * polvo denso que sale de su silueta, y un viento suave de
+ * DERECHA a IZQUIERDA se lo lleva hasta dejar la pantalla
  * limpia. Tocar la pantalla salta la animación.
+ * Brillitos AZULES, no blancos. En el video el pelo y el
+ * vestido además ondean (franjas); en la app el movimiento es
+ * el viaje + la subida + el polvo.
  *
- * Fases: 0-1 s aparece Aurora con su brillo; 1-2,75 s los oculis
- * flotan; 2,75-3,75 s la figura se disuelve en polvo; 3,5-5 s el
- * viento barre el polvo de izquierda a derecha y todo se apaga.
- * Al terminar, onFinished abre la biblioteca.
+ * Fases (3 s): 0-0,8 s entra volando desde la derecha;
+ * 0,8-1,5 s vuela en el centro; 1,5-2,5 s sube y se hace polvo
+ * suave; 2,5-3 s el viento barre el polvo de derecha a
+ * izquierda y todo se apaga. Al terminar, onFinished abre la
+ * biblioteca.
  */
 private data class DustParticle(
     val x: Float, // 0..1 relativo al ancho
@@ -56,40 +62,57 @@ private data class DustParticle(
     val start: Float, // progreso en el que aparece
     val drift: Float, // cuánto lo arrastra el viento (fracción del ancho)
     val wobble: Float, // vaivén vertical en px
+    val phase: Float, // fase del parpadeo de luciérnaga
+    val flick: Float, // velocidad del parpadeo
+    val maxA: Float = 0.6f, // alfa máxima del grano
 )
 
 private fun buildParticles(): List<DustParticle> {
     val random = Random(42)
+    // Brillitos AZULES, no blancos: solo azul cielo/oculi.
     val colors = listOf(
-        Color(0xFF8CCBEB), // hielo
-        Color(0xFFA99ACD), // lavanda
-        Color(0xFF75D6CE), // turquesa
-        Color(0xFFDCE8F5), // plata
-        Color(0xFF7FD4FF), // llama azul de Igniculus
+        Color(0xFF9FD8F2), // azul cielo (oculi)
+        Color(0xFF99DCFF), // llama azul de Igniculus
+        Color(0xFF7FB8FF), // azul oculi
+        Color(0xFF6FC8FF), // azul brillante
+        Color(0xFF5FB8FF), // azul intenso
     )
     val list = ArrayList<DustParticle>()
-    // Polvo de la figura: concentrado donde está el logo (centro).
-    repeat(140) {
+    // Polvo AZUL SUAVE y denso: 450 granos, más grandes. Se
+    // deshace desde los BORDES hacia adentro: el inicio depende
+    // de la distancia al centro (bordes antes).
+    repeat(450) {
+        val x = 0.5f + (random.nextFloat() - 0.5f) * 0.28f
+        val y = 0.5f + (random.nextFloat() - 0.5f) * 0.24f
+        val dx = (x - 0.5f) / 0.15f
+        val dy = (y - 0.42f) / 0.19f
+        val dist = sqrt(dx * dx + dy * dy).coerceIn(0f, 1f)
         list += DustParticle(
-            x = 0.5f + (random.nextFloat() - 0.5f) * 0.28f,
-            y = 0.5f + (random.nextFloat() - 0.5f) * 0.24f,
-            r = 2f + random.nextFloat() * 5f,
+            x = x,
+            y = y,
+            r = 1.2f + random.nextFloat() * 1.8f,
             color = colors[random.nextInt(colors.size)],
-            start = 0.45f + random.nextFloat() * 0.2f,
+            start = 0.45f + dist * 0.20f + random.nextFloat() * 0.05f,
             drift = 0.25f + random.nextFloat() * 0.55f,
-            wobble = (random.nextFloat() - 0.5f) * 30f,
+            wobble = (random.nextFloat() - 0.5f) * 22f,
+            phase = random.nextFloat() * 6.28f,
+            flick = 4f + random.nextFloat() * 5f,
+            maxA = 0.95f,
         )
     }
-    // Oculis flotando por toda la pantalla (aparecen antes).
+    // Oculis: pocos y tenues.
     repeat(24) {
         list += DustParticle(
             x = random.nextFloat(),
             y = random.nextFloat(),
-            r = 1.5f + random.nextFloat() * 2.5f,
+            r = 1f + random.nextFloat() * 1.1f,
             color = colors[random.nextInt(colors.size)],
-            start = 0.15f + random.nextFloat() * 0.3f,
-            drift = 0.2f + random.nextFloat() * 0.4f,
-            wobble = (random.nextFloat() - 0.5f) * 20f,
+            start = 0.12f + random.nextFloat() * 0.25f,
+            drift = 0.20f + random.nextFloat() * 0.35f,
+            wobble = (random.nextFloat() - 0.5f) * 18f,
+            phase = random.nextFloat() * 6.28f,
+            flick = 3f + random.nextFloat() * 4f,
+            maxA = 0.6f,
         )
     }
     return list
@@ -99,25 +122,36 @@ private fun buildParticles(): List<DustParticle> {
 fun StartScreen(onFinished: () -> Unit = {}) {
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        progress.animateTo(1f, animationSpec = tween(5000, easing = LinearEasing))
+        progress.animateTo(1f, animationSpec = tween(3000, easing = LinearEasing))
         onFinished()
     }
     val p = progress.value
-    // Viento de izquierda a derecha: entra a los 3,5 s y barre todo.
-    val wind = ((p - 0.7f) / 0.3f).coerceIn(0f, 1f)
+    // Viento SUAVE de derecha a izquierda: entra a los 2,5 s y barre todo.
+    val wind = ((p - 0.83f) / 0.17f).coerceIn(0f, 1f)
     val particles = remember { buildParticles() }
 
-    // La figura aparece (0-0,75 s), se sostiene y se disuelve (2,5-3,25 s).
-    val logoAlpha = when {
-        p < 0.15f -> p / 0.15f
-        p < 0.5f -> 1f
-        else -> 1f - ((p - 0.5f) / 0.15f).coerceIn(0f, 1f)
+    // MOVIMIENTO de verdad: entra volando desde la derecha
+    // (0-0,8 s) y SUBE mientras se convierte en polvo (1,5-2,5 s).
+    val travelX = when {
+        p < 0.27f -> {
+            val t = p / 0.27f
+            140f * (1f - (1f - (1f - t) * (1f - t)))
+        }
+        p < 0.50f -> 0f
+        else -> -20f * ((p - 0.50f) / 0.50f).coerceIn(0f, 1f)
     }
-    val logoScale = 0.96f + 0.04f * (p / 0.2f).coerceIn(0f, 1f)
-    // Los textos aparecen con la figura y el viento se los lleva.
-    val textAlpha = ((p - 0.1f) / 0.15f).coerceIn(0f, 1f) *
-        (1f - ((p - 0.7f) / 0.2f).coerceIn(0f, 1f))
-    val glowAlpha = 0.5f * logoAlpha
+    val riseY = if (p < 0.50f) 0f
+        else -40f * ((p - 0.50f) / 0.33f).coerceIn(0f, 1f)
+
+    // La figura aparece volando (0-0,8 s), se sostiene y se
+    // convierte en polvo SUAVE subiendo (1,5-2,5 s).
+    val logoAlpha = when {
+        p < 0.27f -> p / 0.27f
+        p < 0.50f -> 1f
+        else -> 1f - ((p - 0.50f) / 0.33f).coerceIn(0f, 1f)
+    }
+    val logoScale = 0.97f + 0.03f * (p / 0.27f).coerceIn(0f, 1f)
+    val glowAlpha = 0.35f * logoAlpha
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -143,8 +177,13 @@ fun StartScreen(onFinished: () -> Unit = {}) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
+            // SIN NOMBRE: solo la figura, que se convierte en polvo.
+            // CAUSA DEL CIERRE (2026-11-09): painterResource NO puede
+            // cargar un icono adaptativo (ic_launcher.xml): solo acepta
+            // VectorDrawable o imágenes (PNG/JPG/WEBP). Se usa el PNG
+            // del frente del icono (ic_launcher_foreground).
             Image(
-                painter = painterResource(R.mipmap.ic_launcher),
+                painter = painterResource(R.mipmap.ic_launcher_foreground),
                 contentDescription = "Aurora Player",
                 modifier = Modifier.size(160.dp)
                     .clip(RoundedCornerShape(32.dp))
@@ -152,53 +191,61 @@ fun StartScreen(onFinished: () -> Unit = {}) {
                         alpha = logoAlpha
                         scaleX = logoScale
                         scaleY = logoScale
+                        translationX = travelX
+                        translationY = riseY
                     },
-            )
-            Spacer(Modifier.height(24.dp))
-            Text(
-                "Aurora Player",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.graphicsLayer { alpha = textAlpha },
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "El amor por la música no tiene que tener precio",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.graphicsLayer { alpha = textAlpha },
             )
         }
         // Polvo y viento, por encima de la figura: el polvo sale de ella.
         Canvas(Modifier.fillMaxSize()) {
+            // El viento estira el polvo suave en horizontal (se deshace).
+            val stretch = 1f + wind * 2f
             for (pt in particles) {
                 if (p < pt.start) continue
-                val fadeIn = ((p - pt.start) / 0.08f).coerceIn(0f, 1f)
-                val alpha = (fadeIn * (1f - wind)).coerceIn(0f, 1f)
+                val fadeIn = ((p - pt.start) / 0.12f).coerceIn(0f, 1f)
+                // Parpadeo LENTO y suave de luciérnaga.
+                val flicker = 0.75f + 0.25f *
+                    sin(p * pt.flick * 6.28f + pt.phase)
+                val alpha = (fadeIn * flicker * (1f - wind) * pt.maxA)
+                    .coerceIn(0f, 1f)
                 if (alpha <= 0f) continue
-                val x = pt.x * size.width + wind * pt.drift * size.width
+                // Viento a la IZQUIERDA: x disminuye con wind.
+                val x = pt.x * size.width - wind * pt.drift * size.width
                 val y = pt.y * size.height +
-                    sin((p * 6f + pt.x * 10f)) * pt.wobble * (1f - wind)
-                drawCircle(
-                    color = pt.color,
-                    radius = pt.r * (0.6f + 0.4f * fadeIn),
-                    center = Offset(x, y),
-                    alpha = alpha,
-                )
+                    sin((p * 4f + pt.x * 10f)) * pt.wobble * (1f - wind)
+                // Polvo SUAVE en 3 capas, sin borde duro: halo amplio
+                // muy tenue + halo medio + núcleo pequeño. Nada de
+                // círculos sólidos (parecían rueditas).
+                val r = pt.r * (0.7f + 0.3f * fadeIn)
+                fun softDot(scale: Float, a: Float) {
+                    drawOval(
+                        color = pt.color,
+                        topLeft = Offset(
+                            x - r * scale * stretch,
+                            y - r * scale,
+                        ),
+                        size = Size(r * scale * 2f * stretch, r * scale * 2f),
+                        alpha = (alpha * a).coerceIn(0f, 1f),
+                    )
+                }
+                softDot(3.5f, 0.07f)
+                softDot(2.0f, 0.18f)
+                softDot(1.0f, 0.85f)
             }
-            // Ráfagas de viento: líneas que cruzan de izquierda a derecha.
+            // Ráfagas de viento, casi invisibles: líneas que cruzan
+            // de derecha a izquierda.
             if (wind > 0f) {
-                repeat(8) { i ->
-                    val y = (i + 0.5f) / 8f * size.height + (i % 3) * 12f
-                    val offset = (wind * 1.4f - 0.2f + i * 0.13f) % 1.2f
+                repeat(4) { i ->
+                    val y = (i + 0.5f) / 4f * size.height + (i % 2) * 12f
+                    val offset = (1.2f - (wind * 1.2f - 0.2f + i * 0.22f)) % 1.2f
                     val x = offset * size.width - 0.2f * size.width
                     drawLine(
-                        color = Color(0xFFDCE8F5),
+                        color = Color(0xFF87CEEB),
                         start = Offset(x, y),
-                        end = Offset(x + 140f, y),
-                        strokeWidth = 2f,
+                        end = Offset(x - 160f, y),
+                        strokeWidth = 1f,
                         // Aparecen con el viento y se apagan al final.
-                        alpha = 0.2f * sin(wind * PI.toFloat()),
+                        alpha = 0.06f * sin(wind * PI.toFloat()),
                     )
                 }
             }

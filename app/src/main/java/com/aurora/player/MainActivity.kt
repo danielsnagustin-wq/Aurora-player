@@ -331,7 +331,12 @@ private fun WelcomeScreen(onGrant: () -> Unit) {
         verticalArrangement = Arrangement.Center,
     ) {
         Image(
-            painter = painterResource(R.mipmap.ic_launcher),
+            // CAUSA DEL CIERRE (2026-11-09): painterResource NO puede
+            // cargar un icono adaptativo (ic_launcher.xml): solo acepta
+            // VectorDrawable o imágenes (PNG/JPG/WEBP) y tumbaba la app
+            // antes del primer fotograma. Se usa el PNG del frente del
+            // icono (ic_launcher_foreground), que es la imagen real.
+            painter = painterResource(R.mipmap.ic_launcher_foreground),
             contentDescription = "Aurora Player",
             modifier = Modifier.size(128.dp).clip(RoundedCornerShape(28.dp)),
         )
