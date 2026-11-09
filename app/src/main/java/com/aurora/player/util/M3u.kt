@@ -3,8 +3,10 @@ package com.aurora.player.util
 /**
  * Aurora Player — M3U (Etapa 1: export; import en Etapa 1, XSPF/WPL/PLS en 1b).
  * Formato real: líneas #EXTINF:<segundos>,<artista> - <título> + ruta.
- * Las rutas se escriben relativas a la carpeta de la playlist cuando se
- * puede; al importar, solo entran las pistas que existen de verdad.
+ * Las rutas se escriben ABSOLUTAS (la del archivo en el teléfono):
+ * al exportar con el selector del sistema no se conoce la carpeta
+ * destino, así que no se pueden escribir relativas. Al importar,
+ * solo entran las pistas que existen de verdad.
  */
 object M3u {
     data class Entry(val seconds: Long, val title: String, val path: String)
