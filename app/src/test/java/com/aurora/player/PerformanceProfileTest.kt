@@ -1,6 +1,7 @@
 package com.aurora.player
 
 import com.aurora.player.model.PerformanceProfile
+import com.aurora.player.model.applyTo
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.util.resolveEffective
