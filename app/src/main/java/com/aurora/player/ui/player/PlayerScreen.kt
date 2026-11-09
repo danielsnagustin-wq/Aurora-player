@@ -1,6 +1,5 @@
-package com.aurora.player.ui.player
-
 @file:OptIn(ExperimentalFoundationApi::class)
+package com.aurora.player.ui.player
 
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
