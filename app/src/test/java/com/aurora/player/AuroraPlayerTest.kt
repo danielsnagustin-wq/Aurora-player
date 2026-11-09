@@ -18,7 +18,11 @@ import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.audio.suggestCurve
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.trackAndDisc
+import com.aurora.player.model.CardStyle
 import com.aurora.player.ui.theme.CoverColors
+import com.aurora.player.ui.theme.cardBackground
+import com.aurora.player.ui.theme.cardBorder
+import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
 import com.aurora.player.ui.stats.SongInfo
@@ -638,5 +642,28 @@ class AuroraPlayerTest {
         assertEquals(0f, CoverColors.hueOf(255, 0, 0), 1f)
         assertEquals(120f, CoverColors.hueOf(0, 255, 0), 1f)
         assertEquals(240f, CoverColors.hueOf(0, 0, 255), 1f)
+    }
+
+    // DISEÑO PREMIUM (spec 003): estilo de tarjetas y radio.
+    @Test
+    fun estiloDeTarjetas() {
+        val surface = androidx.compose.ui.graphics.Color(0xFF111111)
+        val outline = androidx.compose.ui.graphics.Color(0xFF888888)
+        assertEquals(surface, cardBackground(CardStyle.SOLID, surface))
+        assertEquals(0.45f, cardBackground(CardStyle.GLASS, surface).alpha, 0.01f)
+        assertEquals(
+            androidx.compose.ui.graphics.Color.Transparent,
+            cardBackground(CardStyle.OUTLINE, surface),
+        )
+        assertNull(cardBorder(CardStyle.SOLID, outline))
+        assertNotNull(cardBorder(CardStyle.GLASS, outline))
+        assertNotNull(cardBorder(CardStyle.OUTLINE, outline))
+    }
+
+    @Test
+    fun radioDeEsquinasLimitado() {
+        assertEquals(cornerRadiusShape(0), cornerRadiusShape(-5))
+        assertEquals(cornerRadiusShape(28), cornerRadiusShape(99))
+        assertEquals(cornerRadiusShape(16), cornerRadiusShape(16))
     }
 }

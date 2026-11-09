@@ -1,7 +1,9 @@
 package com.aurora.player.ui.theme
 
 import android.os.Build
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +19,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
@@ -288,4 +291,22 @@ fun coverShapeToCornerPercent(shape: CoverShape): Int = when (shape) {
 fun listDensityToRowHeightDp(density: ListDensity): Int = when (density) {
     ListDensity.COMPACT -> 52
     ListDensity.COMFORTABLE -> 72
+}
+
+/** Radio de esquinas de tarjetas (spec 003): 0..28 dp, desde Ajustes. */
+fun cornerRadiusShape(cornerDp: Int): RoundedCornerShape =
+    RoundedCornerShape(cornerDp.coerceIn(0, 28).dp)
+
+/** Fondo de tarjeta según el estilo elegido (spec 003). */
+fun cardBackground(style: CardStyle, surface: Color): Color = when (style) {
+    CardStyle.SOLID -> surface
+    CardStyle.GLASS -> surface.copy(alpha = 0.45f)
+    CardStyle.OUTLINE -> Color.Transparent
+}
+
+/** Borde de tarjeta según el estilo; null en sólido (sin borde). */
+fun cardBorder(style: CardStyle, outline: Color): BorderStroke? = when (style) {
+    CardStyle.SOLID -> null
+    CardStyle.GLASS -> BorderStroke(1.dp, outline.copy(alpha = 0.25f))
+    CardStyle.OUTLINE -> BorderStroke(1.dp, outline.copy(alpha = 0.45f))
 }

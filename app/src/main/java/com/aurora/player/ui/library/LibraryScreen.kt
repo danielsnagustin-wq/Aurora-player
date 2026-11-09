@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,7 +55,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Tab
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,6 +77,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
@@ -85,8 +91,14 @@ import com.aurora.player.model.Song
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.start.StartScreen
+import com.aurora.player.ui.theme.LocalAlbumGrid
+import com.aurora.player.ui.theme.LocalCardStyle
+import com.aurora.player.ui.theme.LocalCornerRadiusDp
 import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalListDensity
+import com.aurora.player.ui.theme.cardBackground
+import com.aurora.player.ui.theme.cardBorder
+import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.util.ErrorLog
@@ -448,6 +460,57 @@ private fun AlbumsTab(
         Text("No hay álbumes.", modifier = Modifier.padding(16.dp))
         return
     }
+    // DISEÑO PREMIUM (spec 003): cuadrícula de 2 columnas cuando el
+    // interruptor está encendido; lista cuando está apagado.
+    if (LocalAlbumGrid.current) {
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            gridItems(albums, key = { it.id }) { album ->
+                val coverSong = songs.firstOrNull { it.albumId == album.id }
+                Surface(
+                    color = cardBackground(
+                        LocalCardStyle.current,
+                        MaterialTheme.colorScheme.surface,
+                    ),
+                    shape = cornerRadiusShape(LocalCornerRadiusDp.current),
+                    border = cardBorder(
+                        LocalCardStyle.current,
+                        MaterialTheme.colorScheme.outline,
+                    ),
+                    modifier = Modifier.clickable { onAlbumClick(album) },
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        if (coverSong != null) AlbumCover(coverSong, size = 160.dp)
+                        Text(
+                            album.name,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                        Text(
+                            "${album.artist} · ${album.songCount} canciones",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                    }
+                }
+            }
+        }
+        return
+    }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(albums, key = { it.id }) { album ->
             val coverSong = songs.firstOrNull { it.albumId == album.id }
@@ -490,21 +553,35 @@ private fun GenresTab(
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(genres, key = { it.first }) { (name, count) ->
-            ListItem(
-                headlineContent = {
-                    Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                },
-                supportingContent = {
-                    Text(
-                        "$count canciones",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                modifier = Modifier.clickable { onGenreClick(name) },
-            )
-            Divider()
+            // DISEÑO PREMIUM (spec 003): cada género es una tarjeta
+            // con el estilo y el radio elegidos en Ajustes.
+            Surface(
+                color = cardBackground(
+                    LocalCardStyle.current,
+                    MaterialTheme.colorScheme.surface,
+                ),
+                shape = cornerRadiusShape(LocalCornerRadiusDp.current),
+                border = cardBorder(
+                    LocalCardStyle.current,
+                    MaterialTheme.colorScheme.outline,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                ListItem(
+                    headlineContent = {
+                        Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    },
+                    supportingContent = {
+                        Text(
+                            "$count canciones",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    },
+                    modifier = Modifier.clickable { onGenreClick(name) },
+                )
+            }
         }
     }
 }
