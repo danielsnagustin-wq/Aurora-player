@@ -41,6 +41,11 @@ import com.aurora.player.lyrics.resolveLyrics
 import com.aurora.player.online.AudioFormat
 import com.aurora.player.online.JsonParseException
 import com.aurora.player.online.JsonParser
+import com.aurora.player.online.arr
+import com.aurora.player.online.bool
+import com.aurora.player.online.long
+import com.aurora.player.online.obj
+import com.aurora.player.online.str
 import com.aurora.player.online.PLAYER_CLIENTS
 import com.aurora.player.online.SEARCH_CLIENT
 import com.aurora.player.online.buildPlayerBody
