@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Style
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -64,10 +65,15 @@ import com.aurora.player.alarm.AlarmScreen
 import com.aurora.player.data.BackupData
 import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.FolderStore
+import com.aurora.player.data.LibraryPrefsStore
+import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.data.validateBackup
 import com.aurora.player.model.CardStyle
+import com.aurora.player.model.MAX_THEMES
+import com.aurora.player.model.ThemePreset
+import com.aurora.player.model.themePresetFromJsonValue
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
@@ -77,6 +83,7 @@ import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
+import com.aurora.player.online.JsonParser
 import com.aurora.player.ui.theme.PureBlack
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.ui.theme.brightnessOf
@@ -125,6 +132,21 @@ fun SettingsScreen(
     // AIMP/Musicolet: null muestra la lista de categorías; al tocar
     // una se abre solo esa sección.
     var section by remember { mutableStateOf<SettingsSection?>(null) }
+    // SPEC 007 (2026-11-09): editor de color + Mis temas.
+    val presetStore = remember { ThemePresetStore(context) }
+    val savedThemes by presetStore.themesFlow.collectAsState(initial = emptyList())
+    val recentColors by presetStore.recentColorsFlow.collectAsState(initial = emptyList())
+    var editingColor by remember { mutableStateOf<String?>(null) }
+    var previewMode by remember { mutableStateOf(0) } // 0 biblioteca, 1 reproductor
+    var themeImportMessage by remember { mutableStateOf<String?>(null) }
+    // RONDA 2: inicio personalizable (pestañas visibles + portada en fila).
+    val libraryPrefs = remember { LibraryPrefsStore(context) }
+    val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
+        initial = LibraryPrefsStore.ALL_TABS,
+    )
+    val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
+        initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    )
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
@@ -240,8 +262,83 @@ fun SettingsScreen(
             Text("HEX no válido: usa #RRGGBB con 6 cifras hexadecimales.")
         }
 
+        // SPEC 007: cada color en su fila compacta (muestra + nombre
+        // + HEX); tocar abre el picker avanzado (HEX/RGB/HSL).
+        Text("Colores", modifier = Modifier.padding(top = 16.dp))
+        Text("Toca un color para afinarlo. Cada cambio se aplica al instante y se guarda solo.")
+        ColorRow("Color principal (acento)", applied.accentHex) { editingColor = "accent" }
+        ColorRow("Fondo", applied.backgroundHex) { editingColor = "background" }
+        ColorRow("Tarjeta", applied.cardHex) { editingColor = "card" }
+        ColorRow("Texto", applied.textHex) { editingColor = "text" }
+        ColorRow("Texto secundario", applied.secondaryTextHex) { editingColor = "secondaryText" }
+        ColorRow("Botón", applied.buttonHex) { editingColor = "button" }
+        ColorRow("Barra del reproductor", applied.playerBarHex) { editingColor = "playerBar" }
+        ColorRow("Color secundario", applied.visualizerHex) { editingColor = "visualizer" }
+        Text("El color secundario tiñe detalles y acentos secundarios; también será el color del visualizador cuando llegue.")
+        val editing = editingColor
+        if (editing != null) {
+            val currentHex = when (editing) {
+                "accent" -> applied.accentHex
+                "background" -> applied.backgroundHex
+                "card" -> applied.cardHex
+                "text" -> applied.textHex
+                "secondaryText" -> applied.secondaryTextHex
+                "button" -> applied.buttonHex
+                "playerBar" -> applied.playerBarHex
+                else -> applied.visualizerHex
+            }
+            ColorPickerDialog(
+                currentHex = currentHex,
+                recentColors = recentColors,
+                onDismiss = { editingColor = null },
+                onConfirm = { hex ->
+                    val next = when (editing) {
+                        "accent" -> applied.copy(accentHex = hex)
+                        "background" -> applied.copy(backgroundHex = hex)
+                        "card" -> applied.copy(cardHex = hex)
+                        "text" -> applied.copy(textHex = hex)
+                        "secondaryText" -> applied.copy(secondaryTextHex = hex)
+                        "button" -> applied.copy(buttonHex = hex)
+                        "playerBar" -> applied.copy(playerBarHex = hex)
+                        else -> applied.copy(visualizerHex = hex)
+                    }
+                    save(next)
+                    scope.launch { presetStore.addRecentColor(hex) }
+                    editingColor = null
+                },
+            )
+        }
+
         Text("Así se ve ahora", modifier = Modifier.padding(top = 16.dp))
-        PreviewCard(applied)
+        Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            if (previewMode == 0) {
+                Button(
+                    onClick = { previewMode = 0 },
+                    colors = auroraButtonColors(),
+                    modifier = Modifier.weight(1f),
+                ) { Text("Biblioteca") }
+            } else {
+                OutlinedButton(
+                    onClick = { previewMode = 0 },
+                    modifier = Modifier.weight(1f),
+                ) { Text("Biblioteca") }
+            }
+            if (previewMode == 1) {
+                Button(
+                    onClick = { previewMode = 1 },
+                    colors = auroraButtonColors(),
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                ) { Text("Reproductor") }
+            } else {
+                OutlinedButton(
+                    onClick = { previewMode = 1 },
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                ) { Text("Reproductor") }
+            }
+        }
+        Box(Modifier.padding(top = 8.dp)) {
+            if (previewMode == 0) MiniLibraryPreview(applied) else MiniPlayerPreview(applied)
+        }
 
         Text("Tamaño de texto", modifier = Modifier.padding(top = 16.dp))
         FlowRow(
@@ -777,6 +874,49 @@ fun SettingsScreen(
             "Se aplica al volver a escanear la biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        Text("Pestañas visibles", modifier = Modifier.padding(top = 16.dp))
+        Text("Elige qué pestañas se ven en el inicio. Siempre queda al menos una visible.")
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            for ((index, label) in listOf(
+                "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
+            ).withIndex()) {
+                if (index in visibleTabs) {
+                    Button(
+                        onClick = { scope.launch { libraryPrefs.setTabVisible(index, false) } },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { scope.launch { libraryPrefs.setTabVisible(index, true) } }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        Text("Tamaño de portada en la fila", modifier = Modifier.padding(top = 16.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            for ((dp, label) in listOf(
+                32 to "Pequeña", 40 to "Normal", 56 to "Grande", 72 to "Muy grande",
+            )) {
+                if (rowCoverDp == dp) {
+                    Button(
+                        onClick = { scope.launch { libraryPrefs.setRowCoverSize(dp) } },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { scope.launch { libraryPrefs.setRowCoverSize(dp) } }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
         }
 
         if (section == SettingsSection.NETWORK) {
@@ -973,6 +1113,90 @@ fun SettingsScreen(
         }
         }
 
+        if (section == SettingsSection.THEMES) {
+        Text("Mis temas", modifier = Modifier.padding(top = 16.dp))
+        Text("Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.")
+        val pickTheme = rememberLauncherForActivityResult(
+            ActivityResultContracts.OpenDocument(),
+        ) { uri ->
+            if (uri == null) return@rememberLauncherForActivityResult
+            scope.launch {
+                val text = try {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                } catch (_: Exception) {
+                    null
+                }
+                if (text == null) {
+                    themeImportMessage = "No se pudo leer ese archivo."
+                    return@launch
+                }
+                val preset = try {
+                    themePresetFromJsonValue(JsonParser.parse(text))
+                } catch (_: Exception) {
+                    null
+                }
+                if (preset == null) {
+                    themeImportMessage = "Ese archivo no es un tema de Aurora Player."
+                    return@launch
+                }
+                val name = if (savedThemes.any { it.name == preset.name }) {
+                    "${preset.name} (2)"
+                } else {
+                    preset.name
+                }
+                presetStore.saveThemes((savedThemes + preset.copy(name = name)).takeLast(MAX_THEMES))
+                themeImportMessage = "Tema \"$name\" importado."
+            }
+        }
+        ThemePresetsSection(
+            presets = savedThemes,
+            onApply = { save(it.settings) },
+            onSave = { name ->
+                scope.launch {
+                    val updated = (savedThemes.filter { it.name != name } + ThemePreset(name, applied))
+                        .takeLast(MAX_THEMES)
+                    presetStore.saveThemes(updated)
+                }
+            },
+            onRename = { preset, name ->
+                scope.launch {
+                    presetStore.saveThemes(
+                        savedThemes.map { if (it.name == preset.name) it.copy(name = name) else it },
+                    )
+                }
+            },
+            onDelete = { preset ->
+                scope.launch {
+                    presetStore.saveThemes(savedThemes.filter { it.name != preset.name })
+                }
+            },
+            onDuplicate = { preset ->
+                scope.launch {
+                    var name = "${preset.name} (copia)"
+                    var n = 2
+                    while (savedThemes.any { it.name == name }) {
+                        name = "${preset.name} (copia $n)"
+                        n++
+                    }
+                    presetStore.saveThemes(
+                        (savedThemes + preset.copy(name = name)).takeLast(MAX_THEMES),
+                    )
+                }
+            },
+            onExport = { preset ->
+                scope.launch {
+                    val result = exportThemeFile(context, preset)
+                    themeImportMessage = result.fold(
+                        onSuccess = { "Tema exportado en $it." },
+                        onFailure = { "No se pudo exportar el tema." },
+                    )
+                }
+            },
+            onImportClick = { pickTheme.launch(arrayOf("application/json")) },
+            importMessage = themeImportMessage,
+        )
+        }
+
         if (section == SettingsSection.LIBRARY) {
         // SPEC 005 FR-006: carpetas excluidas (se excluyen con
         // mantener pulsado en la pestaña Carpetas; aquí se quitan).
@@ -1011,65 +1235,6 @@ fun SettingsScreen(
  * era lo que se veía en la app. Ahora usa los colores reales del
  * tema, así que la vista previa miente menos: es lo que se ve ahora. */
 @Composable
-private fun PreviewCard(applied: ThemeSettings) {
-    val scheme = MaterialTheme.colorScheme
-    val bg = scheme.background
-    val card = scheme.surface
-    val accent = scheme.primary
-    val text = scheme.onBackground
-    val bar = scheme.surfaceVariant
-    val button = parseHexOrNull(applied.buttonHex) ?: accent
-    // El texto del botón usa contraste real: botón claro -> texto
-    // negro. Antes usaba el color de texto claro sobre botón claro y
-    // no se leía nada.
-    val onButton = if (brightnessOf(button) > 0.5f) PureBlack else Color.White
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).padding(12.dp),
-    ) {
-        Row {
-            Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(accent))
-            Column(Modifier.padding(start = 12.dp)) {
-                Text("Canción de ejemplo", color = text)
-                Text("Artista · Álbum", color = text)
-            }
-        }
-        // Barra de progreso de ejemplo: pista + avance.
-        Box(
-            Modifier.fillMaxWidth().height(8.dp).padding(top = 12.dp)
-                .clip(RoundedCornerShape(4.dp)).background(card),
-        ) {
-            Box(
-                Modifier.fillMaxWidth(0.6f).fillMaxHeight()
-                    .clip(RoundedCornerShape(4.dp)).background(accent),
-            )
-        }
-        // Mini-reproductor de ejemplo: barra + canción + play.
-        Row(
-            Modifier.fillMaxWidth().padding(top = 12.dp)
-                .clip(RoundedCornerShape(20.dp)).background(bar).padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(accent))
-            Column(Modifier.weight(1f).padding(start = 10.dp)) {
-                Text(
-                    "Canción de ejemplo",
-                    color = text,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Text("Artista", color = text, style = MaterialTheme.typography.bodySmall)
-            }
-            Text("▶", color = accent)
-        }
-        Box(
-            Modifier.fillMaxWidth().height(40.dp).padding(top = 8.dp)
-                .clip(RoundedCornerShape(20.dp)).background(button),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("Botón", color = onButton)
-        }
-    }
-}
-
 /**
  * RONDA PULIDO (2026-11-09): categorías de Ajustes estilo
  * AIMP/Musicolet: icono + título + descripción. Cada una abre solo
@@ -1102,7 +1267,7 @@ enum class SettingsSection(
     ),
     LIBRARY(
         "Biblioteca",
-        "Duración mínima y carpetas excluidas",
+        "Duración mínima, pestañas, portadas y carpetas excluidas",
         Icons.Filled.LibraryMusic,
     ),
     NOTIFICATIONS(
@@ -1124,6 +1289,11 @@ enum class SettingsSection(
         "Respaldo",
         "Copia de seguridad y restauración",
         Icons.Filled.Backup,
+    ),
+    THEMES(
+        "Mis temas",
+        "Guarda, aplica y comparte tus temas",
+        Icons.Filled.Style,
     ),
     ADVANCED(
         "Avanzadas",
