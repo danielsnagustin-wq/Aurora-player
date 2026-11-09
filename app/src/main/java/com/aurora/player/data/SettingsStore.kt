@@ -139,6 +139,7 @@ class PlayerSettingsStore(private val context: Context) {
         val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
         val REPLAY_GAIN_MODE = stringPreferencesKey("replay_gain_mode")
         val REPLAY_GAIN_PREAMP = stringPreferencesKey("replay_gain_preamp_db")
+        val CHANNEL_BALANCE = stringPreferencesKey("channel_balance")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause_on_disconnect")
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
@@ -160,6 +161,7 @@ class PlayerSettingsStore(private val context: Context) {
             replayGainMode = (prefs[Keys.REPLAY_GAIN_MODE] ?: d.replayGainMode)
                 .takeIf { it in setOf("off", "track", "album", "smart") } ?: "off",
             replayGainPreAmpDb = (prefs[Keys.REPLAY_GAIN_PREAMP]?.toFloatOrNull() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
+            channelBalance = (prefs[Keys.CHANNEL_BALANCE]?.toFloatOrNull() ?: d.channelBalance).coerceIn(-1f, 1f),
             autoPauseOnDisconnect = prefs[Keys.AUTO_PAUSE] ?: d.autoPauseOnDisconnect,
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
@@ -178,6 +180,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.SKIP_SILENCE] = settings.skipSilence
             prefs[Keys.REPLAY_GAIN_MODE] = settings.replayGainMode
             prefs[Keys.REPLAY_GAIN_PREAMP] = settings.replayGainPreAmpDb.toString()
+            prefs[Keys.CHANNEL_BALANCE] = settings.channelBalance.toString()
             prefs[Keys.AUTO_PAUSE] = settings.autoPauseOnDisconnect
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
