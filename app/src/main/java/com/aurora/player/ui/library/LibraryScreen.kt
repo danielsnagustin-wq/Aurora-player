@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.aurora.player.data.LibraryPrefsStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
@@ -136,6 +137,14 @@ import java.util.Locale
  * nada se borra).
  */
 @Composable
+/**
+ * Pestañas del inicio, en orden. Los índices 0..6 son estables: se
+ * guardan en LibraryPrefsStore (visibles + última abierta).
+ */
+private val LIBRARY_TABS = listOf(
+    "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
+)
+
 fun LibraryScreen(
     hasAudioPermission: Boolean,
     onSongClick: (Song, List<Song>) -> Unit,
@@ -166,7 +175,25 @@ fun LibraryScreen(
     val idFilter by viewModel.idFilter.collectAsState()
     val genreFilter by viewModel.genreFilter.collectAsState()
     val duplicateGroups by viewModel.duplicateGroups.collectAsState()
-    var tab by remember { mutableStateOf(0) }
+    // RONDA 2 (2026-11-09): inicio personalizable. Qué pestañas se
+    // ven, cuál fue la última abierta y qué tamaño tienen las
+    // portadas de las filas. Todo guardado en LibraryPrefsStore.
+    val context = LocalContext.current
+    val libraryPrefs = remember { LibraryPrefsStore(context) }
+    val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
+        initial = LibraryPrefsStore.ALL_TABS,
+    )
+    val lastTab by libraryPrefs.lastTabFlow.collectAsState(initial = 0)
+    val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
+        initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    )
+    var tab by remember(lastTab) {
+        mutableStateOf(lastTab.takeIf { it in visibleTabs } ?: visibleTabs.firstOrNull() ?: 0)
+    }
+    LaunchedEffect(tab) { libraryPrefs.saveLastTab(tab) }
+    LaunchedEffect(visibleTabs) {
+        if (tab !in visibleTabs) tab = visibleTabs.firstOrNull() ?: 0
+    }
     var showDuplicates by remember { mutableStateOf(false) }
     // ETAPA 5: mantener pulsado una canción abre sus Detalles.
     var detailsSong by remember { mutableStateOf<Song?>(null) }
@@ -240,15 +267,16 @@ fun LibraryScreen(
             }
         }
         // 7 pestañas con Online: TabRow las aplastaría; con scroll
-        // caben todas sin recortar los nombres.
-        ScrollableTabRow(selectedTabIndex = tab, edgePadding = 0.dp) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Canciones") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Artistas") })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Álbumes") })
-            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Favoritos") })
-            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("Géneros") })
-            Tab(selected = tab == 5, onClick = { tab = 5 }, text = { Text("Carpetas") })
-            Tab(selected = tab == 6, onClick = { tab = 6 }, text = { Text("Online") })
+        // caben todas sin recortar los nombres. Solo se muestran las
+        // visibles (Ajustes > Biblioteca > Pestañas visibles).
+        val visibleList = LIBRARY_TABS.withIndex().filter { it.index in visibleTabs }
+        ScrollableTabRow(
+            selectedTabIndex = visibleList.indexOfFirst { it.index == tab }.coerceAtLeast(0),
+            edgePadding = 0.dp,
+        ) {
+            for ((index, label) in visibleList) {
+                Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
+            }
         }
         // 002-online-youtube: la pestaña Online no depende de la
         // biblioteca local (funciona hasta sin canciones en el teléfono).
@@ -319,6 +347,7 @@ fun LibraryScreen(
                         onToggleFavorite = { viewModel.toggleFavorite(it) },
                         onSongClick = onSongClick,
                         onDetails = { detailsSong = it },
+                        coverSizeDp = rowCoverDp,
                     )
                     4 -> GenresTab(
                         songs = state.songs,
@@ -470,6 +499,7 @@ private fun SongsTab(
                     onToggleFavorite = { viewModel.toggleFavorite(song.id) },
                     onClick = { onSongClick(song, songs) },
                     onDetails = onDetails,
+                    coverSizeDp = rowCoverDp,
                 )
                 Divider()
             }
@@ -732,6 +762,7 @@ private fun FoldersTab(
                     onToggleFavorite = { onToggleFavorite(song.id) },
                     onClick = { onSongClick(song, here) },
                     onDetails = onDetails,
+                    coverSizeDp = rowCoverDp,
                 )
                 Divider()
             }
@@ -768,6 +799,7 @@ private fun FavoritesTab(
     onToggleFavorite: (Long) -> Unit,
     onSongClick: (Song, List<Song>) -> Unit,
     onDetails: (Song) -> Unit,
+    coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
 ) {
     if (songs.isEmpty()) {
         Text(
@@ -784,6 +816,7 @@ private fun FavoritesTab(
                 onToggleFavorite = { onToggleFavorite(song.id) },
                 onClick = { onSongClick(song, songs) },
                 onDetails = onDetails,
+                coverSizeDp = rowCoverDp,
             )
             Divider()
         }
@@ -797,6 +830,7 @@ private fun SongRow(
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onDetails: (Song) -> Unit = {},
+    coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
 ) {
     // AUDITORÍA (2026-11-09): la densidad "Compacta" no hacía nada:
     // el ListItem de Material 3 impone su propia altura mínima (72 dp
@@ -810,7 +844,7 @@ private fun SongRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AlbumCover(song, size = 40.dp)
+            AlbumCover(song, size = coverSizeDp.dp)
             Column(
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             ) {
@@ -867,7 +901,7 @@ private fun SongRow(
                 )
             }
         },
-        leadingContent = { AlbumCover(song, size = 56.dp) },
+        leadingContent = { AlbumCover(song, size = coverSizeDp.dp) },
         modifier = Modifier
             .heightIn(min = listDensityToRowHeightDp(LocalListDensity.current).dp)
             .combinedClickable(
