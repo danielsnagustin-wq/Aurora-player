@@ -76,6 +76,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Timeline
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
@@ -761,7 +762,13 @@ private fun AuroraApp(
                 currentMediaId = c.currentMediaItem?.mediaId
                 // La ruta de la canción actual, para las letras (.lrc).
                 currentSongPath = meta?.extras?.getString("aurora_path")
-                // Cola persistente: se guarda en cada cambio de pista.
+                // Cola persistente (SPEC 005 FR-002): se guarda aquí
+                // y en cada cambio de cola o al pausar (ver saveQueue).
+                saveQueue(c)
+            }
+
+            /** Guarda la cola actual (ids + índice + posición). */
+            private fun saveQueue(c: MediaController) {
                 scope.launch {
                     queueStore.save(
                         (0 until c.mediaItemCount).mapNotNull {
@@ -778,9 +785,22 @@ private fun AuroraApp(
                 controller?.let { refresh(it) }
             }
 
+            // SPEC 005 FR-002: añadir, quitar, reordenar o sustituir
+            // la cola cambia la línea de tiempo, no la pista actual:
+            // sin esto, lo añadido se perdía al cerrar la app.
+            override fun onTimelineChanged(timeline: Timeline, reason: Int) {
+                controller?.let { refresh(it) }
+            }
+
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
-                if (!playing) finalizeHistory()
+                if (!playing) {
+                    finalizeHistory()
+                    // SPEC 005 FR-002: al pausar, la posición queda
+                    // guardada; sin esto, reabrir retomaba desde el
+                    // último cambio de pista, no desde donde paró.
+                    controller?.let { saveQueue(it) }
+                }
             }
 
             override fun onShuffleModeEnabledChanged(enabled: Boolean) {
