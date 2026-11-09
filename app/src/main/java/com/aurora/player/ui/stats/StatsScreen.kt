@@ -32,6 +32,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Song
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.TimeFormat
@@ -41,6 +42,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -64,6 +66,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db = AuroraDatabase.getInstance(application)
     private val repository = MusicRepository(application)
+    private val playerStore = PlayerSettingsStore(application)
 
     private val _stats = MutableStateFlow<StatsData?>(null)
     val stats: StateFlow<StatsData?> = _stats
@@ -80,7 +83,12 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val data = try {
                 withContext(Dispatchers.IO) {
-                    val songs = if (hasAudioPermission) repository.loadSongs() else emptyList()
+                    // RONDA 3 (2026-11-09): cargaba con la duración
+                    // mínima por defecto (5 s) aunque el usuario
+                    // hubiera elegido otra: "Total de canciones" no
+                    // coincidía con la biblioteca.
+                    val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+                    val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
                     val byId = songs.associateBy { it.id }
                     val dao = db.libraryDao()
                     val top = dao.mostPlayed().take(10).mapNotNull { row ->

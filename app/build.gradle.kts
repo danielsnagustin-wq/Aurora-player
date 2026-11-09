@@ -65,7 +65,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.5")
     implementation("androidx.media3:media3-exoplayer:$media3Version")
     implementation("androidx.media3:media3-session:$media3Version")
-    implementation("androidx.media3:media3-ui:$media3Version")
+    // RONDA 3 (2026-11-09): media3-ui no se usa en ningún archivo
+    // (sin vistas de Media3): dependencia muerta que solo engorda el APK.
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.room:room-ktx:$roomVersion")

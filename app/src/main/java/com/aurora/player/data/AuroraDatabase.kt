@@ -107,7 +107,12 @@ interface LibraryDao {
     @Query("SELECT songId FROM favorites")
     fun favoriteIdsFlow(): Flow<List<Long>>
 
-    @Insert
+    // RONDA 3 (2026-11-09): sin onConflict, dos reproducciones de la
+    // misma canción en el mismo milisegundo (misma PK) tumbaban el
+    // insert con SQLiteConstraintException dentro de una corrutina sin
+    // try/catch: cierre de la app. Imposible en la práctica (30 s
+    // entre reproducciones), pero barato de blindar.
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun addHistory(h: PlayHistoryEntity)
 
     @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")

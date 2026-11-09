@@ -146,10 +146,19 @@ fun AuroraPlayerTheme(
         val custom = parseHexOrNull(hex)
         return if (custom != null && brightnessOf(custom) > 0.5f) custom else default
     }
+    // RONDA 3 (2026-11-09): en modo oscuro el fondo IGNORABA el
+    // color elegido (fijo #121212) y en AMOLED se aceptaba hasta un
+    // fondo claro con texto claro encima, ilegible. Ahora el fondo
+    // elegido vale cuando es oscuro; si es claro, cae al oscuro por
+    // defecto para que el texto se siga leyendo.
+    fun darkOrDefault(hex: String, default: Color): Color {
+        val custom = parseHexOrNull(hex)
+        return if (custom != null && brightnessOf(custom) < 0.5f) custom else default
+    }
     val background = when {
         !useDark -> lightOrDefault(settings.backgroundHex, Color.White)
-        isAmoled -> parseHexOrNull(settings.backgroundHex) ?: PureBlack
-        else -> Color(0xFF121212)
+        isAmoled -> darkOrDefault(settings.backgroundHex, PureBlack)
+        else -> darkOrDefault(settings.backgroundHex, Color(0xFF121212))
     }
     val surface = when {
         !useDark -> lightOrDefault(settings.cardHex, Color(0xFFF2F2F2))
@@ -231,9 +240,11 @@ fun AuroraPlayerTheme(
             tertiary = Turquoise,
             background = background,
             surface = surface,
-            // Sin esto, surfaceVariant cae al lavanda por defecto de
-            // Material 3 (la barra del reproductor se veía lavanda).
-            surfaceVariant = surface,
+            // RONDA 3 (2026-11-09): era `surface` y la barra del
+            // reproductor IGNORABA playerBarHex en modo claro (el
+            // ajuste no hacía nada en claro, igual que en la ronda 1
+            // pasaba con el fondo). Ahora manda el color de la barra.
+            surfaceVariant = playerBar,
             onBackground = onBackground,
             onSurface = onSurface,
             onSurfaceVariant = secondaryText,
