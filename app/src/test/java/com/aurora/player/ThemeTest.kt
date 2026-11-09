@@ -5,7 +5,10 @@ import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.ui.player.SleepTimerOption
+import com.aurora.player.ui.theme.brightnessOf
+import com.aurora.player.ui.theme.contrastOn
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
+import com.aurora.player.ui.theme.darkenForLight
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.ui.theme.parseHexOrNull
 import com.aurora.player.ui.theme.toHex
@@ -78,5 +81,16 @@ class ThemeTest {
         assertEquals(30, SleepTimerOption.MIN_30.minutes)
         assertEquals(60, SleepTimerOption.MIN_60.minutes)
         assertEquals(-1, SleepTimerOption.END_OF_SONG.minutes)
+    }
+
+    @Test
+    fun `darkenForLight oscurece el acento para leerlo en claro`() {
+        val ice = Color(0xFF8CCBEB)
+        val dark = darkenForLight(ice)
+        assertTrue(brightnessOf(dark) < brightnessOf(ice))
+        assertTrue(brightnessOf(dark) < 0.5f)
+        assertEquals(ice.alpha, dark.alpha)
+        assertEquals(Color.Black, darkenForLight(Color.Black))
+        assertEquals(Color.White, contrastOn(dark))
     }
 }
