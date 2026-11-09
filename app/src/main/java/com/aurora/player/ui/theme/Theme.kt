@@ -110,7 +110,10 @@ fun AuroraPlayerTheme(
     val playerBar = if (useDark) parseHexOrNull(settings.playerBarHex) ?: surface else surface
     // Contraste real del texto sobre el color principal: acento claro
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
-    val onPrimary = if (accent.luminance() > 0.5f) PureBlack else Color.White
+    // La luminancia se calcula a mano (Color.luminance() no existe en
+    // esta versión de Compose): brillo percibido 0.299 R + 0.587 G + 0.114 B.
+    val accentBrightness = accent.red * 0.299f + accent.green * 0.587f + accent.blue * 0.114f
+    val onPrimary = if (accentBrightness > 0.5f) PureBlack else Color.White
 
     val colors = if (useDark) {
         darkColorScheme(
