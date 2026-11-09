@@ -32,10 +32,15 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
 
     private val executor = Executors.newSingleThreadExecutor()
 
-    override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap?> {
-        val future = SettableFuture.create<Bitmap?>()
+    override fun supportsMimeType(mimeType: String): Boolean =
+        mimeType.startsWith("image/")
+
+    override fun loadBitmap(uri: Uri): ListenableFuture<Bitmap> {
+        val future = SettableFuture.create<Bitmap>()
         executor.execute {
             try {
+                // SettableFuture.set acepta null (contrato de Media3:
+                // null = no se pudo cargar la portada).
                 future.set(loadSync(uri))
             } catch (_: Exception) {
                 future.set(null)
