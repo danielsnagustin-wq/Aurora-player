@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Divider
@@ -23,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.aurora.player.data.PlaylistEntity
 import com.aurora.player.model.Song
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.util.ErrorLog
@@ -63,9 +66,12 @@ fun PlaylistsScreen(
     var picking by remember { mutableStateOf(false) }
     // ETAPA 5: playlist inteligente seleccionada (solo lectura).
     var smartSelected by remember { mutableStateOf<SmartPlaylist?>(null) }
+    // AUDITORÍA (2026-11-09): borrar una playlist era un toque sin
+    // confirmación y la lista se perdía. Ahora pregunta antes.
+    var playlistToDelete by remember { mutableStateOf<PlaylistEntity?>(null) }
 
-    LaunchedEffect(hasAudioPermission) {
-        viewModel.load(hasAudioPermission)
+    LaunchedEffect(Unit) {
+        viewModel.refresh(hasAudioPermission)
     }
 
     val selected = playlists.firstOrNull { it.id == selectedId }
@@ -186,7 +192,7 @@ fun PlaylistsScreen(
                             )
                         },
                         trailingContent = {
-                            IconButton(onClick = { viewModel.deletePlaylist(playlist.id) }) {
+                            IconButton(onClick = { playlistToDelete = playlist }) {
                                 Icon(Icons.Filled.Delete, contentDescription = "Borrar ${playlist.name}")
                             }
                         },
@@ -196,6 +202,22 @@ fun PlaylistsScreen(
                 }
             }
         }
+    }
+    playlistToDelete?.let { doomed ->
+        AlertDialog(
+            onDismissRequest = { playlistToDelete = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deletePlaylist(doomed.id)
+                    playlistToDelete = null
+                }) { Text("Borrar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { playlistToDelete = null }) { Text("Cancelar") }
+            },
+            title = { Text("Borrar \"${doomed.name}\"") },
+            text = { Text("La playlist se borra del teléfono. Las canciones no se borran, solo la lista.") },
+        )
     }
 }
 
@@ -306,8 +328,23 @@ private fun SongPicker(
     modifier: Modifier = Modifier,
 ) {
     var picked by remember(currentIds) { mutableStateOf(currentIds) }
+    // AUDITORÍA (2026-11-09): buscar una canción entre 1471 sin
+    // buscador era un suplicio. Ahora el picker filtra por texto.
+    var pickerQuery by remember { mutableStateOf("") }
+    val visibleSongs = if (pickerQuery.isBlank()) allSongs else allSongs.filter {
+        it.title.contains(pickerQuery, ignoreCase = true) ||
+            it.artist.contains(pickerQuery, ignoreCase = true) ||
+            it.album.contains(pickerQuery, ignoreCase = true)
+    }
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text("Añadir canciones")
+        OutlinedTextField(
+            value = pickerQuery,
+            onValueChange = { pickerQuery = it },
+            label = { Text("Buscar título, artista o álbum") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
         Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
             Button(
                 onClick = {
@@ -330,9 +367,14 @@ private fun SongPicker(
                 "No hay canciones en la biblioteca todavía.",
                 modifier = Modifier.padding(top = 16.dp),
             )
+        } else if (visibleSongs.isEmpty()) {
+            Text(
+                "Nada coincide con la búsqueda.",
+                modifier = Modifier.padding(top = 16.dp),
+            )
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
-                items(allSongs, key = { it.id }) { song ->
+                items(visibleSongs, key = { it.id }) { song ->
                     val checked = song.id in picked
                     ListItem(
                         headlineContent = {

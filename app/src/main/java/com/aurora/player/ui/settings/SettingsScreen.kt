@@ -302,13 +302,22 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         // reanudar la cola). Todo se guarda al tocar, como el tema.
         Text("Reproducción", modifier = Modifier.padding(top = 16.dp))
         Text("Cómo suena y qué pasa al quitar los auriculares o al reabrir la app.")
+        // El crossfade se guarda al soltar la barra, no a cada paso del
+        // arrastre (antes escribía en DataStore decenas de veces por
+        // arrastre y el servicio reaccionaba a cada una).
+        var crossfade by remember(player.crossfadeSeconds) {
+            mutableStateOf(player.crossfadeSeconds.toFloat())
+        }
         Text(
-            "Crossfade: ${player.crossfadeSeconds} s (0 = apagado)",
+            "Crossfade: ${crossfade.toInt()} s (0 = apagado)",
             modifier = Modifier.padding(top = 8.dp),
         )
         Slider(
-            value = player.crossfadeSeconds.toFloat(),
-            onValueChange = { savePlayer(player.copy(crossfadeSeconds = it.toInt())) },
+            value = crossfade,
+            onValueChange = { crossfade = it },
+            onValueChangeFinished = {
+                savePlayer(player.copy(crossfadeSeconds = crossfade.toInt()))
+            },
             valueRange = 0f..12f,
             steps = 11,
             modifier = Modifier.fillMaxWidth(),
@@ -336,8 +345,41 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        // AUDITORÍA (2026-11-09): los gestos del reproductor existían
+        // pero no se podían apagar; sus ajustes vivían muertos en el
+        // modelo. Ahora cada gesto tiene su interruptor real.
+        Text("Gestos", modifier = Modifier.padding(top = 16.dp))
+        Text("Lo que hace la portada del reproductor al tocarla.")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Deslizar la portada cambia de pista", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.swipeToChangeTrack,
+                onCheckedChange = { savePlayer(player.copy(swipeToChangeTrack = it)) },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Doble toque en la portada marca favorito", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.doubleTapToFavorite,
+                onCheckedChange = { savePlayer(player.copy(doubleTapToFavorite = it)) },
+            )
+        }
+
         TextButton(
-            onClick = { scope.launch { store.resetToDefault() } },
+            onClick = {
+                scope.launch {
+                    store.resetToDefault()
+                    playerStore.resetToDefault()
+                }
+            },
             modifier = Modifier.padding(top = 16.dp),
         ) {
             Text("Restablecer por defecto")
@@ -436,14 +478,19 @@ private fun HexField(label: String, value: String, onChange: (String) -> Unit) {
     }
 }
 
-/** Tarjeta de ejemplo con los colores aplicados: portada, título, botón y barra. */
+/** Tarjeta de ejemplo con los colores aplicados: portada, título, botón y barra.
+ * AUDITORÍA (2026-11-09): antes usaba los HEX crudos (fondo #000000,
+ * texto #DCE8F5) y en modo claro mostraba una tarjeta oscura que NO
+ * era lo que se veía en la app. Ahora usa los colores reales del
+ * tema, así que la vista previa miente menos: es lo que se ve ahora. */
 @Composable
 private fun PreviewCard(applied: ThemeSettings) {
-    val bg = parseHexOrNull(applied.backgroundHex) ?: return
-    val card = parseHexOrNull(applied.cardHex) ?: return
-    val accent = parseHexOrNull(applied.accentHex) ?: return
-    val text = parseHexOrNull(applied.textHex) ?: return
-    val bar = parseHexOrNull(applied.playerBarHex) ?: return
+    val scheme = MaterialTheme.colorScheme
+    val bg = scheme.background
+    val card = scheme.surface
+    val accent = scheme.primary
+    val text = scheme.onBackground
+    val bar = scheme.surfaceVariant
     val button = parseHexOrNull(applied.buttonHex) ?: accent
     // El texto del botón usa contraste real: botón claro -> texto
     // negro. Antes usaba el color de texto claro sobre botón claro y

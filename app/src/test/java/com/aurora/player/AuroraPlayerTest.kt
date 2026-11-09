@@ -2,6 +2,7 @@ package com.aurora.player
 
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.data.trackAndDisc
+import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
@@ -143,5 +144,14 @@ class AuroraPlayerTest {
         assertEquals(-1, swipeDirection(150f))
         assertEquals(0, swipeDirection(50f))
         assertEquals(0, swipeDirection(-99f))
+    }
+
+    @Test
+    fun `la velocidad se lee con sus decimales reales`() {
+        assertEquals("1", formatSpeed(1f))
+        assertEquals("1.25", formatSpeed(1.25f))
+        assertEquals("1.5", formatSpeed(1.5f))
+        assertEquals("0.75", formatSpeed(0.75f))
+        assertEquals("2", formatSpeed(2f))
     }
 }

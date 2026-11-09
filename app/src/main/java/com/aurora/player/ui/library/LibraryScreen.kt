@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +77,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
+import com.aurora.player.model.ListDensity
 import com.aurora.player.model.Song
 import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.theme.LocalCoverShape
@@ -177,10 +179,15 @@ fun LibraryScreen(
                 }
             }
             LibraryUiState.Empty -> {
-                Text(
-                    "No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.",
-                    modifier = Modifier.padding(16.dp),
-                )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.")
+                    // AUDITORÍA (2026-11-09): el texto decía "vuelve a
+                    // escanear" pero NO HABÍA ningún botón para hacerlo.
+                    OutlinedButton(
+                        onClick = { viewModel.refresh() },
+                        modifier = Modifier.padding(top = 16.dp),
+                    ) { Text("Volver a escanear") }
+                }
             }
             is LibraryUiState.Loaded -> {
                 when (tab) {
@@ -275,6 +282,11 @@ private fun SongsTab(
                     Text("Duplicados (${duplicateGroups.size})")
                 }
             }
+            // Volver a escanear: música nueva en el teléfono sin
+            // tener que reiniciar la app.
+            IconButton(onClick = { viewModel.refresh() }) {
+                Icon(Icons.Filled.Refresh, contentDescription = "Volver a escanear")
+            }
             Box {
                 IconButton(onClick = { sortMenuOpen = true }) {
                     Icon(Icons.Filled.Sort, contentDescription = "Ordenar")
@@ -354,7 +366,10 @@ private fun ArtistsTab(
         return
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
-        items(artists, key = { it.id }) { artist ->
+        // La clave es el nombre, no el id: el id es un hashCode del
+        // nombre y dos artistas distintos podrían colisionar y tumbar
+        // la lista ("key was already used").
+        items(artists, key = { it.name }) { artist ->
             ListItem(
                 headlineContent = {
                     Text(artist.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -446,6 +461,47 @@ private fun SongRow(
     onClick: () -> Unit,
     onDetails: (Song) -> Unit = {},
 ) {
+    // AUDITORÍA (2026-11-09): la densidad "Compacta" no hacía nada:
+    // el ListItem de Material 3 impone su propia altura mínima (72 dp
+    // con dos líneas) y el heightIn(52) de fuera no lo encogía. Ahora
+    // compacta es una fila propia de 52 dp; cómoda sigue siendo ListItem.
+    if (LocalListDensity.current == ListDensity.COMPACT) {
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .height(52.dp)
+                .combinedClickable(onClick = onClick, onLongClick = { onDetails(song) })
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AlbumCover(song, size = 40.dp)
+            Column(
+                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+            ) {
+                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "${song.artist} · ${song.album}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                TimeFormat.formatDuration(song.durationMs),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        return
+    }
     ListItem(
         headlineContent = {
             Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -772,10 +828,13 @@ private fun formatDate(millis: Long): String =
     if (millis <= 0) "—"
     else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))
 
-/** Caché pequeña de portadas en memoria (32 álbumes como mucho). */
+/** Caché pequeña de portadas en memoria (16 MB como mucho).
+ * AUDITORÍA (2026-11-09): antes se contaban 32 entradas sin mirar
+ * los bytes: 32 portadas grandes podían ser cientos de MB. */
 private object AlbumArtCache {
-    private val cache = object : LruCache<Long, Bitmap>(32) {
-        override fun sizeOf(key: Long, value: Bitmap): Int = 1
+    private const val MAX_KB = 16 * 1024
+    private val cache = object : LruCache<Long, Bitmap>(MAX_KB) {
+        override fun sizeOf(key: Long, value: Bitmap): Int = value.byteCount / 1024
     }
 
     fun get(albumId: Long): Bitmap? = cache.get(albumId)
