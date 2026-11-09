@@ -45,8 +45,10 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.alarm.AlarmScreen
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
+import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
+import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
@@ -328,6 +330,105 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+
+        // DISEÑO PREMIUM (spec 003): todo personalizable, todo con
+        // efecto real. Cada ajuste se aplica al tocar, como el resto.
+        Text("Diseño", modifier = Modifier.padding(top = 16.dp))
+        Text("Cómo se ve la app: colores que siguen a la portada, fondo del reproductor, tarjetas y esquinas.")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Color dinámico de la portada", modifier = Modifier.weight(1f))
+            Switch(
+                checked = applied.dynamicColor,
+                onCheckedChange = { save(applied.copy(dynamicColor = it)) },
+            )
+        }
+        Text(
+            "El acento del reproductor sigue el color de la portada que suena. Apagado, manda tu color principal.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
+        Text("Fondo del reproductor", modifier = Modifier.padding(top = 16.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((bg, label) in listOf(
+                PlayerBackground.COVER to "Portada",
+                PlayerBackground.GRADIENT to "Degradado",
+                PlayerBackground.SOLID to "Plano",
+            )) {
+                if (applied.playerBackground == bg) {
+                    Button(
+                        onClick = { save(applied.copy(playerBackground = bg)) },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { save(applied.copy(playerBackground = bg)) }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        Text("Estilo de tarjetas", modifier = Modifier.padding(top = 16.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            for ((style, label) in listOf(
+                CardStyle.SOLID to "Sólido",
+                CardStyle.GLASS to "Cristal",
+                CardStyle.OUTLINE to "Contorno",
+            )) {
+                if (applied.cardStyle == style) {
+                    Button(
+                        onClick = { save(applied.copy(cardStyle = style)) },
+                        colors = auroraButtonColors(),
+                    ) { Text(label) }
+                } else {
+                    OutlinedButton(onClick = { save(applied.copy(cardStyle = style)) }) {
+                        Text(label)
+                    }
+                }
+            }
+        }
+        // El radio se guarda al soltar la barra, no a cada paso del
+        // arrastre (como el crossfade: si no, escribe en DataStore
+        // decenas de veces por arrastre).
+        var cornerRadius by remember(applied.cornerRadiusDp) {
+            mutableStateOf(applied.cornerRadiusDp.toFloat())
+        }
+        Text(
+            "Radio de esquinas: ${cornerRadius.toInt()} dp",
+            modifier = Modifier.padding(top = 16.dp),
+        )
+        Slider(
+            value = cornerRadius,
+            onValueChange = { cornerRadius = it },
+            onValueChangeFinished = {
+                save(applied.copy(cornerRadiusDp = cornerRadius.toInt()))
+            },
+            valueRange = 0f..28f,
+            steps = 27,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Álbumes en cuadrícula", modifier = Modifier.weight(1f))
+            Switch(
+                checked = applied.albumGrid,
+                onCheckedChange = { save(applied.copy(albumGrid = it)) },
+            )
+        }
+        Text(
+            "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
+            modifier = Modifier.padding(top = 4.dp),
+        )
 
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.

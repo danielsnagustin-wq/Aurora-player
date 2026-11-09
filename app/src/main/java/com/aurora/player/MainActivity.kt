@@ -47,6 +47,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -97,6 +98,11 @@ import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
+import com.aurora.player.ui.theme.LocalCardStyle
+import com.aurora.player.ui.theme.LocalCornerRadiusDp
+import com.aurora.player.ui.theme.cardBackground
+import com.aurora.player.ui.theme.cardBorder
+import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.LyricsOffsetStore
@@ -1005,10 +1011,24 @@ private fun AuroraApp(
             Column {
                 val title = currentTitle
                 if (title != null) {
+                    // DISEÑO PREMIUM (spec 003): la mini-barra es una
+                    // tarjeta con el estilo y el radio elegidos.
+                    Surface(
+                        color = cardBackground(
+                            LocalCardStyle.current,
+                            MaterialTheme.colorScheme.surfaceVariant,
+                        ),
+                        shape = cornerRadiusShape(LocalCornerRadiusDp.current),
+                        border = cardBorder(
+                            LocalCardStyle.current,
+                            MaterialTheme.colorScheme.outline,
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .clickable { showPlayer = true },
+                    ) {
                     Row(
                         modifier = Modifier.fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { showPlayer = true }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -1044,6 +1064,7 @@ private fun AuroraApp(
                                 contentDescription = if (isPlaying) "Pausar" else "Reproducir",
                             )
                         }
+                    }
                     }
                 }
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
