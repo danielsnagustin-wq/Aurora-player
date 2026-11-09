@@ -67,6 +67,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var virtualizer by remember { mutableStateOf(0f) }
     var selectedPreset by remember { mutableStateOf<String?>(null) }
     var newPresetName by remember { mutableStateOf("") }
+    // RONDA 7 P1: asistente de EQ + gráfica de respuesta.
+    var showWizard by remember { mutableStateOf(false) }
 
     /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
     fun persist() {
@@ -130,6 +132,23 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             )
             return@Column
         }
+        if (showWizard) {
+            EqWizardScreen(
+                manager = manager,
+                onClose = { showWizard = false },
+                onApplyCurve = { curve ->
+                    if (!enabled) {
+                        enabled = true
+                        manager.setEnabled(true)
+                    }
+                    manager.applyPreset(EqualizerManager.Preset("Asistente", curve))
+                    levels = curve
+                    selectedPreset = null
+                    persist()
+                },
+            )
+            return@Column
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -145,6 +164,13 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     persist()
                 },
             )
+        }
+
+        OutlinedButton(
+            onClick = { showWizard = true },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+            Text("Asistente de EQ")
         }
 
         val freqs = manager.bandFrequenciesHz
