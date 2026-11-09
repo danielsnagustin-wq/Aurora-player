@@ -3,6 +3,7 @@ package com.aurora.player
 import android.Manifest
 import android.content.ContentUris
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -149,20 +150,24 @@ class MainActivity : ComponentActivity() {
         const val ACTION_WIDGET_OPEN = "com.aurora.player.WIDGET_OPEN"
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        // Botones del teléfono ocultos mientras se usa la app: la barra
-        // de navegación se esconde y vuelve con un deslizamiento desde
-        // el borde inferior.
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.navigationBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
-        handleWidgetAction(intent)
-        // Registro de errores (depuración, se quitará en el release):
-        // un cierre inesperado queda guardado y sanitizado en el
-        // teléfono, y se puede ver y compartir desde Ajustes.
+    override fun attachBaseContext(newBase: Context?) {
+        super.attachBaseContext(newBase)
+        // BISECCIÓN DEL CIERRE (2026-11-09): la APK #105 tampoco abre
+        // y la pantalla de diagnóstico ni aparece — o el cierre es
+        // ANTES de instalar el handler en onCreate, o no queda registro
+        // (proceso matado sin excepción). Por eso el handler se instala
+        // aquí (lo primero que corre de la Activity) y cada paso del
+        // arranque deja una marca en el registro. La próxima apertura
+        // muestra hasta dónde llegó, aunque no haya stack trace.
+        ErrorLog.log(this, "BOOT: attach", null)
+        installCrashHandler()
+    }
+
+    private var crashHandlerInstalled = false
+
+    private fun installCrashHandler() {
+        if (crashHandlerInstalled) return
+        crashHandlerInstalled = true
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
@@ -172,13 +177,35 @@ class MainActivity : ComponentActivity() {
             }
             previousHandler?.uncaughtException(thread, throwable)
         }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        installCrashHandler()
+        ErrorLog.log(this, "BOOT: onCreate", null)
+        super.onCreate(savedInstanceState)
+        ErrorLog.log(this, "BOOT: super", null)
+        // Botones del teléfono ocultos mientras se usa la app: la barra
+        // de navegación se esconde y vuelve con un deslizamiento desde
+        // el borde inferior.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+        ErrorLog.log(this, "BOOT: insets", null)
+        handleWidgetAction(intent)
         hasAudioPermission = audioPermissionGranted()
+        ErrorLog.log(this, "BOOT: setContent", null)
         setContent {
+            ErrorLog.log(applicationContext, "BOOT: compose", null)
             // DIAGNÓSTICO DE CIERRE (2026-11-09): si la última vez la
             // app se cerró con un crash, el registro queda en el
             // teléfono y esta pantalla lo muestra ANTES que nada (sin
             // reproductor, sin biblioteca, sin tema: nada de lo que
             // pudo tumbarla). El usuario lo comparte y entra borrándolo.
+            // También se muestra si el arranque anterior se quedó a
+            // medias (hay marcas BOOT: sin un BOOT: OK detrás): eso es
+            // un cierre sin excepción, que no deja stack trace.
             val crashLogFile = ErrorLog.file(applicationContext)
             val crashLogText = remember {
                 try {
@@ -187,8 +214,11 @@ class MainActivity : ComponentActivity() {
                     ""
                 }
             }
+            val lastBootIdx = crashLogText.lastIndexOf("BOOT:")
+            val diedMidBoot = lastBootIdx >= 0 &&
+                !crashLogText.substring(lastBootIdx).startsWith("BOOT: OK")
             var showCrashReport by remember {
-                mutableStateOf(crashLogText.contains("CRASH"))
+                mutableStateOf(crashLogText.contains("CRASH") || diedMidBoot)
             }
             if (showCrashReport) {
                 CrashReportScreen(
@@ -210,6 +240,11 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             } else {
+                // Marca de arranque completo: si la próxima apertura ve
+                // marcas BOOT: sin este OK, el arranque anterior murió.
+                LaunchedEffect(Unit) {
+                    ErrorLog.log(applicationContext, "BOOT: OK", null)
+                }
                 val themeStore = ThemeSettingsStore(applicationContext)
                 val themeSettings by themeStore.settingsFlow.collectAsState(
                     initial = ThemeSettings.DEFAULT,
