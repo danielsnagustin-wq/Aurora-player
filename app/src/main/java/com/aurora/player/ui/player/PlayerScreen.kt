@@ -176,6 +176,11 @@ fun PlayerScreen(
     onDeleteSavedQueue: (Long) -> Unit = {},
     onSavedQueueMessageConsumed: () -> Unit = {},
     lyrics: List<LrcLine> = emptyList(),
+    // RONDA 2 (2026-11-09): línea de calidad real (FLAC/kbps/kHz) y
+    // si el modo online está encendido (para explicar por qué no hay
+    // letras cuando no las hay).
+    qualityText: String? = null,
+    onlineMode: Boolean = false,
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
     isFavorite: Boolean = false,
@@ -348,6 +353,17 @@ fun PlayerScreen(
             Text(
                 album,
                 style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+        if (qualityText != null) {
+            Text(
+                qualityText,
+                style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -567,7 +583,11 @@ fun PlayerScreen(
         if (showLyrics) {
             if (lyrics.isEmpty()) {
                 Text(
-                    "Sin letras para esta canción.",
+                    if (onlineMode) {
+                        "Sin letras para esta canción."
+                    } else {
+                        "Sin letras para esta canción. Activa el Modo online en Ajustes para buscarlas en internet, o pon un archivo .lrc junto a la canción."
+                    },
                     modifier = Modifier.padding(top = 8.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
