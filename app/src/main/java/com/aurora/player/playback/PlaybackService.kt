@@ -25,6 +25,7 @@ import com.aurora.player.MainActivity
 import com.aurora.player.alarm.AlarmScheduler
 import com.aurora.player.alarm.AlarmSettings
 import com.aurora.player.alarm.AlarmSource
+import com.aurora.player.audio.ChannelBalanceAudioProcessor
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.ReplayGainProcessor
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
@@ -113,6 +114,8 @@ class PlaybackService : MediaSessionService() {
     /** Saltar silencio (RONDA 6): procesador en la cadena + ajuste. */
     private var silenceProcessor: SilenceDetectorAudioProcessor? = null
     private var skipSilenceEnabled = false
+    /** Balance L/R (SPEC 005 FR-001): procesador en la cadena. */
+    private var balanceProcessor: ChannelBalanceAudioProcessor? = null
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -136,6 +139,8 @@ class PlaybackService : MediaSessionService() {
         val silenceDetector = SilenceDetectorAudioProcessor(
             onLongSilence = { onLongSilenceDetected() },
         ).also { silenceProcessor = it }
+        // SPEC 005 FR-001: balance L/R, tercer procesador de la cadena.
+        val balance = ChannelBalanceAudioProcessor().also { balanceProcessor = it }
         // RONDA 6 (fix run #68, VERIFICADO EN EL CÓDIGO FUENTE 1.4.1):
         // en 1.4.1 buildAudioSink tiene TRES parámetros (context,
         // enableFloatOutput, enableAudioTrackPlaybackParams) y el
@@ -152,7 +157,7 @@ class PlaybackService : MediaSessionService() {
                 return DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                    .setAudioProcessors(arrayOf(gainProcessor, silenceDetector))
+                    .setAudioProcessors(arrayOf(gainProcessor, silenceDetector, balance))
                     .build()
             }
         }
@@ -193,6 +198,10 @@ class PlaybackService : MediaSessionService() {
                 // RONDA 6: saltar silencio se enciende/apaga en vivo.
                 skipSilenceEnabled = settings.skipSilence
                 silenceProcessor?.enabled = settings.skipSilence
+                // SPEC 005 FR-001: balance L/R en vivo; en 0 el
+                // procesador pasa el audio sin tocarlo.
+                balanceProcessor?.setBalance(settings.channelBalance)
+                balanceProcessor?.enabled = settings.channelBalance != 0f
             }
         }
         // Crossfade real (ETAPA 4): fade-in al cambiar de pista y
