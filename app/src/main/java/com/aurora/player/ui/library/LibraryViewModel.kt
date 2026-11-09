@@ -5,12 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
+import com.aurora.player.data.FolderStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
+import com.aurora.player.model.isInExcludedFolder
 import com.aurora.player.model.matchesSearchQuery
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.Dispatchers
@@ -66,6 +68,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val repository = MusicRepository(application)
     private val playerStore = PlayerSettingsStore(application)
+    private val folderStore = FolderStore(application)
     private val db = AuroraDatabase.getInstance(application)
 
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
@@ -111,7 +114,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _favoriteIds.value = ids.toSet()
             }
         }
+        // SPEC 005 FR-006: si las carpetas excluidas cambian (desde
+        // la pestaña Carpetas o desde Ajustes), recargar la
+        // biblioteca con el nuevo conjunto. La primera emisión no
+        // recarga: todavía no hay nada cargado.
+        viewModelScope.launch {
+            folderStore.excludedFlow.collect { excluded ->
+                if (loaded && excluded != lastExcluded) refresh()
+            }
+        }
     }
+
+    private var lastExcluded: Set<String> = emptySet()
 
     val filteredSongs: StateFlow<List<Song>> =
         combine(
@@ -182,12 +196,21 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         loaded = true
         _uiState.value = LibraryUiState.Loading
         viewModelScope.launch {
+            // SPEC 005 FR-006: leer las carpetas excluidas antes del
+            // escaneo, para filtrarlas fuera de todo.
+            val excluded = folderStore.excludedFlow.first()
+            lastExcluded = excluded
             val (songs, albums, artists) = try {
                 withContext(Dispatchers.IO) {
                     // ETAPA 4: la duración mínima guardada en Ajustes sí se
                     // usa (antes loadSongs() siempre usaba 5 s fijos).
                     val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+                    // SPEC 005 FR-006: las carpetas excluidas no entran
+                    // en ninguna pestaña, ni en la búsqueda, ni en los
+                    // duplicados, ni en la cola (la cola guardada las
+                    // pierde al restaurar, porque ya no están aquí).
                     val loadedSongs = repository.loadSongs(minDurationMs)
+                        .filter { !isInExcludedFolder(it.path, excluded) }
                     Triple(
                         loadedSongs,
                         repository.loadAlbums(loadedSongs),
@@ -210,6 +233,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (songs.isEmpty()) LibraryUiState.Empty
                 else LibraryUiState.Loaded(songs, albums, artists)
         }
+    }
+
+    /** SPEC 005 FR-006: excluir una carpeta (sale de toda la biblioteca). */
+    fun excludeFolder(path: String) {
+        viewModelScope.launch { folderStore.exclude(path) }
     }
 
     fun setQuery(q: String) {
