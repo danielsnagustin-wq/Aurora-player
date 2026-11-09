@@ -562,6 +562,29 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             steps = 11,
             modifier = Modifier.fillMaxWidth(),
         )
+        // SPEC 005 FR-001: balance izquierda/derecha. Se guarda al
+        // soltar la barra, como el crossfade.
+        var balance by remember(player.channelBalance) {
+            mutableStateOf(player.channelBalance)
+        }
+        Text(
+            "Balance: " + when {
+                balance == 0f -> "centro"
+                balance < 0f -> "izquierda ${(-balance * 100).toInt()}%"
+                else -> "derecha ${(balance * 100).toInt()}%"
+            },
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Slider(
+            value = balance,
+            onValueChange = { balance = it },
+            onValueChangeFinished = {
+                savePlayer(player.copy(channelBalance = balance))
+            },
+            valueRange = -1f..1f,
+            steps = 19,
+            modifier = Modifier.fillMaxWidth(),
+        )
         // RONDA 6: ReplayGain de verdad (antes el ajuste existía en
         // el modelo pero nada lo aplicaba). Usa la etiqueta ReplayGain
         // del archivo: sin etiqueta, no cambia el volumen.
