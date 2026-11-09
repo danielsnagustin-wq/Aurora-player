@@ -11,9 +11,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -104,6 +106,7 @@ fun ColorRow(label: String, hex: String, onClick: () -> Unit) {
 
 /** Picker avanzado: pestañas HEX / RGB / HSL + recientes + paletas. */
 @Composable
+@OptIn(ExperimentalLayoutApi::class)
 fun ColorPickerDialog(
     currentHex: String,
     recentColors: List<String>,
@@ -405,9 +408,10 @@ fun MiniLibraryPreview(applied: ThemeSettings) {
             .background(
                 cardBackground(applied.cardStyle, scheme.surface),
             )
-            .border(
-                cardBorder(applied.cardStyle, scheme.outline),
-                cornerRadiusShape(applied.cornerRadiusDp),
+            .then(
+                cardBorder(applied.cardStyle, scheme.outline)?.let {
+                    Modifier.border(it, cornerRadiusShape(applied.cornerRadiusDp))
+                } ?: Modifier,
             )
             .padding(12.dp),
     ) {
@@ -447,9 +451,10 @@ fun MiniPlayerPreview(applied: ThemeSettings) {
             .background(
                 cardBackground(applied.cardStyle, scheme.surface),
             )
-            .border(
-                cardBorder(applied.cardStyle, scheme.outline),
-                cornerRadiusShape(applied.cornerRadiusDp),
+            .then(
+                cardBorder(applied.cardStyle, scheme.outline)?.let {
+                    Modifier.border(it, cornerRadiusShape(applied.cornerRadiusDp))
+                } ?: Modifier,
             )
             .padding(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
