@@ -1,10 +1,15 @@
 package com.aurora.player
 
+import com.aurora.player.audio.BassPref
+import com.aurora.player.audio.EnergyPref
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.TreblePref
 import com.aurora.player.audio.clampGainDb
 import com.aurora.player.audio.dbToLinear
+import com.aurora.player.audio.freqToX
 import com.aurora.player.audio.parseReplayGainDb
 import com.aurora.player.audio.selectReplayGainDb
+import com.aurora.player.audio.suggestCurve
 import com.aurora.player.data.trackAndDisc
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
@@ -210,5 +215,28 @@ class AuroraPlayerTest {
         assertEquals("AAC", codecDisplayName("audio/mp4"))
         assertEquals("WAV", codecDisplayName("audio/x-wav"))
         assertEquals("audio/xyz", codecDisplayName("audio/xyz"))
+    }
+
+    // RONDA 7 P1: asistente de EQ.
+    @Test
+    fun `el asistente propone mas graves en electronica`() {
+        val curve = suggestCurve("Electrónica", BassPref.MORE, TreblePref.BALANCED, EnergyPref.NORMAL)
+        assertEquals(10, curve.size)
+        assertEquals(11f, curve[0], 0.001f) // base 7 + 4
+        assertEquals(7f, curve[9], 0.001f) // base 7, sin cambio de agudos
+    }
+
+    @Test
+    fun `la curva del asistente nunca pasa de 15 dB`() {
+        val curve = suggestCurve("Graves", BassPref.MORE, TreblePref.MORE, EnergyPref.STRONG)
+        assertTrue(curve.all { it in -15f..15f })
+        assertEquals(15f, curve[0], 0.001f) // 8 + 4 = 12, x1.25 = 15
+    }
+
+    @Test
+    fun `la posicion en frecuencia es logaritmica y creciente`() {
+        assertEquals(0f, freqToX(60, 60, 14000), 0.001f)
+        assertEquals(1f, freqToX(14000, 60, 14000), 0.001f)
+        assertTrue(freqToX(1000, 60, 14000) > freqToX(100, 60, 14000))
     }
 }
