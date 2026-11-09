@@ -17,7 +17,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +42,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -169,21 +174,58 @@ class MainActivity : ComponentActivity() {
         }
         hasAudioPermission = audioPermissionGranted()
         setContent {
-            val themeStore = ThemeSettingsStore(applicationContext)
-            val themeSettings by themeStore.settingsFlow.collectAsState(
-                initial = ThemeSettings.DEFAULT,
-            )
-            AuroraPlayerTheme(settings = themeSettings) {
-                if (hasAudioPermission) {
-                    AuroraApp(
-                        hasAudioPermission = hasAudioPermission,
-                        widgetAction = pendingWidgetAction,
-                        onWidgetActionHandled = { pendingWidgetAction = null },
-                    )
-                } else {
-                    WelcomeScreen(
-                        onGrant = { requestAudioPermission() },
-                    )
+            // DIAGNÓSTICO DE CIERRE (2026-11-09): si la última vez la
+            // app se cerró con un crash, el registro queda en el
+            // teléfono y esta pantalla lo muestra ANTES que nada (sin
+            // reproductor, sin biblioteca, sin tema: nada de lo que
+            // pudo tumbarla). El usuario lo comparte y entra borrándolo.
+            val crashLogFile = ErrorLog.file(applicationContext)
+            val crashLogText = remember {
+                try {
+                    crashLogFile.takeIf { it.exists() }?.readText().orEmpty()
+                } catch (_: Exception) {
+                    ""
+                }
+            }
+            var showCrashReport by remember {
+                mutableStateOf(crashLogText.contains("CRASH"))
+            }
+            if (showCrashReport) {
+                CrashReportScreen(
+                    logText = crashLogText,
+                    onShare = { text ->
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, "Aurora Player — registro de cierre")
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        startActivity(Intent.createChooser(intent, "Compartir registro"))
+                    },
+                    onDismiss = {
+                        try {
+                            crashLogFile.delete()
+                        } catch (_: Exception) {
+                        }
+                        showCrashReport = false
+                    },
+                )
+            } else {
+                val themeStore = ThemeSettingsStore(applicationContext)
+                val themeSettings by themeStore.settingsFlow.collectAsState(
+                    initial = ThemeSettings.DEFAULT,
+                )
+                AuroraPlayerTheme(settings = themeSettings) {
+                    if (hasAudioPermission) {
+                        AuroraApp(
+                            hasAudioPermission = hasAudioPermission,
+                            widgetAction = pendingWidgetAction,
+                            onWidgetActionHandled = { pendingWidgetAction = null },
+                        )
+                    } else {
+                        WelcomeScreen(
+                            onGrant = { requestAudioPermission() },
+                        )
+                    }
                 }
             }
         }
@@ -308,6 +350,62 @@ private fun FeatureRow(text: String) {
             modifier = Modifier.size(20.dp),
         )
         Text(text, modifier = Modifier.padding(start = 8.dp))
+    }
+}
+
+/**
+ * DIAGNÓSTICO DE CIERRE (2026-11-09): pantalla mínima que se muestra
+ * al abrir si la última vez hubo un crash. No usa el tema propio, ni
+ * el reproductor, ni la biblioteca: solo texto plano con el registro
+ * (ya sanitizado: sin rutas, sin nombres de canciones) y dos botones:
+ * compartirlo y borrarlo para entrar. Sin esta pantalla, un crash al
+ * abrir no se puede diagnosticar desde el teléfono.
+ */
+@Composable
+private fun CrashReportScreen(
+    logText: String,
+    onShare: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(16.dp),
+    ) {
+        Text(
+            "Aurora Player se cerró la última vez",
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Text(
+            "Este es el registro del cierre. Compártelo con Aurora para que lo arregle. No lleva tus datos personales: las rutas y los nombres van sanitizados.",
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Box(
+            modifier = Modifier.weight(1f)
+                .padding(top = 12.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            SelectionContainer {
+                Text(
+                    logText.ifBlank { "(registro vacío)" },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Button(
+                onClick = { onShare(logText) },
+                modifier = Modifier.weight(1f),
+            ) { Text("Compartir") }
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+            ) { Text("Borrar y entrar") }
+        }
     }
 }
 
