@@ -766,6 +766,20 @@ fun SettingsScreen(
                 onCheckedChange = { savePlayer(player.copy(autoPauseOnDisconnect = it)) },
             )
         }
+        // Fase 1b: reproducir al conectar auriculares/BT (OFF por
+        // defecto). Reanuda si hay una canción cargada en pausa; sin
+        // canción no hace nada y si la app se cerró del todo, tampoco.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Reproducir al conectar auriculares o Bluetooth", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.autoplayOnConnect,
+                onCheckedChange = { savePlayer(player.copy(autoplayOnConnect = it)) },
+            )
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
