@@ -1,5 +1,6 @@
 package com.aurora.player
 
+import android.net.Uri
 import com.aurora.player.audio.BassPref
 import com.aurora.player.audio.EnergyPref
 import com.aurora.player.audio.EqualizerManager
@@ -10,9 +11,13 @@ import com.aurora.player.audio.freqToX
 import com.aurora.player.audio.parseReplayGainDb
 import com.aurora.player.audio.selectReplayGainDb
 import com.aurora.player.audio.suggestCurve
+import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.trackAndDisc
+import com.aurora.player.model.Song
 import com.aurora.player.ui.player.formatSpeed
 import com.aurora.player.ui.player.swipeDirection
+import com.aurora.player.ui.stats.computeYearStats
+import com.aurora.player.ui.stats.yearRange
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.M3u
 import com.aurora.player.util.TimeFormat
@@ -238,5 +243,59 @@ class AuroraPlayerTest {
         assertEquals(0f, freqToX(60, 60, 14000), 0.001f)
         assertEquals(1f, freqToX(14000, 60, 14000), 0.001f)
         assertTrue(freqToX(1000, 60, 14000) > freqToX(100, 60, 14000))
+    }
+
+    // RONDA 7 P3: Tu año.
+    @Test
+    fun `el rango de un anio empieza el 1 de enero a las cero`() {
+        val (start, end) = yearRange(2026)
+        val cal = java.util.Calendar.getInstance()
+        cal.timeInMillis = start
+        assertEquals(2026, cal.get(java.util.Calendar.YEAR))
+        assertEquals(java.util.Calendar.JANUARY, cal.get(java.util.Calendar.MONTH))
+        assertEquals(1, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(0, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        cal.timeInMillis = end
+        assertEquals(2027, cal.get(java.util.Calendar.YEAR))
+        assertEquals(java.util.Calendar.JANUARY, cal.get(java.util.Calendar.MONTH))
+    }
+
+    @Test
+    fun `tu anio resume el historial del anio`() {
+        val (start, end) = yearRange(2026)
+        val dayMs = 24L * 60 * 60 * 1000
+        val songs = mapOf(
+            1L to Song(1, "A", "X", "Alb", 0, 180000, "/a.mp3", Uri.EMPTY, "audio/mpeg", 1000, 0, genre = "Electrónica"),
+            2L to Song(2, "B", "Y", "Alb", 0, 180000, "/b.mp3", Uri.EMPTY, "audio/mpeg", 1000, 0, genre = "Rock"),
+        )
+        val history = listOf(
+            PlayHistoryEntity(1, start + 5 * dayMs, 60000),
+            PlayHistoryEntity(1, start + 6 * dayMs, 60000),
+            PlayHistoryEntity(2, start + 6 * dayMs, 45000),
+            PlayHistoryEntity(1, start - dayMs, 60000), // 2025: fuera del año
+        )
+        val inYear = history.filter { it.playedAt in start until end }
+        val stats = computeYearStats(2026, inYear, songs)
+        assertEquals(3, stats.totalPlays)
+        assertEquals(165000L, stats.totalListenedMs)
+        assertEquals("A", stats.topSongs[0].first.title)
+        assertEquals(2, stats.topSongs[0].second)
+        assertEquals("X", stats.topArtists[0].first)
+        assertEquals("Electrónica", stats.topGenres[0].first)
+        assertEquals(2, stats.distinctDays)
+        assertEquals(listOf(1L, 2L), stats.topSongIds)
+    }
+
+    @Test
+    fun `tu anio cuenta canciones borradas solo en los totales`() {
+        val (start, _) = yearRange(2026)
+        val stats = computeYearStats(
+            2026,
+            listOf(PlayHistoryEntity(99, start + 1000, 60000)),
+            emptyMap(),
+        )
+        assertEquals(1, stats.totalPlays)
+        assertTrue(stats.topSongs.isEmpty())
+        assertTrue(stats.topSongIds.isEmpty())
     }
 }
