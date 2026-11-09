@@ -1,11 +1,19 @@
 package com.aurora.player.ui.stats
 
 import android.app.Application
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -14,7 +22,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
@@ -25,6 +35,9 @@ import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.model.Song
 import com.aurora.player.util.TimeFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +56,8 @@ data class StatsData(
     val mostPlayed: List<Pair<Song, Int>>,
     val favoriteCount: Int,
     val totalSongs: Int,
+    /** Reproducciones por día, últimos 7 días, del más viejo al de hoy. */
+    val playsLast7Days: List<Int> = List(7) { 0 },
 )
 
 class StatsViewModel(application: Application) : AndroidViewModel(application) {
@@ -74,12 +89,21 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 val top = dao.mostPlayed().take(10).mapNotNull { row ->
                     byId[row.songId]?.let { it to row.c }
                 }
+                // Gráfico semanal: reproducciones por día, últimos 7 días.
+                val now = System.currentTimeMillis()
+                val dayMs = 24L * 60 * 60 * 1000
+                val perDay = MutableList(7) { 0 }
+                for (ts in dao.historyPlayedAt()) {
+                    val daysAgo = ((now - ts) / dayMs).toInt()
+                    if (daysAgo in 0..6) perDay[6 - daysAgo]++
+                }
                 StatsData(
                     totalPlays = dao.totalPlays(),
                     totalListenedMs = dao.totalListenedMs(),
                     mostPlayed = top,
                     favoriteCount = dao.favoriteIds().size,
                     totalSongs = songs.size,
+                    playsLast7Days = perDay,
                 )
             }
             _stats.value = data
@@ -109,6 +133,42 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
         Text("${data.totalPlays} reproducciones", modifier = Modifier.padding(top = 16.dp))
         Text("Tiempo escuchado: ${TimeFormat.formatTotalListened(data.totalListenedMs)}")
         Text("${data.favoriteCount} favoritas · ${data.totalSongs} canciones en la biblioteca")
+        // Gráfico semanal (idea open source, Namida): reproducciones
+        // por día, últimos 7 días, con datos reales del historial.
+        if (data.playsLast7Days.any { it > 0 }) {
+            Text(
+                "Últimos 7 días",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            val max = (data.playsLast7Days.maxOrNull() ?: 0).coerceAtLeast(1)
+            Row(
+                modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                data.playsLast7Days.forEachIndexed { index, count ->
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Bottom,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    ) {
+                        Text("$count", style = MaterialTheme.typography.labelSmall)
+                        Box(
+                            modifier = Modifier.fillMaxWidth(0.6f)
+                                .height((count.toFloat() / max * 64).dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.primary),
+                        )
+                        Text(
+                            dayLabel(index),
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
         Text(
             "Tus más escuchadas",
             style = MaterialTheme.typography.titleMedium,
@@ -143,4 +203,11 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
             }
         }
     }
+}
+
+/** Inicial del día (L/M/X/J/V/S/D) para la columna del gráfico semanal. */
+private fun dayLabel(indexFromOldest: Int): String {
+    val dayMs = 24L * 60 * 60 * 1000
+    val date = Date(System.currentTimeMillis() - (6 - indexFromOldest) * dayMs)
+    return SimpleDateFormat("EE", Locale.getDefault()).format(date).take(1).uppercase()
 }

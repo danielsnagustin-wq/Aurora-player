@@ -92,6 +92,14 @@ interface LibraryDao {
     @Query("SELECT COUNT(*) FROM play_history WHERE songId = :songId AND durationListenedMs >= 30000")
     suspend fun playCountFor(songId: Long): Int
 
+    /** IDs con al menos una reproducción (playlists inteligentes). */
+    @Query("SELECT DISTINCT songId FROM play_history WHERE durationListenedMs >= 30000")
+    suspend fun playedSongIds(): List<Long>
+
+    /** Marcas de tiempo de las reproducciones (gráfico semanal). */
+    @Query("SELECT playedAt FROM play_history WHERE durationListenedMs >= 30000")
+    suspend fun historyPlayedAt(): List<Long>
+
     /** Última reproducción de una canción (ETAPA 5: Detalles). */
     @Query("SELECT MAX(playedAt) FROM play_history WHERE songId = :songId")
     suspend fun lastPlayedAt(songId: Long): Long?

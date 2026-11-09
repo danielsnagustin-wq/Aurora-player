@@ -49,6 +49,7 @@ enum class LibrarySort(val label: String) {
     ALBUM("Álbum"),
     DATE_ADDED("Fecha añadida"),
     DURATION("Duración"),
+    PATH("Ruta"),
 }
 
 /** Un grupo de canciones duplicadas (mismo título, artista y duración). */
@@ -134,6 +135,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 )
                 LibrarySort.DATE_ADDED -> songs.sortedByDescending { it.dateAdded }
                 LibrarySort.DURATION -> songs.sortedByDescending { it.durationMs }
+                // Idea open source (Auxio/Gramophone): ordenar por ruta
+                // o nombre de archivo, útil con carpetas organizadas.
+                LibrarySort.PATH -> songs.sortedBy { it.path.lowercase() }
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 

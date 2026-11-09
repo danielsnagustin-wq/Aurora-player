@@ -52,5 +52,17 @@
                 <action android:name="android.media.AUDIO_BECOMING_NOISY" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".widget.AuroraWidgetProvider"
+            android:exported="false"
+            android:label="Aurora Player">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/aurora_widget_info" />
+        </receiver>
     </application>
 </manifest>

@@ -72,6 +72,8 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                 val songs = _allSongs.value
                 val byId = songs.associateBy { it.id }
                 val favorites = libraryDao.favoriteIds().toSet()
+                val playedIds = libraryDao.playedSongIds().toSet()
+                val weekAgo = System.currentTimeMillis() - 7L * 24 * 60 * 60 * 1000
                 _smartPlaylists.value = listOf(
                     SmartPlaylist(
                         "Más escuchadas",
@@ -87,6 +89,19 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
                         "Favoritas",
                         "Tus canciones con corazón",
                         songs.filter { it.id in favorites }.sortedBy { it.title.lowercase() },
+                    ),
+                    // Ideas open source (Auxio/Namida): lo que aún no
+                    // has puesto y lo que llegó esta semana.
+                    SmartPlaylist(
+                        "Sin escuchar",
+                        "Canciones que aún no has puesto nunca",
+                        songs.filter { it.id !in playedIds }.take(25),
+                    ),
+                    SmartPlaylist(
+                        "Esta semana",
+                        "Añadidas en los últimos 7 días",
+                        songs.filter { it.dateAdded >= weekAgo }
+                            .sortedByDescending { it.dateAdded }.take(25),
                     ),
                 ).filter { it.songs.isNotEmpty() }
             }
