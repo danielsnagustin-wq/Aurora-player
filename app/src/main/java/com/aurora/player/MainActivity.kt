@@ -146,6 +146,8 @@ import com.aurora.player.lyrics.nextIndexToPrefetch
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadLyricsForPath
 import com.aurora.player.util.saveLyricsForSong
+import com.aurora.player.util.dsdQualityLine
+import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -1067,6 +1069,10 @@ private fun AuroraApp(
             )
         }
         qualityText = songForDetails?.let { song ->
+            // Ronda USB Serie B: un DSD muestra su tasa real (DoP),
+            // no lo que diga el retriever (que no lee DSD).
+            val dsdInfo = loadDsdInfo(context, song)
+            if (dsdInfo != null) return@let dsdQualityLine(dsdInfo)
             val details = loadSongDetails(context, song)
             if (details.bitrateKbps == null && details.sampleRateHz == null) {
                 null
