@@ -70,10 +70,21 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
     }
 
     private fun loadSync(uri: Uri): Bitmap? {
-        // 1) Portada de MediaStore.
+        // 1) Portada de MediaStore, muestreada a 512 px como máximo.
+        // A tamaño completo una portada de 3000x3000 son 36 MB y al
+        // arrancar la reproducción eso puede tumbar la app por
+        // memoria (2026-11-10, caza del crash al reproducir: era el
+        // único decode sin muestrear del camino de reproducir).
         try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                BitmapFactory.decodeStream(stream)?.let { return it }
+                val bytes = stream.readBytes()
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+                var sample = 1
+                val longest = maxOf(bounds.outWidth, bounds.outHeight)
+                while (longest / sample > 512) sample *= 2
+                val options = BitmapFactory.Options().apply { inSampleSize = sample }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { return it }
             }
         } catch (_: Exception) {
             // Siguiente intento.
