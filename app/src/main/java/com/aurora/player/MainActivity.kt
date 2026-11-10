@@ -105,6 +105,7 @@ import com.aurora.player.ui.player.PlayerScreen
 import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
+import com.aurora.player.ui.setup.SetupWizardScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.ui.theme.LocalCardStyle
@@ -243,6 +244,12 @@ class MainActivity : ComponentActivity() {
                 val themeSettings by themeStore.settingsFlow.collectAsState(
                     initial = ThemeSettings.DEFAULT,
                 )
+                // Asistente de configuración (estilo Namida, 2026-11-09):
+                // la primera vez la app abre el asistente en vez de la
+                // biblioteca. Solo se marca hecho con "Empezar"/"Saltar".
+                val introStore = remember { IntroStore(applicationContext) }
+                val setupDone by introStore.setupDoneFlow.collectAsState(initial = true)
+                val wizardScope = rememberCoroutineScope()
                 // RENDIMIENTO (spec 004): valores visuales EFECTIVOS.
                 // La bajada automática (ahorro de energía del sistema,
                 // temperatura severa, app no visible) solo cambia lo que
@@ -307,7 +314,13 @@ class MainActivity : ComponentActivity() {
                     animationsEnabled = effective.animationsEnabled,
                 )
                 AuroraPlayerTheme(settings = effectiveSettings) {
-                    if (hasAudioPermission) {
+                    if (!setupDone) {
+                        SetupWizardScreen(
+                            onFinish = { wizardScope.launch { introStore.markSetupDone() } },
+                            onRequestPermission = { requestAudioPermission() },
+                            hasAudioPermission = hasAudioPermission,
+                        )
+                    } else if (hasAudioPermission) {
                         AuroraApp(
                             hasAudioPermission = hasAudioPermission,
                             widgetAction = pendingWidgetAction,
