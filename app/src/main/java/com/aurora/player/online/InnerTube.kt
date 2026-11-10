@@ -262,7 +262,13 @@ fun selectAudioFormat(formats: List<AudioFormat>): AudioFormat? {
 }
 
 /** Transporte: POST JSON a InnerTube, devuelve el cuerpo si es 200. */
-class InnerTubeClient {
+/**
+ * Cliente InnerTube. Con [authCookies] (sesión de YouTube Music, solo
+ * en el teléfono) la búsqueda por WEB_REMIX va firmada con
+ * SAPISIDHASH y es la de SU cuenta; sin cookies, anónima, como hoy.
+ * La resolución de audio sigue anónima (la escalera de clientes).
+ */
+class InnerTubeClient(private val authCookies: String? = null) {
     suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
             "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
@@ -295,6 +301,11 @@ class InnerTubeClient {
             if (client.name == "WEB_REMIX") {
                 conn.setRequestProperty("Origin", "https://music.youtube.com")
                 conn.setRequestProperty("Referer", "https://music.youtube.com/")
+                if (authCookies != null) {
+                    YouTubeMusicAuth.buildAuthHeaders(authCookies)?.forEach { (name, value) ->
+                        conn.setRequestProperty(name, value)
+                    }
+                }
             }
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
