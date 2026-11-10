@@ -37,6 +37,7 @@ import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
 import com.aurora.player.audio.VisualizerCapture
+import com.aurora.player.audio.applyTone2d
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
 import com.aurora.player.audio.replayGainFromMetadata
 import com.aurora.player.audio.selectReplayGainDb
@@ -443,7 +444,12 @@ class PlaybackService : MediaSessionService() {
                 )
                 audioOutputDirect = direct
                 eq.setEnabled(if (direct) false else saved.enabled)
-                eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+                eq.applyPreset(
+                    EqualizerManager.Preset(
+                        "Guardado",
+                        applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
+                    ),
+                )
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!direct) applyRouteEq()
@@ -488,12 +494,22 @@ class PlaybackService : MediaSessionService() {
             val (route, name) = currentOutputRoute(this@PlaybackService)
             val saved = store.routeStateFlow(routeKey(route, name)).first() ?: return@launch
             eq.setEnabled(saved.enabled)
-            eq.applyPreset(EqualizerManager.Preset("Salida", saved.levelsDb))
+            eq.applyPreset(
+                EqualizerManager.Preset(
+                    "Salida",
+                    applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
+                ),
+            )
             eq.setBassBoost(saved.bassBoost.toShort())
             eq.setVirtualizer(saved.virtualizer.toShort())
             overlapEqualizer?.let { overlap ->
                 overlap.setEnabled(saved.enabled)
-                overlap.applyPreset(EqualizerManager.Preset("Salida", saved.levelsDb))
+                overlap.applyPreset(
+                    EqualizerManager.Preset(
+                        "Salida",
+                        applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
+                    ),
+                )
                 overlap.setBassBoost(saved.bassBoost.toShort())
                 overlap.setVirtualizer(saved.virtualizer.toShort())
             }
@@ -672,7 +688,12 @@ class PlaybackService : MediaSessionService() {
             serviceScope.launch {
                 val saved = EqStateStore(this@PlaybackService).stateFlow.first()
                 eq.setEnabled(if (audioOutputDirect) false else saved.enabled)
-                eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+                eq.applyPreset(
+                    EqualizerManager.Preset(
+                        "Guardado",
+                        applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
+                    ),
+                )
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!audioOutputDirect) applyRouteEq()
