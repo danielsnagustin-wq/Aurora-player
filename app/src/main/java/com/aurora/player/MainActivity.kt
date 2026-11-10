@@ -89,6 +89,7 @@ import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.IntroStore
 import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.SpotifyStore
 import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
@@ -505,6 +506,9 @@ private fun AuroraApp(
     val lyricsProviderStore = remember { LyricsProviderStore(context) }
     val lyricsProviderOrder by lyricsProviderStore.orderFlow.collectAsState(initial = DEFAULT_PROVIDER_ORDER)
     val lyricsProviders = remember(lyricsProviderOrder) { orderedProviders(lyricsProviderOrder.joinToString(",")) }
+    // Fase 2 — Spotify como BitChord: tus listas en la pestaña Online.
+    val spotifyStore = remember { SpotifyStore(context) }
+    val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -1143,9 +1147,8 @@ private fun AuroraApp(
      * resuelta (las URLs caducan: se resuelven al tocar, nunca se
      * guardan). El mediaId "yt:<videoId>" la marca como online: no
      * entra en el historial ni en la cola persistente local. */
-    fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
-        val c = controller ?: return
-        val item = MediaItem.Builder()
+    private fun onlineMediaItem(track: OnlineTrack, streamUrl: String): MediaItem =
+        MediaItem.Builder()
             .setUri(streamUrl)
             .setMediaId("yt:${track.videoId}")
             .setMediaMetadata(
@@ -1157,7 +1160,20 @@ private fun AuroraApp(
                     .build(),
             )
             .build()
-        c.setMediaItems(listOf(item))
+
+    fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
+        val c = controller ?: return
+        c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
+        c.prepare()
+        c.play()
+    }
+
+    // Fase 2 — Spotify como BitChord: una lista importada suena por
+    // YouTube Music, canción por canción, en la cola de reproducción.
+    fun playOnlineTracks(tracks: List<Pair<OnlineTrack, String>>) {
+        val c = controller ?: return
+        if (tracks.isEmpty()) return
+        c.setMediaItems(tracks.map { (track, url) -> onlineMediaItem(track, url) })
         c.prepare()
         c.play()
     }
@@ -1375,6 +1391,8 @@ private fun AuroraApp(
                 },
                 onlineMode = playerSettings.onlineMode,
                 onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
+                spotifyConnected = spotifyConnected,
+                onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
                 showStart = showStart,
                 onStartFinished = {
                     showStart = false
