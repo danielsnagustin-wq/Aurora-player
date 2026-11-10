@@ -1,5 +1,7 @@
 package com.aurora.player.online
 
+import com.aurora.player.model.StreamQuality
+
 import android.content.Context
 import java.io.File
 import kotlinx.coroutines.Dispatchers

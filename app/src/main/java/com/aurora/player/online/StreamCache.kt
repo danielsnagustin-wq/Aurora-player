@@ -1,5 +1,7 @@
 package com.aurora.player.online
 
+import com.aurora.player.model.StreamQuality
+
 /**
  * Caché de lo escuchado de YouTube (Fase 2, 2026-11-10, como BitChord).
  *
