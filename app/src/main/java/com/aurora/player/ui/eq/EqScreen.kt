@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.audio.AUTO_EQ_MODELS
+import com.aurora.player.audio.applyTone2d
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
@@ -73,6 +74,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var levels by remember { mutableStateOf(List(10) { 0f }) }
     var bass by remember { mutableStateOf(0f) }
     var virtualizer by remember { mutableStateOf(0f) }
+    // Tone 2D (Fase 2): graves y agudos en dB, capa sobre las 10 bandas.
+    var toneBassDb by remember { mutableStateOf(0f) }
+    var toneTrebleDb by remember { mutableStateOf(0f) }
     var selectedPreset by remember { mutableStateOf<String?>(null) }
     var newPresetName by remember { mutableStateOf("") }
     // AutoEq: buscador del modelo de auriculares.
@@ -84,10 +88,17 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     // RONDA 7 P1: asistente de EQ + gráfica de respuesta.
     var showWizard by remember { mutableStateOf(false) }
 
+    /** Aplica las 10 bandas + Tone 2D al manager real. */
+    fun applyToManager() {
+        manager?.applyPreset(
+            EqualizerManager.Preset("EQ", applyTone2d(levels, toneBassDb, toneTrebleDb)),
+        )
+    }
+
     /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
     fun persist() {
         scope.launch {
-            val state = EqState(enabled, levels, bass.toInt(), virtualizer.toInt())
+            val state = EqState(enabled, levels, bass.toInt(), virtualizer.toInt(), toneBassDb, toneTrebleDb)
             if (perOutput) {
                 eqStateStore.saveRoute(routeKey(route, routeName), state)
             } else {
@@ -100,13 +111,20 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     fun loadState(state: EqState) {
         val m = manager ?: return
         m.setEnabled(state.enabled)
-        m.applyPreset(EqualizerManager.Preset("Guardado", state.levelsDb))
-        m.setBassBoost(state.bassBoost.toShort())
-        m.setVirtualizer(state.virtualizer.toShort())
         enabled = state.enabled
         levels = state.levelsDb
         bass = state.bassBoost.toFloat()
         virtualizer = state.virtualizer.toFloat()
+        toneBassDb = state.toneBassDb
+        toneTrebleDb = state.toneTrebleDb
+        m.applyPreset(
+            EqualizerManager.Preset(
+                "Guardado",
+                applyTone2d(state.levelsDb, state.toneBassDb, state.toneTrebleDb),
+            ),
+        )
+        m.setBassBoost(state.bassBoost.toShort())
+        m.setVirtualizer(state.virtualizer.toShort())
     }
 
     LaunchedEffect(manager) {
@@ -206,8 +224,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         enabled = true
                         manager?.setEnabled(true)
                     }
-                    manager?.applyPreset(EqualizerManager.Preset("Asistente", curve))
                     levels = curve
+                    applyToManager()
                     selectedPreset = null
                     persist()
                 },
@@ -238,7 +256,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             // con el EQ que se está viendo.
                             eqStateStore.saveRoute(
                                 routeKey(route, routeName),
-                                EqState(enabled, levels, bass.toInt(), virtualizer.toInt()),
+                                EqState(enabled, levels, bass.toInt(), virtualizer.toInt(), toneBassDb, toneTrebleDb),
                             )
                         } else {
                             // Al apagarlo, vuelve el EQ global.
@@ -300,7 +318,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         while (it.size <= band) it.add(0f)
                         it[band] = db
                     }
-                    manager?.setBandLevel(band, (db * 100).toInt().toShort())
+                    applyToManager()
                     selectedPreset = null
                 },
                 onValueChangeFinished = { persist() },
@@ -308,6 +326,45 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        Text("Tono", modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Graves y agudos como en Poweramp: una capa sobre las 10 bandas, no un preset.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("Graves: ${toneBassDb} dB")
+        Slider(
+            value = toneBassDb,
+            onValueChange = {
+                if (!enabled) {
+                    enabled = true
+                    manager?.setEnabled(true)
+                }
+                toneBassDb = it
+                applyToManager()
+                selectedPreset = null
+            },
+            onValueChangeFinished = { persist() },
+            valueRange = -10f..10f,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text("Agudos: ${toneTrebleDb} dB")
+        Slider(
+            value = toneTrebleDb,
+            onValueChange = {
+                if (!enabled) {
+                    enabled = true
+                    manager?.setEnabled(true)
+                }
+                toneTrebleDb = it
+                applyToManager()
+                selectedPreset = null
+            },
+            onValueChangeFinished = { persist() },
+            valueRange = -10f..10f,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
         Text("Refuerzo de graves: ${bass.toInt()}")
         Slider(
@@ -359,8 +416,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             enabled = true
                             manager?.setEnabled(true)
                         }
-                        manager?.applyPreset(preset)
                         levels = preset.levelsDb
+                        applyToManager()
                         selectedPreset = preset.name
                         persist()
                     },
@@ -409,8 +466,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             enabled = true
                             manager?.setEnabled(true)
                         }
-                        manager?.applyPreset(EqualizerManager.Preset(model.name, model.levelsDb))
                         levels = model.levelsDb
+                        applyToManager()
                         selectedPreset = "AutoEq: ${model.name}"
                         persist()
                     },
@@ -434,8 +491,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                                     enabled = true
                                     manager?.setEnabled(true)
                                 }
-                                manager?.applyPreset(preset)
                                 levels = preset.levelsDb
+                                applyToManager()
                                 selectedPreset = preset.name
                                 persist()
                             },
