@@ -26,7 +26,10 @@ data class SongDetails(
 )
 
 /** Nombre legible del códec ("audio/flac" -> "FLAC"). Función pura, testeable. */
-fun codecDisplayName(mimeType: String): String = when (mimeType.lowercase()) {
+/** Formato que se ve en el reproductor. Si MediaStore no guardó el
+ * mime (pasa con archivos de extensiones raras), se deduce de la
+ * extensión del archivo; nunca sale "—". */
+fun codecDisplayName(mimeType: String, filePath: String = ""): String = when (mimeType.lowercase()) {
     "audio/flac", "audio/x-flac" -> "FLAC"
     "audio/mpeg", "audio/mp3" -> "MP3"
     "audio/mp4", "audio/x-m4a", "audio/aac" -> "AAC"
@@ -35,7 +38,20 @@ fun codecDisplayName(mimeType: String): String = when (mimeType.lowercase()) {
     "audio/opus" -> "Opus"
     "audio/x-ms-wma" -> "WMA"
     "audio/alac" -> "ALAC"
-    else -> mimeType.ifBlank { "—" }
+    else -> mimeType.ifBlank {
+        when (filePath.substringAfterLast('.', "").lowercase()) {
+            "flac" -> "FLAC"
+            "mp3" -> "MP3"
+            "m4a", "aac" -> "AAC"
+            "wav" -> "WAV"
+            "ogg" -> "OGG"
+            "opus" -> "Opus"
+            "wma" -> "WMA"
+            "mka" -> "MKA"
+            "aif", "aiff" -> "AIFF"
+            else -> "Audio"
+        }
+    }
 }
 
 suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
