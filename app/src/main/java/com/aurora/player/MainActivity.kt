@@ -568,6 +568,7 @@ private fun AuroraApp(
     var lastWidgetTitle by remember { mutableStateOf<String?>(null) }
     var lastWidgetArtist by remember { mutableStateOf<String?>(null) }
     var lastWidgetPlaying by remember { mutableStateOf(false) }
+    var lastWidgetArtUri by remember { mutableStateOf<String?>(null) }
 
     // ETAPA 5: letras del .lrc de la canción actual y temporizador.
     var currentSongId by remember { mutableStateOf<Long?>(null) }
@@ -765,14 +766,19 @@ private fun AuroraApp(
                 // reproductor, también al buscar o al cargar.
                 val newTitle = meta?.title?.toString()
                 val newArtist = meta?.artist?.toString()
+                // Fase 2 — estilos de widget: la portada del álbum
+                // (artworkUri del MediaItem) alimenta el estilo Con
+                // portada; si cambia, el widget también se actualiza.
+                val newArtUri = meta?.artworkUri?.toString()
                 if (newTitle != lastWidgetTitle || newArtist != lastWidgetArtist ||
-                    c.isPlaying != lastWidgetPlaying
+                    c.isPlaying != lastWidgetPlaying || newArtUri != lastWidgetArtUri
                 ) {
                     lastWidgetTitle = newTitle
                     lastWidgetArtist = newArtist
                     lastWidgetPlaying = c.isPlaying
+                    lastWidgetArtUri = newArtUri
                     AuroraWidgetProvider.saveNowPlaying(
-                        context, newTitle, newArtist, c.isPlaying,
+                        context, newTitle, newArtist, c.isPlaying, meta?.artworkUri,
                     )
                 }
                 queueTitles = (0 until c.mediaItemCount).map {
