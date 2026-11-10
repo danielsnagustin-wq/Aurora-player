@@ -1,5 +1,6 @@
 package com.aurora.player.data
 
+import com.aurora.player.model.AppFont
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.parseGestureAction
@@ -100,6 +101,7 @@ fun themeSettingsToJsonValue(t: ThemeSettings): JsonValue.Obj = JsonValue.Obj(
         "visualizerHex" to JsonValue.Str(t.visualizerHex),
         "useMaterialYou" to JsonValue.Bool(t.useMaterialYou),
         "textSize" to JsonValue.Str(t.textSize.name),
+        "fontFamily" to JsonValue.Str(t.fontFamily.name),
         "coverShape" to JsonValue.Str(t.coverShape.name),
         "listDensity" to JsonValue.Str(t.listDensity.name),
         "dynamicColor" to JsonValue.Bool(t.dynamicColor),
@@ -216,6 +218,7 @@ fun themeSettingsFromJsonValue(v: JsonValue?): ThemeSettings {
         visualizerHex = hex("visualizerHex", d.visualizerHex),
         useMaterialYou = v.obj("useMaterialYou").bool() ?: d.useMaterialYou,
         textSize = enumFrom(v.obj("textSize").str(), TextSize.entries.toTypedArray(), d.textSize),
+        fontFamily = enumFrom(v.obj("fontFamily").str(), AppFont.entries.toTypedArray(), d.fontFamily),
         coverShape = enumFrom(v.obj("coverShape").str(), CoverShape.entries.toTypedArray(), d.coverShape),
         listDensity = enumFrom(v.obj("listDensity").str(), ListDensity.entries.toTypedArray(), d.listDensity),
         dynamicColor = v.obj("dynamicColor").bool() ?: d.dynamicColor,

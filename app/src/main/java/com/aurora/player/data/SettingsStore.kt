@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.aurora.player.model.AppFont
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.parseGestureAction
@@ -61,6 +62,7 @@ class ThemeSettingsStore(private val context: Context) {
         val VISUALIZER = stringPreferencesKey("visualizer_hex")
         val MATERIAL_YOU = booleanPreferencesKey("material_you")
         val TEXT_SIZE = stringPreferencesKey("text_size")
+        val FONT_FAMILY = stringPreferencesKey("font_family")
         val COVER_SHAPE = stringPreferencesKey("cover_shape")
         val DENSITY = stringPreferencesKey("list_density")
         // RENDIMIENTO (spec 004).
@@ -92,6 +94,7 @@ class ThemeSettingsStore(private val context: Context) {
             visualizerHex = ThemeSettings.normalizeHex(prefs[Keys.VISUALIZER] ?: d.visualizerHex) ?: d.visualizerHex,
             useMaterialYou = prefs[Keys.MATERIAL_YOU] ?: d.useMaterialYou,
             textSize = TextSize.entries.find { it.name == prefs[Keys.TEXT_SIZE] } ?: d.textSize,
+            fontFamily = AppFont.entries.find { it.name == prefs[Keys.FONT_FAMILY] } ?: d.fontFamily,
             coverShape = CoverShape.entries.find { it.name == prefs[Keys.COVER_SHAPE] } ?: d.coverShape,
             listDensity = ListDensity.entries.find { it.name == prefs[Keys.DENSITY] } ?: d.listDensity,
             dynamicColor = prefs[Keys.DYNAMIC_COLOR] ?: d.dynamicColor,
@@ -120,6 +123,7 @@ class ThemeSettingsStore(private val context: Context) {
             prefs[Keys.VISUALIZER] = settings.visualizerHex
             prefs[Keys.MATERIAL_YOU] = settings.useMaterialYou
             prefs[Keys.TEXT_SIZE] = settings.textSize.name
+            prefs[Keys.FONT_FAMILY] = settings.fontFamily.name
             prefs[Keys.COVER_SHAPE] = settings.coverShape.name
             prefs[Keys.DENSITY] = settings.listDensity.name
             prefs[Keys.DYNAMIC_COLOR] = settings.dynamicColor
