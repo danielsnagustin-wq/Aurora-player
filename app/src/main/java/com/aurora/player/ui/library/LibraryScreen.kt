@@ -101,6 +101,7 @@ import com.aurora.player.model.commonFolderPrefix
 import com.aurora.player.model.isDirectlyInFolder
 import com.aurora.player.model.parentPath
 import com.aurora.player.online.OnlineTrack
+import com.aurora.player.online.ResolvedVideo
 import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.theme.LocalAlbumGrid
@@ -165,6 +166,7 @@ fun LibraryScreen(
     // pestaña solo explica dónde se enciende el modo online.
     onlineMode: Boolean = false,
     onPlayOnlineTrack: (OnlineTrack, String) -> Unit = { _, _ -> },
+    onPlayVideo: (OnlineTrack, ResolvedVideo) -> Unit = { _, _ -> },
     // Fase 2 — Spotify como BitChord: tus listas en la pestaña Online.
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
@@ -316,6 +318,7 @@ fun LibraryScreen(
             OnlineScreen(
                 onlineMode = onlineMode,
                 onPlayTrack = onPlayOnlineTrack,
+                onPlayVideo = onPlayVideo,
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = onImportOnlineTracks,
                 ytMusicCookies = ytMusicCookies,
