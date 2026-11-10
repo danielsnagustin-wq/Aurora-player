@@ -25,7 +25,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.aurora.player.online.InnerTubeClient
@@ -50,6 +53,10 @@ fun OnlineScreen(
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     ytMusicCookies: String? = null,
     streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Fase 2 — Fuentes: cuántas canciones locales hay y qué hacer
+    // al tocar el chip Local (volver a la pestaña Canciones).
+    localCount: Int = 0,
+    onShowLocal: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!onlineMode) {
@@ -68,6 +75,12 @@ fun OnlineScreen(
     val cacheStore = remember { StreamCacheStore(context) }
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
+    // Fase 2 — Fuentes: la sección de listas de Spotify se puede
+    // ocultar (solo tiene sentido conectada) y el chip de YouTube
+    // pone el foco en la búsqueda con el teclado abierto.
+    var spotifySectionVisible by remember { mutableStateOf(true) }
+    val searchFocus = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     var results by remember { mutableStateOf<List<OnlineTrack>?>(null) }
     var searching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -123,11 +136,24 @@ fun OnlineScreen(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
+        SourcesRow(
+            localCount = localCount,
+            ytMusicConnected = ytMusicCookies != null,
+            spotifyConnected = spotifyConnected,
+            spotifySectionVisible = spotifySectionVisible,
+            onShowLocal = onShowLocal,
+            onFocusSearch = {
+                searchFocus.requestFocus()
+                keyboardController?.show()
+            },
+            onToggleSpotify = { spotifySectionVisible = !spotifySectionVisible },
+        )
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
             label = { Text("Buscar en YouTube Music") },
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp)
+                .focusRequester(searchFocus),
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { doSearch() }),
@@ -139,12 +165,14 @@ fun OnlineScreen(
         ) { Text("Buscar") }
         // Fase 2 — Spotify como BitChord: tus listas, importadas por
         // YouTube Music. Solo con la cookie conectada.
-        SpotifyPlaylistsSection(
-            spotifyConnected = spotifyConnected,
-            onImportTracks = onImportOnlineTracks,
-            ytMusicCookies = ytMusicCookies,
-            streamQuality = streamQuality,
-        )
+        if (spotifyConnected && spotifySectionVisible) {
+            SpotifyPlaylistsSection(
+                spotifyConnected = spotifyConnected,
+                onImportTracks = onImportOnlineTracks,
+                ytMusicCookies = ytMusicCookies,
+                streamQuality = streamQuality,
+            )
+        }
         if (searching) {
             Box(
                 modifier = Modifier.fillMaxSize(),
