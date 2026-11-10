@@ -81,6 +81,24 @@ fun parseSpotifyPlaylistTracks(json: String): List<SpotifyTrack> {
     }
 }
 
+/** Perfil de la cuenta: GET /v1/me -> nombre e imagen. */
+data class SpotifyProfile(
+    val displayName: String,
+    val imageUrl: String?,
+)
+
+/** GET /v1/me -> tu nombre y tu foto de Spotify. */
+fun parseSpotifyProfile(json: String): SpotifyProfile? {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return null
+    }
+    val name = root.obj("display_name")?.str()?.takeIf { it.isNotBlank() } ?: return null
+    val image = root.obj("images")?.arr()?.firstOrNull()?.obj("url")?.str()
+    return SpotifyProfile(name, image)
+}
+
 class SpotifyClient {
     /**
      * Pide el token de acceso con la cookie sp_dc (reproductor web
@@ -93,6 +111,15 @@ class SpotifyClient {
             mapOf("Cookie" to "sp_dc=$spDc"),
         ) ?: return@withContext null
         parseSpotifyAccessToken(body)
+    }
+
+    /** Nombre e imagen de tu cuenta (para "Cuenta e integraciones"). */
+    suspend fun fetchProfile(token: String): SpotifyProfile? = withContext(Dispatchers.IO) {
+        val body = httpGet(
+            "https://api.spotify.com/v1/me",
+            mapOf("Authorization" to "Bearer $token"),
+        ) ?: return@withContext null
+        parseSpotifyProfile(body)
     }
 
     /** Tus listas (necesita el token de fetchAccessToken). */
