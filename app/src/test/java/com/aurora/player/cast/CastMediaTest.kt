@@ -33,4 +33,42 @@ class CastMediaTest {
     fun itagDesconocido_caeEnMp4() {
         assertEquals("audio/mp4", CastMedia.contentTypeForItag(999L))
     }
+
+    @Test
+    fun urlConItag251_esWebm() {
+        assertEquals(
+            "audio/webm",
+            CastMedia.contentTypeForStreamUrl(
+                "https://rr1---sn.googlevideo.com/videoplayback?expire=1&itag=251&source=youtube",
+            ),
+        )
+    }
+
+    @Test
+    fun urlConItag140_esMp4() {
+        assertEquals(
+            "audio/mp4",
+            CastMedia.contentTypeForStreamUrl(
+                "https://rr1---sn.googlevideo.com/videoplayback?expire=1&itag=140&source=youtube",
+            ),
+        )
+    }
+
+    @Test
+    fun urlConMimeWebm_sinItag_esWebm() {
+        assertEquals(
+            "audio/webm",
+            CastMedia.contentTypeForStreamUrl(
+                "https://example.com/audio?mime=audio%2Fwebm&x=1",
+            ),
+        )
+    }
+
+    @Test
+    fun urlSinItagNiMime_caeEnMp4() {
+        assertEquals(
+            "audio/mp4",
+            CastMedia.contentTypeForStreamUrl("https://example.com/audio?id=9"),
+        )
+    }
 }
