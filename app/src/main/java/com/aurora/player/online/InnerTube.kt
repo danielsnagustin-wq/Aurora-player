@@ -1,5 +1,6 @@
 package com.aurora.player.online
 
+import com.aurora.player.model.StreamQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -252,10 +253,15 @@ fun parsePlayerFormats(json: String): List<AudioFormat>? {
     }
 }
 
-/** Elige el mejor formato de audio: 251 (Opus) > 140 (AAC) > 139 > mayor bitrate. */
-fun selectAudioFormat(formats: List<AudioFormat>): AudioFormat? {
+/** Elige el formato de audio segun la calidad pedida: se
+ * recorre su escalera de itags; si ninguno esta, cae al de
+ * mayor bitrate. Sin formatos no hay audio (null). */
+fun selectAudioFormat(
+    formats: List<AudioFormat>,
+    preferredItags: List<Long> = listOf(251L, 140L, 139L),
+): AudioFormat? {
     if (formats.isEmpty()) return null
-    for (itag in listOf(251L, 140L, 139L)) {
+    for (itag in preferredItags) {
         formats.firstOrNull { it.itag == itag }?.let { return it }
     }
     return formats.maxByOrNull { it.bitrate }
@@ -276,13 +282,17 @@ class InnerTubeClient(private val authCookies: String? = null) {
         parseSearchResults(body)
     }
 
-    /** Resuelve la URL de audio directa probando la escalera de clientes. */
-    suspend fun resolveStreamUrl(videoId: String): String? = withContext(Dispatchers.IO) {
+    /** Resuelve la URL de audio directa probando la escalera de
+     * clientes; en cada uno, el formato sigue la calidad pedida. */
+    suspend fun resolveStreamUrl(
+        videoId: String,
+        quality: StreamQuality = StreamQuality.HIGH,
+    ): String? = withContext(Dispatchers.IO) {
         for (client in PLAYER_CLIENTS) {
             val url = "https://${client.host}/youtubei/v1/player?prettyPrint=false"
             val body = postJson(url, buildPlayerBody(client, videoId), client) ?: continue
             val formats = parsePlayerFormats(body) ?: continue
-            selectAudioFormat(formats)?.let { return@withContext it.url }
+            selectAudioFormat(formats, quality.preferredItags)?.let { return@withContext it.url }
         }
         null
     }
