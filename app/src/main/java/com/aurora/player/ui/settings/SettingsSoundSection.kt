@@ -93,7 +93,7 @@ fun SettingsSoundSection(
     // del archivo: sin etiqueta, no cambia el volumen.
     AuroraSectionHeader(
         title = "ReplayGain (normalización de volumen)",
-        description = "Iguala el volumen entre canciones con la etiqueta ReplayGain del archivo. Sin etiqueta, no cambia nada.",
+        description = "Iguala el volumen entre canciones. Por etiqueta ReplayGain, o por LUFS medido del archivo (objetivo -14 LUFS; la primera vez se mide en segundo plano y se guarda). Sin etiqueta ni medición, no cambia nada.",
     )
     AuroraOptionChips(
         options = listOf(
@@ -101,6 +101,7 @@ fun SettingsSoundSection(
             "track" to "Por canción",
             "album" to "Por álbum",
             "smart" to "Inteligente",
+            "lufs" to "LUFS (medido)",
         ),
         selected = player.replayGainMode,
         onSelect = { onSavePlayer(player.copy(replayGainMode = it)) },
