@@ -318,10 +318,15 @@ fun PlayerScreen(
         // en un teléfono denso son ~6 mm (cambia de pista sin querer)
         // y en uno poco denso ~16 mm. Ahora son 56 dp reales.
         val swipeThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
-        // Fase 1b: el AudioManager se lee AQUÍ (contexto @Composable);
-        // dentro de pointerInput no se puede leer LocalContext.current.
-        val audioManager = remember {
-            LocalContext.current.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // Fase 1b: el AudioManager se lee AQUÍ, en el cuerpo del
+        // composable. Ni dentro de pointerInput ni dentro de
+        // remember { } se puede leer LocalContext.current: el
+        // cálculo de remember NO es contexto @Composable (eso era
+        // el error del run #205 intento 2). Se lee fuera y se pasa
+        // como clave de remember.
+        val context = LocalContext.current
+        val audioManager = remember(context) {
+            context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
         ArtworkImage(
