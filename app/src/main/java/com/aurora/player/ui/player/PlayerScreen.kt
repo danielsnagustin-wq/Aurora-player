@@ -106,6 +106,7 @@ import com.aurora.player.ui.theme.LocalCoverShape
 import com.aurora.player.ui.theme.LocalDynamicColor
 import com.aurora.player.ui.theme.LocalPlayerBackground
 import com.aurora.player.ui.theme.contrastOn
+import com.aurora.player.playback.AudioEffects
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.dominantColor
 import com.aurora.player.util.LrcLine
@@ -448,6 +449,17 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+        }
+        // Visualizador real (Fase 2): espectro bajo la portada, con
+        // el color del visualizador del tema. Solo cuando hay datos
+        // de verdad; en pausa o sin captura no se dibuja nada.
+        val visualizerBars = AudioEffects.visualizerBars
+        if (visualizerBars.isNotEmpty()) {
+            VisualizerBarsView(
+                bars = visualizerBars,
+                color = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
         Spacer(Modifier.height(24.dp))
         Text(
