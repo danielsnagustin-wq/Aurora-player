@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.aurora.player.online.InnerTubeClient
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import kotlinx.coroutines.launch
 
@@ -46,6 +47,7 @@ fun OnlineScreen(
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     ytMusicCookies: String? = null,
+    streamQuality: StreamQuality = StreamQuality.HIGH,
     modifier: Modifier = Modifier,
 ) {
     if (!onlineMode) {
@@ -92,7 +94,7 @@ fun OnlineScreen(
         error = null
         scope.launch {
             try {
-                val url = client.resolveStreamUrl(track.videoId)
+                val url = client.resolveStreamUrl(track.videoId, streamQuality)
                 if (url != null) {
                     onPlayTrack(track, url)
                 } else {
@@ -127,6 +129,7 @@ fun OnlineScreen(
             spotifyConnected = spotifyConnected,
             onImportTracks = onImportOnlineTracks,
             ytMusicCookies = ytMusicCookies,
+            streamQuality = streamQuality,
         )
         if (searching) {
             Box(

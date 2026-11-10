@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.util.rememberRemoteBitmap
 import com.aurora.player.online.InnerTubeClient
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.SpotifyPlaylist
@@ -63,6 +64,7 @@ fun SpotifyPlaylistsSection(
     spotifyConnected: Boolean,
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
     ytMusicCookies: String? = null,
+    streamQuality: StreamQuality = StreamQuality.HIGH,
     modifier: Modifier = Modifier,
 ) {
     if (!spotifyConnected) return
@@ -149,7 +151,7 @@ fun SpotifyPlaylistsSection(
                     }.firstOrNull()
                     val url = found?.let {
                         try {
-                            tube.resolveStreamUrl(it.videoId)
+                            tube.resolveStreamUrl(it.videoId, streamQuality)
                         } catch (_: Exception) {
                             null
                         }
