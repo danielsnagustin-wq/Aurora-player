@@ -55,7 +55,7 @@ class EqStateStore(context: Context) {
      * "bluetooth:<nombre>"). Formato: "enabled|niveles,bass|virt".
      * Si no hay nada guardado para esa salida, sale el EQ global.
      */
-    fun routeStateFlow(routeKey: String): Flow<EqState> = dataStore.data
+    fun routeStateFlow(routeKey: String): Flow<EqState?> = dataStore.data
         .catch { emit(emptyPreferences()) }
         .map { prefs ->
             val raw = prefs[stringPreferencesKey("eq_route_$routeKey")] ?: return@map null
