@@ -653,41 +653,14 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.ADVANCED) {
-        // RENDIMIENTO (spec 004) — DIAGNÓSTICO: mediciones reales de
-        // este teléfono. El medidor de FPS solo mide mientras Ajustes
-        // está abierto; al salir se para.
-        SettingsGroupTitle("Diagnóstico")
-        SettingsGroupDescription("Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.")
-        val meter = remember { FrameRateMeter() }
-        val fps by meter.fps.collectAsState()
-        val dropped by meter.dropped.collectAsState()
-        var snapshot by remember { mutableStateOf<DiagnosticsSnapshot?>(null) }
-        DisposableEffect(Unit) {
-            meter.start()
-            onDispose { meter.stop() }
-        }
-        LaunchedEffect(Unit) {
-            snapshot = withContext(Dispatchers.IO) { collectSnapshot(context) }
-        }
-        val snap = snapshot
-        Text(
-            "FPS: ${if (snap == null) "—" else "%.1f".format(fps)}",
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        Text("Frames perdidos (muestra actual): $dropped")
-        Text("RAM de la app: ${snap?.appRamUsedMb?.toString() ?: "—"} MB de ${snap?.appRamMaxMb?.toString() ?: "—"} MB")
-        Text("RAM del teléfono: ${snap?.deviceRamAvailMb?.toString() ?: "—"} MB libres de ${snap?.deviceRamTotalMb?.toString() ?: "—"} MB")
-        Text("CPU del proceso: ${snap?.cpuTimeMs?.toString() ?: "—"} ms (${snap?.cpuCores?.toString() ?: "—"} núcleos)")
-        Text("Batería: ${snap?.batteryPercent?.let { "$it %" } ?: "—"} · Temperatura: ${snap?.batteryTempC?.let { "%.1f °C".format(it) } ?: "—"}")
-        Text("Apertura (proceso a biblioteca): ${snap?.startupMs?.let { "$it ms" } ?: "—"}")
-        OutlinedButton(
-            onClick = {
-                scope.launch {
-                    snapshot = withContext(Dispatchers.IO) { collectSnapshot(context) }
-                }
-            },
-            modifier = Modifier.padding(top = 8.dp),
-        ) { Text("Actualizar") }
+            SettingsAdvancedSection(
+                onResetDefaults = {
+                    scope.launch {
+                        store.resetToDefault()
+                        playerStore.resetToDefault()
+                    }
+                },
+            )
         }
 
         if (section == SettingsSection.SOUND) {
@@ -930,82 +903,18 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.LIBRARY) {
-        // RONDA 2 (2026-11-09): la duración mínima existía en el
-        // modelo y la biblioteca la usaba, pero NO HABÍA control para
-        // cambiarla en Ajustes: era un ajuste muerto. Ahora sí se
-        // puede tocar; se aplica al volver a escanear la biblioteca.
-        SettingsGroupTitle("Biblioteca")
-        SettingsGroupDescription("Qué canciones entran en la biblioteca. Las muy cortas suelen ser tonos o notas de voz.")
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for ((ms, label) in listOf(
-                0L to "Todo",
-                5_000L to "Desde 5 s",
-                10_000L to "Desde 10 s",
-                30_000L to "Desde 30 s",
-                60_000L to "Desde 1 min",
-            )) {
-                if (player.minDurationMs == ms) {
-                    Button(
-                        onClick = { savePlayer(player.copy(minDurationMs = ms)) },
-                        colors = auroraButtonColors(),
-                    ) { Text(label) }
-                } else {
-                    OutlinedButton(onClick = { savePlayer(player.copy(minDurationMs = ms)) }) {
-                        Text(label)
-                    }
-                }
-            }
-        }
-        SettingsGroupDescription(
-            "Se aplica al volver a escanear la biblioteca.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        SettingsGroupTitle("Pestañas visibles")
-        SettingsGroupDescription("Elige qué pestañas se ven en el inicio. Siempre queda al menos una visible.")
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            for ((index, label) in listOf(
-                "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
-            ).withIndex()) {
-                if (index in visibleTabs) {
-                    Button(
-                        onClick = { scope.launch { libraryPrefs.setTabVisible(index, false) } },
-                        colors = auroraButtonColors(),
-                    ) { Text(label) }
-                } else {
-                    OutlinedButton(onClick = { scope.launch { libraryPrefs.setTabVisible(index, true) } }) {
-                        Text(label)
-                    }
-                }
-            }
-        }
-        SettingsGroupTitle("Tamaño de portada en la fila")
-        FlowRow(
-            modifier = Modifier.padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            for ((dp, label) in listOf(
-                32 to "Pequeña", 40 to "Normal", 56 to "Grande", 72 to "Muy grande",
-            )) {
-                if (rowCoverDp == dp) {
-                    Button(
-                        onClick = { scope.launch { libraryPrefs.setRowCoverSize(dp) } },
-                        colors = auroraButtonColors(),
-                    ) { Text(label) }
-                } else {
-                    OutlinedButton(onClick = { scope.launch { libraryPrefs.setRowCoverSize(dp) } }) {
-                        Text(label)
-                    }
-                }
-            }
-        }
+            SettingsLibrarySection(
+                player = player,
+                onSavePlayer = { savePlayer(it) },
+                visibleTabs = visibleTabs,
+                onSetTabVisible = { index, visible ->
+                    scope.launch { libraryPrefs.setTabVisible(index, visible) }
+                },
+                rowCoverDp = rowCoverDp,
+                onSetRowCoverSize = { dp ->
+                    scope.launch { libraryPrefs.setRowCoverSize(dp) }
+                },
+            )
         }
 
         if (section == SettingsSection.NETWORK) {
@@ -1111,19 +1020,6 @@ fun SettingsScreen(
             )
         }
 
-        if (section == SettingsSection.ADVANCED) {
-        TextButton(
-            onClick = {
-                scope.launch {
-                    store.resetToDefault()
-                    playerStore.resetToDefault()
-                }
-            },
-            modifier = Modifier.padding(top = 16.dp),
-        ) {
-            Text("Restablecer por defecto")
-        }
-        }
 
         if (section == SettingsSection.ALARM) {
             // RONDA 7 P4: alarma musical.
@@ -1332,34 +1228,6 @@ fun SettingsScreen(
         )
         }
 
-        if (section == SettingsSection.LIBRARY) {
-        // SPEC 005 FR-006: carpetas excluidas (se excluyen con
-        // mantener pulsado en la pestaña Carpetas; aquí se quitan).
-        val folderStore = remember { FolderStore(context) }
-        val excludedFolders by folderStore.excludedFlow.collectAsState(initial = emptySet())
-        SettingsGroupTitle("Carpetas excluidas")
-        SettingsGroupDescription("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Quítalas para volver a incluirlas.")
-        if (excludedFolders.isEmpty()) {
-            SettingsGroupDescription("Ninguna carpeta excluida.", modifier = Modifier.padding(top = 8.dp))
-        } else {
-            for (folder in excludedFolders.sorted()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(folder, modifier = Modifier.weight(1f))
-                    TextButton(onClick = {
-                        scope.launch { folderStore.include(folder) }
-                    }) { Text("Quitar") }
-                }
-            }
-            TextButton(
-                onClick = { scope.launch { folderStore.clearExcluded() } },
-                modifier = Modifier.padding(top = 8.dp),
-            ) { Text("Quitar todas") }
-        }
-        }
 
     }
 }
