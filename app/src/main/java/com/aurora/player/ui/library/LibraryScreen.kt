@@ -87,7 +87,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.LibraryPrefsStore
-import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.albumArtUri
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.FolderEntry
@@ -189,6 +189,7 @@ fun LibraryScreen(
         initial = LibraryPrefsStore.ALL_TABS,
     )
     val lastTab by libraryPrefs.lastTabFlow.collectAsState(initial = 0)
+    val imageCacheEnabled by libraryPrefs.imageCacheEnabledFlow.collectAsState(initial = true)
     val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
         initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
     )
@@ -333,6 +334,7 @@ fun LibraryScreen(
                         onDetails = { detailsSong = it },
                         onShuffleAll = onShuffleAll,
                         coverSizeDp = rowCoverDp,
+                        imageCacheEnabled = imageCacheEnabled,
                     )
                     1 -> ArtistsTab(
                         artists = state.artists,
@@ -348,6 +350,7 @@ fun LibraryScreen(
                             viewModel.filterByAlbum(it.id)
                             tab = 0
                         },
+                        imageCacheEnabled = imageCacheEnabled,
                     )
                     3 -> FavoritesTab(
                         songs = favorites,
@@ -356,6 +359,7 @@ fun LibraryScreen(
                         onSongClick = onSongClick,
                         onDetails = { detailsSong = it },
                         coverSizeDp = rowCoverDp,
+                        imageCacheEnabled = imageCacheEnabled,
                     )
                     4 -> GenresTab(
                         songs = state.songs,
@@ -372,6 +376,7 @@ fun LibraryScreen(
                         onDetails = { detailsSong = it },
                         onExcludeFolder = { viewModel.excludeFolder(it) },
                         coverSizeDp = rowCoverDp,
+                        imageCacheEnabled = imageCacheEnabled,
                     )
                 }
             }
@@ -417,6 +422,7 @@ private fun SongsTab(
     onDetails: (Song) -> Unit,
     onShuffleAll: (List<Song>) -> Unit = {},
     coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    imageCacheEnabled: Boolean = true,
 ) {
     var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
@@ -510,6 +516,7 @@ private fun SongsTab(
                     onClick = { onSongClick(song, songs) },
                     onDetails = onDetails,
                     coverSizeDp = coverSizeDp,
+                imageCacheEnabled = imageCacheEnabled,
                 )
                 Divider()
             }
@@ -555,6 +562,7 @@ private fun AlbumsTab(
     albums: List<Album>,
     songs: List<Song>,
     onAlbumClick: (Album) -> Unit,
+    imageCacheEnabled: Boolean = true,
 ) {
     if (albums.isEmpty()) {
         Text("No hay álbumes.", modifier = Modifier.padding(16.dp))
@@ -588,7 +596,7 @@ private fun AlbumsTab(
                         modifier = Modifier.padding(12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        if (coverSong != null) AlbumCover(coverSong, size = 160.dp)
+                        if (coverSong != null) AlbumCover(coverSong, size = 160.dp, useCache = imageCacheEnabled)
                         Text(
                             album.name,
                             maxLines = 2,
@@ -627,7 +635,7 @@ private fun AlbumsTab(
                     )
                 },
                 leadingContent = {
-                    if (coverSong != null) AlbumCover(coverSong, size = 56.dp)
+                    if (coverSong != null) AlbumCover(coverSong, size = 56.dp, useCache = imageCacheEnabled)
                 },
                 modifier = Modifier.clickable { onAlbumClick(album) },
             )
@@ -702,6 +710,7 @@ private fun FoldersTab(
     onDetails: (Song) -> Unit,
     onExcludeFolder: (String) -> Unit,
     coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    imageCacheEnabled: Boolean = true,
 ) {
     if (songs.isEmpty()) {
         Text(
@@ -774,6 +783,7 @@ private fun FoldersTab(
                     onClick = { onSongClick(song, here) },
                     onDetails = onDetails,
                     coverSizeDp = coverSizeDp,
+                imageCacheEnabled = imageCacheEnabled,
                 )
                 Divider()
             }
@@ -811,6 +821,7 @@ private fun FavoritesTab(
     onSongClick: (Song, List<Song>) -> Unit,
     onDetails: (Song) -> Unit,
     coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    imageCacheEnabled: Boolean = true,
 ) {
     if (songs.isEmpty()) {
         Text(
@@ -828,6 +839,7 @@ private fun FavoritesTab(
                 onClick = { onSongClick(song, songs) },
                 onDetails = onDetails,
                 coverSizeDp = coverSizeDp,
+            imageCacheEnabled = imageCacheEnabled,
             )
             Divider()
         }
@@ -842,6 +854,7 @@ private fun SongRow(
     onClick: () -> Unit,
     onDetails: (Song) -> Unit = {},
     coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
+    imageCacheEnabled: Boolean = true,
 ) {
     // AUDITORÍA (2026-11-09): la densidad "Compacta" no hacía nada:
     // el ListItem de Material 3 impone su propia altura mínima (72 dp
@@ -860,7 +873,7 @@ private fun SongRow(
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AlbumCover(song, size = coverSizeDp.dp)
+            AlbumCover(song, size = coverSizeDp.dp, useCache = imageCacheEnabled)
             Column(
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             ) {
@@ -917,7 +930,7 @@ private fun SongRow(
                 )
             }
         },
-        leadingContent = { AlbumCover(song, size = coverSizeDp.dp) },
+        leadingContent = { AlbumCover(song, size = coverSizeDp.dp, useCache = imageCacheEnabled) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier
             .heightIn(min = listDensityToRowHeightDp(LocalListDensity.current).dp)
@@ -1255,7 +1268,10 @@ private fun formatDate(millis: Long): String =
  * Asistente de configuración (2026-11-09): el usuario puede
  * apagarla (cada fila recarga su portada) y vaciarla. */
 internal object AlbumArtCache {
-    private const val MAX_KB = 16 * 1024
+    // RENDIMIENTO (2026-11-10): con 1471 canciones la caché de 16 MB
+    // se vaciaba al bajar rápido y cada fila volvía a decodificar su
+    // portada. 32 MB caben ~400 miniaturas de 144 px.
+    private const val MAX_KB = 32 * 1024
     private val cache = object : LruCache<Long, Bitmap>(MAX_KB) {
         override fun sizeOf(key: Long, value: Bitmap): Int = value.byteCount / 1024
     }
@@ -1277,13 +1293,16 @@ internal object AlbumArtCache {
  * inicial, nunca se cuelga.
  */
 @Composable
-fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
+fun AlbumCover(
+    song: Song,
+    size: Dp,
+    modifier: Modifier = Modifier,
+    // RENDIMIENTO (2026-11-10): el flag viene de arriba (una sola
+    // suscripción en LibraryScreen); antes cada fila creaba su
+    // LibraryPrefsStore y se suscribía a DataStore por separado.
+    useCache: Boolean = true,
+) {
     val context = LocalContext.current
-    // Asistente de configuración (2026-11-09): si la caché de
-    // imágenes está apagada, cada fila recarga su portada desde
-    // MediaStore y no se guarda nada en memoria.
-    val libraryPrefs = remember { LibraryPrefsStore(context) }
-    val useCache by libraryPrefs.imageCacheEnabledFlow.collectAsState(initial = true)
     var bitmap by remember(song.albumId, useCache) {
         mutableStateOf(if (useCache) AlbumArtCache.get(song.albumId) else null)
     }
@@ -1291,7 +1310,7 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
         if (bitmap == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val loaded = withContext(Dispatchers.IO) {
                 try {
-                    val uri = MusicRepository(context).albumArtUri(song.albumId)
+                    val uri = albumArtUri(song.albumId)
                     context.contentResolver.loadThumbnail(uri, Size(144, 144), null)
                 } catch (_: Exception) {
                     null
