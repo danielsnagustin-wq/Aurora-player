@@ -193,6 +193,7 @@ fun PlayerScreen(
     onDeleteSavedQueue: (Long) -> Unit = {},
     onSavedQueueMessageConsumed: () -> Unit = {},
     lyrics: List<LrcLine> = emptyList(),
+    translatedLyrics: List<String> = emptyList(),
     // RONDA 2 (2026-11-09): línea de calidad real (FLAC/kbps/kHz) y
     // si el modo online está encendido (para explicar por qué no hay
     // letras cuando no las hay).
@@ -214,6 +215,7 @@ fun PlayerScreen(
     var showQueue by remember { mutableStateOf(false) }
     var showSavedQueues by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
+    var showTranslation by remember { mutableStateOf(true) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
     var dragTotalY by remember { mutableStateOf(0f) }
@@ -748,12 +750,26 @@ fun PlayerScreen(
                         onClick = { showLyricsEditor = true },
                     ) { Text("Editar") }
                 }
+                // Traducción automática (2026-11-10, como BitChord):
+                // "Traducida al Español" bajo cada línea original.
+                if (translatedLyrics.isNotEmpty()) {
+                    TextButton(
+                        onClick = { showTranslation = !showTranslation },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            if (showTranslation) "Traducida al Español"
+                            else "Traducir al español",
+                        )
+                    }
+                }
                 LazyColumn(
                     state = lyricsListState,
                     modifier = Modifier.fillMaxWidth().height(240.dp),
                 ) {
                     itemsIndexed(lyrics) { index, line ->
                         val isCurrent = index == currentLine
+                        Column(modifier = Modifier.fillMaxWidth()) {
                         if (isCurrent && line.words.isNotEmpty()) {
                             // Fase 1b — karaoke palabra por palabra:
                             // ya cantadas en acento, la que suena en
@@ -789,6 +805,21 @@ fun PlayerScreen(
                                 style = if (isCurrent) MaterialTheme.typography.titleMedium
                                 else MaterialTheme.typography.bodyMedium,
                             )
+                        }
+                        // Traducción bajo la línea original, en pequeño
+                        // y apagada; solo si hay una y es distinta.
+                        val translation = translatedLyrics.getOrNull(index)
+                        if (showTranslation && translation != null &&
+                            translation.isNotBlank() && translation != line.text
+                        ) {
+                            Text(
+                                translation,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
+                                textAlign = TextAlign.Center,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                         }
                     }
                 }
