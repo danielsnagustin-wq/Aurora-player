@@ -112,9 +112,11 @@ import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.setup.SetupWizardScreen
+import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.ui.theme.LocalCardStyle
+import com.aurora.player.ui.theme.PureBlack
 import com.aurora.player.ui.theme.LocalCornerRadiusDp
 import com.aurora.player.ui.theme.cardBackground
 import com.aurora.player.ui.theme.cardBorder
@@ -255,7 +257,15 @@ class MainActivity : ComponentActivity() {
                 // la primera vez la app abre el asistente en vez de la
                 // biblioteca. Solo se marca hecho con "Empezar"/"Saltar".
                 val introStore = remember { IntroStore(applicationContext) }
-                val setupDone by introStore.setupDoneFlow.collectAsState(initial = true)
+                val setupDone by introStore.setupDoneFlow.collectAsState(initial = null)
+                // Animación de inicio PRIMERO al entrar (2026-11-10):
+                // antes la intro solo salía DESPUÉS del asistente de
+                // configuración; ahora va al abrir la app, como toca.
+                // initial=null en ambos flujos: mientras DataStore no
+                // responde no se dibuja nada (negro), para que nunca
+                // parpadee la pantalla equivocada al entrar.
+                val introShown by introStore.shownFlow.collectAsState(initial = null)
+                var showStart by remember(introShown) { mutableStateOf(introShown == false) }
                 val wizardScope = rememberCoroutineScope()
                 // RENDIMIENTO (spec 004): valores visuales EFECTIVOS.
                 // La bajada automática (ahorro de energía del sistema,
@@ -321,7 +331,17 @@ class MainActivity : ComponentActivity() {
                     animationsEnabled = effective.animationsEnabled,
                 )
                 AuroraPlayerTheme(settings = effectiveSettings) {
-                    if (!setupDone) {
+                    if (introShown == null || setupDone == null) {
+                        // Cargando los ajustes del disco: negro, sin parpadeo.
+                        Box(Modifier.fillMaxSize().background(PureBlack))
+                    } else if (showStart) {
+                        StartScreen(
+                            onFinished = {
+                                showStart = false
+                                wizardScope.launch { introStore.markShown() }
+                            },
+                        )
+                    } else if (!setupDone) {
                         SetupWizardScreen(
                             onFinish = { wizardScope.launch { introStore.markSetupDone() } },
                             onRequestPermission = { requestAudioPermission() },
@@ -574,12 +594,7 @@ private fun AuroraApp(
     // RONDA 2 (2026-11-09): la intro solo se muestra la primera vez
     // (IntroStore); antes se repetía al volver tras un rato porque
     // Android había matado el proceso en segundo plano.
-    val introStore = remember { IntroStore(context) }
-    val introShown by introStore.shownFlow.collectAsState(initial = true)
     var lyricsOffsetMs by remember { mutableStateOf(0) }
-
-    // Animación de inicio: una sola vez por arranque de la app.
-    var showStart by remember(introShown) { mutableStateOf(!introShown) }
 
     // Favoritos en vivo (Room avisa de cada cambio, venga de donde venga).
     LaunchedEffect(Unit) {
@@ -1419,11 +1434,6 @@ private fun AuroraApp(
                 onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
-                showStart = showStart,
-                onStartFinished = {
-                    showStart = false
-                    scope.launch { introStore.markShown() }
-                },
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
@@ -1439,8 +1449,6 @@ private fun AuroraApp(
             )
             Tab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
-                notificationsGranted = notificationsGranted,
-                onRequestNotificationPermission = onRequestNotificationPermission,
                 onOpenEq = { showEq = true },
             )
         }
