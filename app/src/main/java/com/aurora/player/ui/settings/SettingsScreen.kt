@@ -455,7 +455,7 @@ fun SettingsScreen(
                 onCheckedChange = { save(applied.copy(useMaterialYou = it)) },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "Android 12 o más: el tema toma los colores del fondo de pantalla. Tu color de botones sigue valiendo.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -478,7 +478,7 @@ fun SettingsScreen(
                     onCheckedChange = { save(applied.copy(amoledWhenSystemDark = it)) },
                 )
             }
-            Text(
+            SettingsGroupDescription(
                 "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -503,7 +503,7 @@ fun SettingsScreen(
                 },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "El acento del reproductor sigue el color de la portada que suena. Apagado, manda tu color principal.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -593,7 +593,7 @@ fun SettingsScreen(
                 onCheckedChange = { save(applied.copy(albumGrid = it)) },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -633,11 +633,11 @@ fun SettingsScreen(
                 },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "Apagadas, la pantalla de inicio se muestra estática y las letras saltan de línea sin animación.",
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text(
+        SettingsGroupDescription(
             "Con el perfil Equilibrado, si Android entra en ahorro de energía o el teléfono se calienta mucho, la app baja sola a los valores de Ahorro sin tocar lo que guardaste: al salir, vuelve sola. La música no se corta nunca por esto.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -646,7 +646,7 @@ fun SettingsScreen(
             colors = auroraButtonColors(),
             modifier = Modifier.padding(top = 8.dp),
         ) { Text("Restablecer tema y diseño") }
-        Text(
+        SettingsGroupDescription(
             "Vuelve todos los ajustes de tema, diseño y rendimiento a los valores de fábrica.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -854,7 +854,7 @@ fun SettingsScreen(
                 onCheckedChange = { savePlayer(player.copy(skipSilence = it)) },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "Salta los silencios de más de 2 segundos: al final de la pista pasa a la siguiente; en mitad, avanza 3 s.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -869,7 +869,7 @@ fun SettingsScreen(
                 onCheckedChange = { savePlayer(player.copy(localRadio = it)) },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "Cuando se acaba la cola y la repetición está apagada, sigue con canciones parecidas de tu biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -959,7 +959,7 @@ fun SettingsScreen(
                 }
             }
         }
-        Text(
+        SettingsGroupDescription(
             "Se aplica al volver a escanear la biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -1025,7 +1025,7 @@ fun SettingsScreen(
                 onCheckedChange = { savePlayer(player.copy(onlineMode = it)) },
             )
         }
-        Text(
+        SettingsGroupDescription(
             "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -1041,7 +1041,7 @@ fun SettingsScreen(
                 Text("Elegir proveedor")
             }
         }
-        Text(
+        SettingsGroupDescription(
             "Orden actual: ${providerOrder.joinToString(" → ")}",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -1100,7 +1100,7 @@ fun SettingsScreen(
             }
         }
         spotifyStatus?.let {
-            Text(it, modifier = Modifier.padding(top = 4.dp))
+            SettingsGroupDescription(it, modifier = Modifier.padding(top = 4.dp))
         }
         }
 
@@ -1143,8 +1143,8 @@ fun SettingsScreen(
 
         if (section == SettingsSection.ALARM) {
         // RONDA 7 P4: alarma musical.
-        Text("Alarma", modifier = Modifier.padding(top = 24.dp))
-        Text(
+        SettingsGroupTitle("Alarma")
+        SettingsGroupDescription(
             "Despiértate con tu música: elige una hora y qué suena. Suena aunque la app esté cerrada y sobrevive a un reinicio.",
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -1186,10 +1186,10 @@ fun SettingsScreen(
                 }
             }
         }
-        Text("Respaldo", modifier = Modifier.padding(top = 24.dp))
-        Text("Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo en Descargas. Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.")
+        SettingsGroupTitle("Respaldo")
+        SettingsGroupDescription("Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo en Descargas. Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.")
         if (lastBackup.isNotEmpty()) {
-            Text("Último respaldo: $lastBackup", modifier = Modifier.padding(top = 8.dp))
+            SettingsGroupDescription("Último respaldo: $lastBackup", modifier = Modifier.padding(top = 8.dp))
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -1238,7 +1238,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(top = 8.dp),
             )
             if (report.missing.isNotEmpty()) {
-                Text(
+                SettingsGroupDescription(
                     "No se encontraron ${report.missing.size} canciones del respaldo (ya no están en tu biblioteca).",
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -1364,10 +1364,10 @@ fun SettingsScreen(
         // mantener pulsado en la pestaña Carpetas; aquí se quitan).
         val folderStore = remember { FolderStore(context) }
         val excludedFolders by folderStore.excludedFlow.collectAsState(initial = emptySet())
-        Text("Carpetas excluidas", modifier = Modifier.padding(top = 24.dp))
-        Text("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Quítalas para volver a incluirlas.")
+        SettingsGroupTitle("Carpetas excluidas")
+        SettingsGroupDescription("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Quítalas para volver a incluirlas.")
         if (excludedFolders.isEmpty()) {
-            Text("Ninguna carpeta excluida.", modifier = Modifier.padding(top = 8.dp))
+            SettingsGroupDescription("Ninguna carpeta excluida.", modifier = Modifier.padding(top = 8.dp))
         } else {
             for (folder in excludedFolders.sorted()) {
                 Row(
