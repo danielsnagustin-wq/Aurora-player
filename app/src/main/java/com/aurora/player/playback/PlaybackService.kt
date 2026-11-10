@@ -200,6 +200,10 @@ class PlaybackService : MediaSessionService() {
             // Portadas de la notificación: MediaStore, incrustada en el
             // archivo o inicial de Aurora; nunca sin carátula.
             .setBitmapLoader(AuroraBitmapLoader(this))
+            // Sin esto, tocar la notificación no abre la app
+            // (2026-11-10): Media3 usa la actividad de la sesión
+            // como destino del toque.
+            .setSessionActivity(openAppPendingIntent())
             .build()
         // Fase 1b: reproducir al conectar auriculares/BT (opt-in,
         // OFF por defecto). El receptor es dinámico: solo vive
@@ -732,6 +736,16 @@ class PlaybackService : MediaSessionService() {
         getSystemService(NotificationManager::class.java)?.notify(ALARM_NOTIFICATION_ID, notification)
     }
 
+    /** Tocar cualquier notificación de Aurora abre la app (mismo
+     * PendingIntent que ya usa la notificación de la alarma). */
+    private fun openAppPendingIntent(): PendingIntent =
+        PendingIntent.getActivity(
+            this,
+            0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
     private fun buildPlaceholderNotification(): Notification {
         // Media3 sustituye esta notificación por la de MediaSession en
         // cuanto hay un MediaItem; este placeholder solo cubre el arranque.
@@ -739,6 +753,7 @@ class PlaybackService : MediaSessionService() {
             .setContentTitle("Aurora Player")
             .setContentText("Listo para reproducir")
             .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentIntent(openAppPendingIntent())
             .build()
     }
 
