@@ -120,6 +120,8 @@ import com.aurora.player.util.loadEmbeddedCover
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.loadSongDetails
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -163,6 +165,7 @@ fun LibraryScreen(
     // Fase 2 — Spotify como BitChord: tus listas en la pestaña Online.
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
+    ytMusicCookies: String? = null,
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -206,6 +209,16 @@ fun LibraryScreen(
 
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
+    }
+    // RONDA 2026-11-10 (bajar rápido solo se veían las iniciales):
+    // cuando la biblioteca ya cargó, las portadas se precargan en
+    // segundo plano, una sola vez por apertura, así al bajar ya
+    // están en caché y la lista no se arrastra.
+    var coversWarmed by remember { mutableStateOf(false) }
+    LaunchedEffect(filtered) {
+        if (coversWarmed || filtered.isEmpty()) return@LaunchedEffect
+        coversWarmed = true
+        warmAlbumArtCache(context, filtered.map { it.albumId }.distinct())
     }
 
     // RENDIMIENTO (spec 004): marca el primer dibujo real de la
@@ -292,6 +305,7 @@ fun LibraryScreen(
                 onPlayTrack = onPlayOnlineTrack,
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = onImportOnlineTracks,
+                ytMusicCookies = ytMusicCookies,
                 modifier = Modifier.fillMaxSize(),
             )
         } else when (val state = uiState) {
@@ -1284,6 +1298,31 @@ internal object AlbumArtCache {
 
     fun clear() {
         cache.evictAll()
+    }
+}
+
+/**
+ * Precarga las portadas de los álbumes en AlbumArtCache (2026-11-10):
+ * al bajar rápido por la biblioteca, cada fila pedía su miniatura al
+ * sistema y solo se veía la inicial. Se calientan en segundo plano,
+ * una vez, sin bloquear la lista; si una no tiene portada, no pasa
+ * nada. También calienta la caché de miniaturas del sistema, así que
+ * el siguiente scroll es rápido aunque la caché de la app se vacíe.
+ */
+suspend fun warmAlbumArtCache(context: Context, albumIds: List<Long>) {
+    delay(500)
+    withContext(Dispatchers.IO) {
+        for (albumId in albumIds) {
+            ensureActive()
+            if (AlbumArtCache.get(albumId) != null) continue
+            try {
+                val uri = albumArtUri(albumId)
+                val thumb = context.contentResolver.loadThumbnail(uri, Size(144, 144), null)
+                AlbumArtCache.put(albumId, thumb)
+            } catch (_: Exception) {
+                // Sin portada: la fila muestra la inicial.
+            }
+        }
     }
 }
 
