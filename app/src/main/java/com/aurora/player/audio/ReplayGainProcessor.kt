@@ -147,9 +147,13 @@ class ReplayGainProcessor : BaseAudioProcessor() {
             out.flip()
             return
         }
+        // Cada rama exige los bytes de una muestra completa (como la
+        // de 24 bits ya hacía con >= 3): un búfer truncado pierde su
+        // cola en vez de lanzar BufferUnderflowException en el hilo
+        // de audio (auditoría OpenCode, ronda 2).
         when (encoding) {
             C.ENCODING_PCM_16BIT -> {
-                while (inputBuffer.hasRemaining()) {
+                while (inputBuffer.remaining() >= 2) {
                     val sample = inputBuffer.short.toInt()
                     val scaled = (sample * gain).toInt().coerceIn(-32768, 32767)
                     out.putShort(scaled.toShort())
@@ -169,14 +173,14 @@ class ReplayGainProcessor : BaseAudioProcessor() {
                 }
             }
             C.ENCODING_PCM_32BIT -> {
-                while (inputBuffer.hasRemaining()) {
+                while (inputBuffer.remaining() >= 4) {
                     val sample = inputBuffer.int.toLong()
                     val scaled = (sample * gain).toLong().coerceIn(-2147483648L, 2147483647L)
                     out.putInt(scaled.toInt())
                 }
             }
             C.ENCODING_PCM_FLOAT -> {
-                while (inputBuffer.hasRemaining()) {
+                while (inputBuffer.remaining() >= 4) {
                     val sample = inputBuffer.float
                     out.putFloat((sample * gain).toFloat().coerceIn(-1f, 1f))
                 }

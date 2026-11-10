@@ -161,7 +161,11 @@ class EqualizerManager(audioSessionId: Int) {
     }
 
     fun release() {
-        equalizer?.release(); bassBoost?.release(); virtualizer?.release()
+        // Cada efecto con su propio try/catch (auditoría OpenCode,
+        // ronda 2): si uno falla al liberarse, los demás se liberan igual.
+        try { equalizer?.release() } catch (_: Exception) { }
+        try { bassBoost?.release() } catch (_: Exception) { }
+        try { virtualizer?.release() } catch (_: Exception) { }
         equalizer = null; bassBoost = null; virtualizer = null
     }
 }
