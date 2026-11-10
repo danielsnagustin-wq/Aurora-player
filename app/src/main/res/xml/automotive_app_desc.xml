@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android Auto (Fase 2 app): la app es un reproductor de música para el coche. -->
+<automotiveApp>
+    <uses name="media" />
+</automotiveApp>
