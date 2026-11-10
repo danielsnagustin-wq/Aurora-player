@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.audio.AUTO_EQ_MODELS
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
@@ -71,6 +72,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var virtualizer by remember { mutableStateOf(0f) }
     var selectedPreset by remember { mutableStateOf<String?>(null) }
     var newPresetName by remember { mutableStateOf("") }
+    // AutoEq: buscador del modelo de auriculares.
+    var autoEqQuery by remember { mutableStateOf("") }
     // EQ por salida: la salida actual se lee al entrar; el EQ de cada
     // salida se guarda aparte solo cuando el interruptor está puesto.
     val (route, routeName) = remember { currentOutputRoute(context) }
@@ -331,6 +334,56 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         manager?.applyPreset(preset)
                         levels = preset.levelsDb
                         selectedPreset = preset.name
+                        persist()
+                    },
+                )
+            }
+        }
+
+        Text("AutoEq", modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Corrección medida para tu modelo de auriculares (proyecto AutoEq, mediciones oratory1990). " +
+                "Las frecuencias de las bandas del teléfono no son exactamente las de AutoEq: " +
+                "es una aproximación, ajústala de oído si hace falta.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedTextField(
+            value = autoEqQuery,
+            onValueChange = { autoEqQuery = it },
+            label = { Text("Buscar tu modelo") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
+        val autoEqMatches = remember(autoEqQuery) {
+            if (autoEqQuery.isBlank()) AUTO_EQ_MODELS
+            else AUTO_EQ_MODELS.filter { it.name.contains(autoEqQuery, ignoreCase = true) }
+        }
+        if (autoEqMatches.isEmpty()) {
+            Text(
+                "Ningún modelo coincide. Hay ${AUTO_EQ_MODELS.size} modelos medidos; prueba con la marca.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            for (model in autoEqMatches) {
+                PresetChip(
+                    name = model.name,
+                    selected = selectedPreset == "AutoEq: ${model.name}",
+                    onClick = {
+                        if (!enabled) {
+                            enabled = true
+                            manager?.setEnabled(true)
+                        }
+                        manager?.applyPreset(EqualizerManager.Preset(model.name, model.levelsDb))
+                        levels = model.levelsDb
+                        selectedPreset = "AutoEq: ${model.name}"
                         persist()
                     },
                 )
