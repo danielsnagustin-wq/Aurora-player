@@ -38,13 +38,16 @@ class PerformanceProfileTest {
     }
 
     @Test
-    fun `perfil Alto rendimiento tiene el mismo aspecto que Equilibrado`() {
+    fun `perfil Alto rendimiento es el maximo visual, distinto de Equilibrado`() {
         val balanced = PerformanceProfile.BALANCED.applyTo(ThemeSettings.DEFAULT)
         val performance = PerformanceProfile.PERFORMANCE.applyTo(ThemeSettings.DEFAULT)
-        assertEquals(balanced.dynamicColor, performance.dynamicColor)
-        assertEquals(balanced.playerBackground, performance.playerBackground)
-        assertEquals(balanced.cornerRadiusDp, performance.cornerRadiusDp)
-        assertEquals(balanced.animationsEnabled, performance.animationsEnabled)
+        assertTrue(performance.dynamicColor)
+        assertEquals(PlayerBackground.GRADIENT, performance.playerBackground)
+        assertEquals(28, performance.cornerRadiusDp)
+        assertTrue(performance.animationsEnabled)
+        // Y sí es distinto de Equilibrado: degradado y esquinas al máximo.
+        assertEquals(PlayerBackground.COVER, balanced.playerBackground)
+        assertEquals(16, balanced.cornerRadiusDp)
     }
 
     @Test

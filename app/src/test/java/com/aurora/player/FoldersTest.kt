@@ -5,6 +5,7 @@ import com.aurora.player.model.commonFolderPrefix
 import com.aurora.player.model.isDirectlyInFolder
 import com.aurora.player.model.isInExcludedFolder
 import com.aurora.player.model.parentPath
+import com.aurora.player.model.treeDocumentIdToPath
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,6 +26,24 @@ class FoldersTest {
         assertEquals("/a/b", parentPath("/a/b/c.mp3"))
         assertEquals("/", parentPath("/a.mp3"))
         assertEquals("/", parentPath("/"))
+    }
+
+    @Test
+    fun `id de arbol SAF a ruta de archivo`() {
+        assertEquals(
+            "/storage/emulated/0/Music/rock",
+            treeDocumentIdToPath("primary:Music/rock"),
+        )
+        assertEquals(
+            "/storage/emulated/0",
+            treeDocumentIdToPath("primary:"),
+        )
+        assertEquals(
+            "/storage/1234-5678/Music",
+            treeDocumentIdToPath("1234-5678:Music"),
+        )
+        assertEquals(null, treeDocumentIdToPath("sin-dos-puntos"))
+        assertEquals(null, treeDocumentIdToPath(":Music"))
     }
 
     @Test

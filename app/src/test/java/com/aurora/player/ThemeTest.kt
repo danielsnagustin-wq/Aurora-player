@@ -11,6 +11,7 @@ import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.darkenForLight
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.ui.theme.parseHexOrNull
+import com.aurora.player.ui.theme.readableTextOn
 import com.aurora.player.ui.theme.toHex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -81,6 +82,20 @@ class ThemeTest {
         assertEquals(30, SleepTimerOption.MIN_30.minutes)
         assertEquals(60, SleepTimerOption.MIN_60.minutes)
         assertEquals(-1, SleepTimerOption.END_OF_SONG.minutes)
+    }
+
+    @Test
+    fun `readableTextOn - el color elegido manda y el texto se adapta`() {
+        val darkText = Color(0xFF1A1C1E)
+        val lightText = Color(0xFFDCE8F5)
+        // Fondo claro + texto claro del usuario -> texto oscuro.
+        assertEquals(darkText, readableTextOn(Color.White, "#DCE8F5", darkText, lightText))
+        // Fondo claro + texto oscuro del usuario -> el del usuario.
+        assertEquals(darkText, readableTextOn(Color.White, "#1A1C1E", darkText, lightText))
+        // Fondo oscuro + texto claro del usuario -> el del usuario.
+        assertEquals(lightText, readableTextOn(Color.Black, "#DCE8F5", darkText, lightText))
+        // Fondo oscuro + texto oscuro del usuario -> texto claro.
+        assertEquals(lightText, readableTextOn(Color.Black, "#1A1C1E", darkText, lightText))
     }
 
     @Test
