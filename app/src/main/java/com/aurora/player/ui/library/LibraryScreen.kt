@@ -310,6 +310,8 @@ fun LibraryScreen(
                 onImportOnlineTracks = onImportOnlineTracks,
                 ytMusicCookies = ytMusicCookies,
                 streamQuality = streamQuality,
+                localCount = (uiState as? LibraryUiState.Loaded)?.songs?.size ?: 0,
+                onShowLocal = { tab = 0 },
                 modifier = Modifier.fillMaxSize(),
             )
         } else when (val state = uiState) {
