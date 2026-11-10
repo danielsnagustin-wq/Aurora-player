@@ -80,6 +80,9 @@ dependencies {
     // mediarouter 1.6.0-beta01 + core 1.10.1, compatibles, y tiene
     // las mismas APIs que usa la Serie B (verificado con javap).
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
+    // Inicio de sesión de YouTube Music con la cuenta del teléfono
+    // (Google Sign-In + GoogleAuthUtil, 2026-11-10).
+    implementation("com.google.android.gms:play-services-auth:22.0.0")
 
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).

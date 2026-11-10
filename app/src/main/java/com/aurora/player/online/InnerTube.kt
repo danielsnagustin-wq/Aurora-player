@@ -554,7 +554,10 @@ fun selectAudioFormat(
  * SAPISIDHASH y es la de SU cuenta; sin cookies, anónima, como hoy.
  * La resolución de audio sigue anónima (la escalera de clientes).
  */
-class InnerTubeClient(private val authCookies: String? = null) {
+class InnerTubeClient(
+    private val authCookies: String? = null,
+    private val authToken: String? = null,
+) {
     suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
             "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
@@ -635,7 +638,15 @@ class InnerTubeClient(private val authCookies: String? = null) {
             if (client.name == "WEB_REMIX") {
                 conn.setRequestProperty("Origin", "https://music.youtube.com")
                 conn.setRequestProperty("Referer", "https://music.youtube.com/")
-                if (authCookies != null) {
+                // Cuenta de Google del teléfono (2026-11-10): el token
+                // OAuth va como Bearer y tiene prioridad; sin token,
+                // las cookies del WebView, como siempre. Un token en
+                // blanco es como no tenerlo (nunca se manda "Bearer ").
+                if (!authToken.isNullOrBlank()) {
+                    GoogleAccountAuth.buildBearerHeaders(authToken).forEach { (name, value) ->
+                        conn.setRequestProperty(name, value)
+                    }
+                } else if (authCookies != null) {
                     YouTubeMusicAuth.buildAuthHeaders(authCookies)?.forEach { (name, value) ->
                         conn.setRequestProperty(name, value)
                     }

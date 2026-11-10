@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 
 private val Context.ytMusicDataStore by preferencesDataStore(
@@ -26,6 +27,7 @@ class YouTubeMusicStore(context: Context) {
 
     companion object {
         private val COOKIES_KEY = stringPreferencesKey("cookies")
+        private val TOKEN_KEY = stringPreferencesKey("oauth_token")
     }
 
     val cookiesFlow: Flow<String> =
@@ -33,7 +35,17 @@ class YouTubeMusicStore(context: Context) {
             .catch { emit(emptyPreferences()) }
             .map { prefs -> prefs[COOKIES_KEY].orEmpty() }
 
+    val tokenFlow: Flow<String> =
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> prefs[TOKEN_KEY].orEmpty() }
+
+    // Conectado con cookies (WebView) o con token (cuenta de Google
+    // del teléfono): cualquiera de los dos vale.
     val connectedFlow: Flow<Boolean> = cookiesFlow.map { it.isNotBlank() }
+        .combine(tokenFlow.map { it.isNotBlank() }) { cookies, token ->
+            cookies || token
+        }
 
     suspend fun setCookies(cookies: String) {
         dataStore.edit { prefs ->
@@ -41,9 +53,16 @@ class YouTubeMusicStore(context: Context) {
         }
     }
 
+    suspend fun setToken(token: String) {
+        dataStore.edit { prefs ->
+            prefs[TOKEN_KEY] = token.trim()
+        }
+    }
+
     suspend fun clear() {
         dataStore.edit { prefs ->
             prefs.remove(COOKIES_KEY)
+            prefs.remove(TOKEN_KEY)
         }
     }
 }
