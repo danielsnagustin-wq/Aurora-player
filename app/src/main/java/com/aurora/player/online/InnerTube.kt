@@ -43,6 +43,37 @@ data class AudioFormat(
 /** Audio resuelto: su URL directa y el itag elegido. */
 data class ResolvedStream(val url: String, val itag: Int)
 
+/**
+ * Vídeo progresivo (Fase 2 app — YouTube con vídeo, Namida): un
+ * formato adaptativo con vídeo Y audio a la vez (tiene audioChannels).
+ * Los de solo vídeo (sin audio) no sirven: sonarían mudos.
+ */
+data class VideoFormat(
+    val itag: Long,
+    val mimeType: String,
+    val url: String,
+    val width: Int,
+    val height: Int,
+)
+
+/** Vídeo resuelto: su URL directa, el itag y los subtítulos que trae. */
+data class ResolvedVideo(
+    val url: String,
+    val itag: Int,
+    val captions: List<CaptionTrack>,
+)
+
+/** Una pista de subtítulos del vídeo (timedtext). */
+data class CaptionTrack(
+    val languageCode: String,
+    val name: String,
+    val baseUrl: String,
+    /** "asr" = generados automáticamente; null = escritos a mano. */
+    val kind: String?,
+) {
+    val isAuto: Boolean get() = kind == "asr"
+}
+
 /** Una identidad de cliente InnerTube: todo son datos, no lógica. */
 data class YtClient(
     val name: String,
@@ -254,6 +285,92 @@ fun parsePlayerFormats(json: String): List<AudioFormat>? {
             bitrate = format.obj("bitrate")?.long() ?: 0L,
         )
     }
+}
+
+/**
+ * Parsea los formatos PROGRESIVOS de vídeo de una respuesta de
+ * player: solo los adaptativos con URL directa que traen vídeo y
+ * audio a la vez (mime video/ + audioChannels). Null si la
+ * respuesta no trae nada usable o el estado no es OK.
+ */
+fun parsePlayerVideoFormats(json: String): List<VideoFormat>? {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return null
+    }
+    if (root.obj("playabilityStatus")?.obj("status")?.str() != "OK") return null
+    val formats = root.obj("streamingData")?.obj("adaptiveFormats")?.arr() ?: return null
+    return formats.mapNotNull { format ->
+        val url = format.obj("url")?.str() ?: return@mapNotNull null
+        val mime = format.obj("mimeType")?.str() ?: return@mapNotNull null
+        if (!mime.startsWith("video/")) return@mapNotNull null
+        // Progresivo = trae audio: sin audioChannels sería mudo.
+        if (format.obj("audioChannels") == null) return@mapNotNull null
+        VideoFormat(
+            itag = format.obj("itag")?.long() ?: return@mapNotNull null,
+            mimeType = mime,
+            url = url,
+            width = format.obj("width")?.long()?.toInt() ?: 0,
+            height = format.obj("height")?.long()?.toInt() ?: 0,
+        )
+    }
+}
+
+/**
+ * Elige el vídeo progresivo: el más alto hasta 720p (en el teléfono
+ * no compensa más: gasta datos y batería para lo mismo). Sin
+ * progresivos, null (entonces solo queda el audio).
+ */
+fun selectVideoFormat(formats: List<VideoFormat>): VideoFormat? {
+    val sorted = formats.filter { it.height > 0 }.sortedBy { it.height }
+    return sorted.lastOrNull { it.height <= 720 } ?: sorted.firstOrNull()
+}
+
+/**
+ * Parsea las pistas de subtítulos de una respuesta de player
+ * (captions.playerCaptionsTracklistRenderer.captionTracks). Vacía
+ * si el vídeo no trae subtítulos. El baseUrl sirve tal cual para
+ * bajar el timedtext (srv3/TTML).
+ */
+fun parseCaptionTracks(json: String): List<CaptionTrack> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val tracks = root.obj("captions")?.obj("playerCaptionsTracklistRenderer")
+        ?.obj("captionTracks")?.arr() ?: return emptyList()
+    return tracks.mapNotNull { track ->
+        val baseUrl = track.obj("baseUrl")?.str() ?: return@mapNotNull null
+        val languageCode = track.obj("languageCode")?.str() ?: return@mapNotNull null
+        val name = track.obj("name")?.obj("simpleText")?.str() ?: languageCode
+        CaptionTrack(
+            languageCode = languageCode,
+            name = name,
+            baseUrl = baseUrl,
+            kind = track.obj("kind")?.str(),
+        )
+    }
+}
+
+/**
+ * Elige la pista de subtítulos: español a mano, inglés a mano,
+ * español automático, inglés automático, la primera a mano y si no
+ * la primera que haya. Null sin pistas.
+ */
+fun selectCaptionTrack(
+    tracks: List<CaptionTrack>,
+    preferredLanguages: List<String> = listOf("es", "en"),
+): CaptionTrack? {
+    if (tracks.isEmpty()) return null
+    for (language in preferredLanguages) {
+        tracks.firstOrNull { it.languageCode == language && !it.isAuto }?.let { return it }
+    }
+    for (language in preferredLanguages) {
+        tracks.firstOrNull { it.languageCode == language }?.let { return it }
+    }
+    return tracks.firstOrNull { !it.isAuto } ?: tracks.first()
 }
 
 /** Una lista de charts: título visible, ID de lista de YouTube (sin el prefijo VL) y portada. */
@@ -487,6 +604,22 @@ class InnerTubeClient(private val authCookies: String? = null) {
         videoId: String,
         quality: StreamQuality = StreamQuality.HIGH,
     ): String? = resolveStream(videoId, quality)?.url
+
+    /**
+     * Resuelve el VÍDEO (Fase 2 app): el progresivo con audio y las
+     * pistas de subtítulos, probando la escalera de clientes. Null
+     * si no hay progresivo (entonces solo queda el audio).
+     */
+    suspend fun resolveVideo(videoId: String): ResolvedVideo? = withContext(Dispatchers.IO) {
+        for (client in PLAYER_CLIENTS) {
+            val url = "https://${client.host}/youtubei/v1/player?prettyPrint=false"
+            val body = postJson(url, buildPlayerBody(client, videoId), client) ?: continue
+            val video = parsePlayerVideoFormats(body)?.let { selectVideoFormat(it) } ?: continue
+            val captions = parseCaptionTracks(body)
+            return@withContext ResolvedVideo(video.url, video.itag.toInt(), captions)
+        }
+        null
+    }
 
     private fun postJson(url: String, bodyJson: String, client: YtClient): String? {
         return try {
