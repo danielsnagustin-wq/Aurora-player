@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.widget.Toast
 import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorEvent
@@ -92,6 +93,8 @@ import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.cast.CastManager
+import com.aurora.player.cast.CastState
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.data.YouTubeMusicStore
 import com.aurora.player.library.autoDjQueue
@@ -532,6 +535,10 @@ private fun AuroraApp(
 
     // ETAPA 4: velocidad, cola visible, historial (30 s) y cola persistente.
     val scope = rememberCoroutineScope()
+    // Fase 2 app — Cast: la sesión vive mientras la UI está viva;
+    // el botón del reproductor la descubre y este manager la usa.
+    val castManager = remember { CastManager(context) }
+    val castState by castManager.state.collectAsState()
     val playerStore = remember { PlayerSettingsStore(context) }
     val playerSettings by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
     // Fase 2 — orden de los proveedores de letras (hoja "Elegir
@@ -738,6 +745,38 @@ private fun AuroraApp(
             }
             radioBusy = false
         }
+    }
+
+    // Fase 2 app — Cast: al conectar con la TV, la pista online
+    // que suena pasa al receptor y el audio local se pausa para no
+    // sonar dos veces. Una pista local no tiene URL alcanzable: se
+    // avisa y sigue sonando en el teléfono.
+    fun transferCurrentTrackToCast() {
+        val c = controller ?: return
+        val item = c.currentMediaItem ?: return
+        if (!item.mediaId.startsWith("yt:")) {
+            Toast.makeText(
+                context,
+                "Conectado al Chromecast: las pistas locales suenan en el teléfono.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        val url = item.localConfiguration?.uri?.toString() ?: return
+        val meta = item.mediaMetadata
+        val sent = castManager.loadOnlineTrack(
+            streamUrl = url,
+            title = meta.title?.toString() ?: "",
+            artist = meta.artist?.toString() ?: "",
+            durationMs = c.duration.takeIf { it > 0 } ?: 0L,
+            coverUrl = meta.artworkUri?.toString(),
+        )
+        if (sent) c.pause()
+    }
+
+    DisposableEffect(castManager) {
+        castManager.start(onSessionStarted = { transferCurrentTrackToCast() })
+        onDispose { castManager.stop() }
     }
 
     DisposableEffect(Unit) {
@@ -1210,6 +1249,14 @@ private fun AuroraApp(
     fun playSongs(songs: List<Song>, startIndex: Int) {
         val c = controller ?: return
         if (songs.isEmpty()) return
+        if (castManager.isConnected) {
+            Toast.makeText(
+                context,
+                "Solo las pistas online se pueden enviar al Chromecast.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
         // indexOfFirst devuelve -1 si la canción no está en la lista
         // (duplicados exactos): nunca se pasa un índice inválido al
         // reproductor.
@@ -1313,7 +1360,17 @@ private fun AuroraApp(
         val c = controller ?: return
         c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
         c.prepare()
-        c.play()
+        if (castManager.isConnected) {
+            castManager.loadOnlineTrack(
+                streamUrl = streamUrl,
+                title = track.title,
+                artist = track.artist,
+                durationMs = (track.durationSec ?: 0L) * 1000L,
+                coverUrl = track.thumbnailUrl,
+            )
+        } else {
+            c.play()
+        }
     }
 
     // Fase 2 app — YouTube con vídeo: baja los subtítulos (es a
@@ -1371,6 +1428,7 @@ private fun AuroraApp(
             shuffleEnabled = shuffleEnabled,
             repeatMode = repeatMode,
             onClose = { showPlayer = false },
+            castDeviceName = (castState as? CastState.Connected)?.deviceName,
             onPlayPause = { controller?.let { if (it.isPlaying) it.pause() else it.play() } },
             onPrevious = { controller?.seekToPreviousMediaItem() },
             onNext = { skipToNext() },
