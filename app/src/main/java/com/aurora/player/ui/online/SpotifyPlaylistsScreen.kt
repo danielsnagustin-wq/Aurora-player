@@ -195,7 +195,7 @@ fun SpotifyPlaylistsSection(
                     ) { Text("Cancelar") }
                 }
             }
-            Text(selected.name, modifier = Modifier.padding(top = 8.dp))
+            Text(selected?.name.orEmpty(), modifier = Modifier.padding(top = 8.dp))
             if (loadingTracks) {
                 CircularProgressIndicator(modifier = Modifier.padding(top = 8.dp))
             } else if (importing) {

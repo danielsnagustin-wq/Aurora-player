@@ -1172,7 +1172,7 @@ private fun AuroraApp(
      * resuelta (las URLs caducan: se resuelven al tocar, nunca se
      * guardan). El mediaId "yt:<videoId>" la marca como online: no
      * entra en el historial ni en la cola persistente local. */
-    private fun onlineMediaItem(track: OnlineTrack, streamUrl: String): MediaItem =
+    fun onlineMediaItem(track: OnlineTrack, streamUrl: String): MediaItem =
         MediaItem.Builder()
             .setUri(streamUrl)
             .setMediaId("yt:${track.videoId}")
