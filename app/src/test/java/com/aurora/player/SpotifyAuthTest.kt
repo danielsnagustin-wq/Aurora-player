@@ -3,6 +3,7 @@ package com.aurora.player
 import com.aurora.player.online.parseSpotifyAccessToken
 import com.aurora.player.online.parseSpotifyProfile
 import com.aurora.player.online.parseSpotifyPlaylistTracks
+import com.aurora.player.online.parseSpotifyPlaylistId
 import com.aurora.player.online.parseSpotifyPlaylists
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -70,5 +71,37 @@ class SpotifyAuthTest {
     fun `json roto da vacio`() {
         assertTrue(parseSpotifyPlaylists("no es json").isEmpty())
         assertTrue(parseSpotifyPlaylistTracks("""{"items":[]}""").isEmpty())
+    }
+
+    @Test
+    fun enlacePublicoConParametrosDaSuId() {
+        assertEquals(
+            "37i9dQZF1DXcBWIGoYBM5M",
+            parseSpotifyPlaylistId("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=abc123"),
+        )
+    }
+
+    @Test
+    fun enlacePublicoSinParametrosDaSuId() {
+        assertEquals(
+            "37i9dQZF1DXcBWIGoYBM5M",
+            parseSpotifyPlaylistId("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"),
+        )
+    }
+
+    @Test
+    fun uriSpotifyDaSuId() {
+        assertEquals(
+            "37i9dQZF1DXcBWIGoYBM5M",
+            parseSpotifyPlaylistId("spotify:playlist:37i9dQZF1DXcBWIGoYBM5M"),
+        )
+    }
+
+    @Test
+    fun loQueNoEsUnaListaDaNull() {
+        assertNull(parseSpotifyPlaylistId("https://open.spotify.com/track/abc123"))
+        assertNull(parseSpotifyPlaylistId("https://youtube.com/watch?v=abc"))
+        assertNull(parseSpotifyPlaylistId(""))
+        assertNull(parseSpotifyPlaylistId("  "))
     }
 }
