@@ -1452,7 +1452,6 @@ enum class SettingsSection(
     ),
 }
 
-@Composable
 /**
  * Fase 2 — hoja "Elegir proveedor" (como BitChord). Reordena con
  * las flechas: el primero que encuentre la letra gana.
@@ -1505,6 +1504,7 @@ private fun ProvidersDialog(
     )
 }
 
+@Composable
 private fun SettingsHome(onOpen: (SettingsSection) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
         for (section in SettingsSection.entries) {
