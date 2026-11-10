@@ -226,6 +226,9 @@ fun PlayerScreen(
     doubleTapAction: GestureAction = GestureAction.FAVORITE,
     // Fase 2 — modos de karaoke: cuándo se colorean las palabras.
     karaokeMode: KaraokeMode = KaraokeMode.FULLSCREEN_ONLY,
+    // Fase 2 app — Cast: nombre del dispositivo al que se está
+    // enviando (null = sin sesión activa).
+    castDeviceName: String? = null,
     volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -381,6 +384,14 @@ fun PlayerScreen(
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Cerrar")
             }
+            CastButton()
+        }
+        if (castDeviceName != null) {
+            Text(
+                "Enviando a $castDeviceName",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
         if (title == null) {
             Spacer(Modifier.height(64.dp))
