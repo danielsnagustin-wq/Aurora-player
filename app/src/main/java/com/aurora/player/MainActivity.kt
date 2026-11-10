@@ -8,10 +8,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -110,11 +115,13 @@ import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.util.BackupManager
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.ErrorLog
+import com.aurora.player.util.ShakeDetector
 import com.aurora.player.util.LyricsOffsetStore
 import com.aurora.player.util.resolveEffective
 import com.aurora.player.lyrics.loadOnlineLyrics
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadLyricsForPath
+import com.aurora.player.util.saveLyricsForSong
 import com.aurora.player.util.loadSongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -785,6 +792,33 @@ private fun AuroraApp(
         }
     }
 
+    // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
+    // Solo salta si está sonando. El sensor se registra solo
+    // mientras la app está en primer plano (DisposableEffect).
+    DisposableEffect(playerSettings.shakeToNext, controller) {
+        val c = controller
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        var listener: SensorEventListener? = null
+        if (playerSettings.shakeToNext && c != null && sensorManager != null && accelerometer != null) {
+            val detector = ShakeDetector { if (c.isPlaying) c.seekToNext() }
+            listener = object : SensorEventListener {
+                override fun onSensorChanged(event: SensorEvent) {
+                    detector.onSensorChanged(
+                        event.values[0], event.values[1], event.values[2],
+                        SystemClock.elapsedRealtime(),
+                    )
+                }
+
+                override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+            }
+            sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_GAME)
+        }
+        onDispose {
+            if (listener != null) sensorManager?.unregisterListener(listener)
+        }
+    }
+
     // Reloj de progreso: actualiza la barra mientras suena.
     // ETAPA 7: en pausa y con el reproductor cerrado no hay nada que
     // actualizar: el bucle duerme sin leer el reproductor (ahorra
@@ -1139,6 +1173,38 @@ private fun AuroraApp(
             },
             swipeEnabled = playerSettings.swipeToChangeTrack,
             doubleTapEnabled = playerSettings.doubleTapToFavorite,
+            volumeGestureEnabled = playerSettings.volumeGesture,
+            onSaveLyrics = { edited ->
+                // Fase 1b: editor de letras. Guarda el .lrc junto a
+                // la canción y recarga para mostrar lo guardado.
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        val mediaItem = controller?.currentMediaItem
+                        val song = mediaItem?.localConfiguration?.let { config ->
+                            Song(
+                                id = currentSongId ?: 0L,
+                                title = currentTitle ?: "",
+                                artist = currentArtist ?: "",
+                                album = currentAlbum ?: "",
+                                albumId = 0L,
+                                durationMs = controller?.duration ?: 0L,
+                                path = currentSongPath ?: "",
+                                uri = config.uri,
+                                mimeType = config.mimeType ?: "",
+                                sizeBytes = 0L,
+                                dateAdded = 0L,
+                            )
+                        } ?: return@launch
+                        val result = saveLyricsForSong(context, song, edited)
+                        result.onFailure {
+                            ErrorLog.log(context, "Guardar letras", it as? Exception ?: Exception(it.message))
+                        }
+                        lyrics = loadLyricsForPath(context, currentSongPath ?: "")
+                    } catch (e: Exception) {
+                        ErrorLog.log(context, "Guardar letras", e)
+                    }
+                }
+            },
         )
         return
     }
