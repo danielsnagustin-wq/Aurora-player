@@ -1,7 +1,5 @@
 package com.aurora.player.ui.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -33,8 +31,6 @@ import com.aurora.player.ui.theme.auroraButtonColors
 fun SettingsNetworkSection(
     player: PlayerSettings,
     onSavePlayer: (PlayerSettings) -> Unit,
-    providerOrder: List<String>,
-    onShowProviders: () -> Unit,
     spotifyConnected: Boolean,
     spotifyCookieText: String,
     onSpotifyCookieTextChange: (String) -> Unit,
@@ -65,22 +61,9 @@ fun SettingsNetworkSection(
         onCheckedChange = { onSavePlayer(player.copy(onlineMode = it)) },
         description = "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
     )
-    // Fase 2 — proveedores de letras (como BitChord): el primero
-    // que encuentre la letra gana; se reordena con las flechas.
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Proveedores de letras", modifier = Modifier.weight(1f))
-        OutlinedButton(onClick = onShowProviders) {
-            Text("Elegir proveedor")
-        }
-    }
-    SettingsGroupDescription(
-        "Orden actual: ${providerOrder.joinToString(" → ")}",
-        modifier = Modifier.padding(top = 4.dp),
-    )
+    // Letras automáticas (2026-11-10, como BitChord): el orden
+    // LRCLIB → BetterLyrics → BiniLyrics es fijo y el primero que
+    // encuentre la letra gana. Sin hoja para elegir proveedor.
     // Fase 2 — Spotify como BitChord: se inicia sesión con la
     // cuenta dentro de la app y Aurora guarda la sesión sola. Con
     // ella se cargan TUS listas; la música suena por YouTube Music.
