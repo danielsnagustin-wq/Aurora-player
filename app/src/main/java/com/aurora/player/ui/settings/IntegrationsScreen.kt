@@ -32,6 +32,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.SpotifyStore
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.SpotifyProfile
@@ -57,6 +58,7 @@ fun IntegrationsScreen(
     onConnectYouTubeMusic: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
+    streamQuality: StreamQuality = StreamQuality.HIGH,
 ) {
     val context = LocalContext.current
     val spotifyStore = remember { SpotifyStore(context) }
@@ -165,6 +167,7 @@ fun IntegrationsScreen(
             spotifyConnected = true,
             onImportTracks = onImportTracks,
             ytMusicCookies = ytMusicCookies,
+            streamQuality = streamQuality,
         )
     }
 }

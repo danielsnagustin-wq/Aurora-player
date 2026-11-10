@@ -296,6 +296,7 @@ fun SettingsScreen(
                 onConnectYouTubeMusic = onConnectYouTubeMusic,
                 onDisconnectYouTubeMusic = onDisconnectYouTubeMusic,
                 ytMusicCookies = ytMusicCookies,
+                streamQuality = player.streamQuality,
             )
         }
 

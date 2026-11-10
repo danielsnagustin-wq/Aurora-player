@@ -16,6 +16,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aurora.player.model.PlayerSettings
+import com.aurora.player.model.StreamQuality
+import com.aurora.player.ui.design.AuroraOptionChips
 import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.ui.design.AuroraSwitchRow
 import com.aurora.player.ui.theme.auroraButtonColors
@@ -60,6 +62,24 @@ fun SettingsNetworkSection(
         checked = player.onlineMode,
         onCheckedChange = { onSavePlayer(player.copy(onlineMode = it)) },
         description = "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
+    )
+    // Calidad de streaming (BitChord, 2026-11-10): Alta es lo
+    // mejor que da YouTube (Opus ~160 kbps); no hay tier sin
+    // perdida porque YouTube no lo ofrece. El coste en MB/h es
+    // el real del bitrate.
+    AuroraSectionHeader(title = "Calidad de streaming")
+    SettingsGroupDescription(
+        "Cuanto suena cada hora al escuchar de YouTube. " +
+            player.streamQuality.description,
+    )
+    AuroraOptionChips(
+        options = StreamQuality.entries.map { it.name to it.label },
+        selected = player.streamQuality.name,
+        onSelect = { name ->
+            StreamQuality.entries.find { it.name == name }?.let {
+                onSavePlayer(player.copy(streamQuality = it))
+            }
+        },
     )
     // Letras automáticas (2026-11-10, como BitChord): el orden
     // LRCLIB → BetterLyrics → BiniLyrics es fijo y el primero que
