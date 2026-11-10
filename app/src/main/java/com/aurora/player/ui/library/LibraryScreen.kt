@@ -45,6 +45,9 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenu
@@ -74,6 +77,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -845,7 +849,26 @@ private fun SongRow(
     // el ListItem de Material 3 impone su propia altura mínima (72 dp
     // con dos líneas) y el heightIn(52) de fuera no lo encogía. Ahora
     // compacta es una fila propia de 52 dp; cómoda sigue siendo ListItem.
+    // RONDA PULIDO 2 (2026-11-10): la fila es una tarjeta con el
+    // estilo y el radio elegidos en Ajustes (antes era texto pelado
+    // sobre negro y la biblioteca se veía demasiado simple; el
+    // estilo de tarjetas no se notaba en ningún sitio).
+    val cardColor = cardBackground(
+        LocalCardStyle.current,
+        MaterialTheme.colorScheme.surface,
+    )
+    val cardShape = cornerRadiusShape(LocalCornerRadiusDp.current)
+    val cardBorderValue = cardBorder(
+        LocalCardStyle.current,
+        MaterialTheme.colorScheme.outline,
+    )
     if (LocalListDensity.current == ListDensity.COMPACT) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+            colors = CardDefaults.cardColors(containerColor = cardColor),
+            shape = cardShape,
+            border = cardBorderValue,
+        ) {
         Row(
             modifier = Modifier.fillMaxWidth()
                 .height(52.dp)
@@ -880,8 +903,15 @@ private fun SongRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        }
         return
     }
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+        colors = CardDefaults.cardColors(containerColor = cardColor),
+        shape = cardShape,
+        border = cardBorderValue,
+    ) {
     ListItem(
         headlineContent = {
             Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -911,6 +941,7 @@ private fun SongRow(
             }
         },
         leadingContent = { AlbumCover(song, size = coverSizeDp.dp) },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier
             .heightIn(min = listDensityToRowHeightDp(LocalListDensity.current).dp)
             .combinedClickable(
@@ -918,6 +949,7 @@ private fun SongRow(
                 onLongClick = { onDetails(song) },
             ),
     )
+    }
 }
 
 @Composable
