@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
 fun SpotifyPlaylistsSection(
     spotifyConnected: Boolean,
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
+    ytMusicCookies: String? = null,
     modifier: Modifier = Modifier,
 ) {
     if (!spotifyConnected) return
@@ -71,7 +72,7 @@ fun SpotifyPlaylistsSection(
     val spotifyStore = remember { SpotifyStore(context) }
     val cookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val spotify = remember { SpotifyClient() }
-    val tube = remember { InnerTubeClient() }
+    val tube = remember(ytMusicCookies) { InnerTubeClient(ytMusicCookies) }
 
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>?>(null) }
     var loadingPlaylists by remember { mutableStateOf(false) }

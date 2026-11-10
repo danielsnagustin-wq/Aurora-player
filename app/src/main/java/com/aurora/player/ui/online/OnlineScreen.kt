@@ -45,6 +45,7 @@ fun OnlineScreen(
     onPlayTrack: (OnlineTrack, String) -> Unit,
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
+    ytMusicCookies: String? = null,
     modifier: Modifier = Modifier,
 ) {
     if (!onlineMode) {
@@ -58,7 +59,7 @@ fun OnlineScreen(
         return
     }
 
-    val client = remember { InnerTubeClient() }
+    val client = remember(ytMusicCookies) { InnerTubeClient(ytMusicCookies) }
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<OnlineTrack>?>(null) }
@@ -125,6 +126,7 @@ fun OnlineScreen(
         SpotifyPlaylistsSection(
             spotifyConnected = spotifyConnected,
             onImportTracks = onImportOnlineTracks,
+            ytMusicCookies = ytMusicCookies,
         )
         if (searching) {
             Box(
