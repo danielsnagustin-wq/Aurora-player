@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.player.model.AppFont
+import com.aurora.player.model.KaraokeMode
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.parseGestureAction
@@ -162,6 +163,7 @@ class PlayerSettingsStore(private val context: Context) {
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
         val DOUBLE_TAP_ACTION = stringPreferencesKey("double_tap_action")
+        val KARAOKE_MODE = stringPreferencesKey("karaoke_mode")
         val SHAKE_TO_NEXT = booleanPreferencesKey("shake_to_next")
         val SHAKE_ACTION = stringPreferencesKey("shake_action")
         val VOLUME_GESTURE = booleanPreferencesKey("volume_gesture")
@@ -193,6 +195,7 @@ class PlayerSettingsStore(private val context: Context) {
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
             doubleTapAction = parseGestureAction(prefs[Keys.DOUBLE_TAP_ACTION], GestureAction.FAVORITE).name,
+            karaokeMode = KaraokeMode.entries.find { it.name == prefs[Keys.KARAOKE_MODE] } ?: d.karaokeMode,
             shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
             shakeAction = parseGestureAction(prefs[Keys.SHAKE_ACTION], GestureAction.NEXT).name,
             volumeGesture = prefs[Keys.VOLUME_GESTURE] ?: d.volumeGesture,
@@ -220,6 +223,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
             prefs[Keys.DOUBLE_TAP_ACTION] = settings.doubleTapAction
+            prefs[Keys.KARAOKE_MODE] = settings.karaokeMode.name
             prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
             prefs[Keys.SHAKE_ACTION] = settings.shakeAction
             prefs[Keys.VOLUME_GESTURE] = settings.volumeGesture

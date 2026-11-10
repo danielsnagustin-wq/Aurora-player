@@ -1,6 +1,7 @@
 package com.aurora.player.data
 
 import com.aurora.player.model.AppFont
+import com.aurora.player.model.KaraokeMode
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.parseGestureAction
@@ -136,6 +137,7 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "swipeToChangeTrack" to JsonValue.Bool(p.swipeToChangeTrack),
         "doubleTapToFavorite" to JsonValue.Bool(p.doubleTapToFavorite),
         "doubleTapAction" to JsonValue.Str(p.doubleTapAction),
+        "karaokeMode" to JsonValue.Str(p.karaokeMode.name),
         "shakeToNext" to JsonValue.Bool(p.shakeToNext),
         "shakeAction" to JsonValue.Str(p.shakeAction),
         "volumeGesture" to JsonValue.Bool(p.volumeGesture),
@@ -256,6 +258,7 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         swipeToChangeTrack = v.obj("swipeToChangeTrack").bool() ?: d.swipeToChangeTrack,
         doubleTapToFavorite = v.obj("doubleTapToFavorite").bool() ?: d.doubleTapToFavorite,
         doubleTapAction = parseGestureAction(v.obj("doubleTapAction").str(), GestureAction.FAVORITE).name,
+        karaokeMode = enumFrom(v.obj("karaokeMode").str(), KaraokeMode.entries.toTypedArray(), d.karaokeMode),
         shakeToNext = v.obj("shakeToNext").bool() ?: d.shakeToNext,
         shakeAction = parseGestureAction(v.obj("shakeAction").str(), GestureAction.NEXT).name,
         volumeGesture = v.obj("volumeGesture").bool() ?: d.volumeGesture,
