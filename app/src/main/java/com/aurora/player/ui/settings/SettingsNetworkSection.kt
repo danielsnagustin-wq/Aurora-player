@@ -10,6 +10,11 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -34,8 +39,20 @@ fun SettingsNetworkSection(
     onSpotifyCookieTextChange: (String) -> Unit,
     spotifyStatus: String?,
     onDisconnectSpotify: () -> Unit,
-    onConnectSpotify: () -> Unit,
+    onConnectSpotify: (String) -> Unit,
 ) {
+    // Inicio de sesión con Spotify dentro de la app (como BitChord,
+    // 2026-11-10): nada de copiar la cookie a mano.
+    var showSpotifyLogin by remember { mutableStateOf(false) }
+    LaunchedEffect(spotifyConnected) {
+        if (spotifyConnected) showSpotifyLogin = false
+    }
+    if (showSpotifyLogin) {
+        SpotifyLoginDialog(
+            onConnect = onConnectSpotify,
+            onDismiss = { showSpotifyLogin = false },
+        )
+    }
     // RONDA 7 P2 + 002-online-youtube: modo online. Apagado por
     // defecto: con el interruptor apagado la app no toca la red
     // jamás. Con él encendido: letras online (LRCLIB, solo si no
@@ -72,13 +89,13 @@ fun SettingsNetworkSection(
         "Orden actual: ${providerOrder.joinToString(" → ")}",
         modifier = Modifier.padding(top = 4.dp),
     )
-    // Fase 2 — Spotify como BitChord: conexión por cookie sp_dc
-    // (sin app registrada ni client_id). Con ella se cargan TUS
-    // listas; la música suena por YouTube Music, como BitChord.
+    // Fase 2 — Spotify como BitChord: se inicia sesión con la
+    // cuenta dentro de la app y Aurora guarda la sesión sola. Con
+    // ella se cargan TUS listas; la música suena por YouTube Music.
     SettingsGroupTitle("Spotify")
     if (spotifyConnected) {
         SettingsGroupDescription(
-            "Conectado con tu cookie sp_dc. Tus listas se cargan de Spotify y suenan por YouTube Music.",
+            "Conectado con tu cuenta de Spotify. Tus listas se cargan de Spotify y suenan por YouTube Music.",
             modifier = Modifier.padding(top = 4.dp),
         )
         OutlinedButton(
@@ -89,18 +106,26 @@ fun SettingsNetworkSection(
         }
     } else {
         SettingsGroupDescription(
-            "1. Entra a open.spotify.com en el navegador e inicia sesión.\n2. Abre las herramientas de desarrollador, Aplicación y Cookies.\n3. Copia el valor de la cookie sp_dc.\n4. Pégala aquí.",
+            "Inicia sesión con tu cuenta de Spotify y Aurora guarda la sesión en tu teléfono. Sin copiar nada a mano.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        Button(
+            onClick = { showSpotifyLogin = true },
+            colors = auroraButtonColors(),
+            modifier = Modifier.padding(top = 8.dp),
+        ) {
+            Text("Iniciar sesión con Spotify")
+        }
+        // Respaldo manual, por si el inicio dentro de la app falla.
         OutlinedTextField(
             value = spotifyCookieText,
             onValueChange = onSpotifyCookieTextChange,
-            label = { Text("Cookie sp_dc") },
+            label = { Text("Cookie sp_dc (solo si el inicio falla)") },
             singleLine = true,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
         Button(
-            onClick = onConnectSpotify,
+            onClick = { onConnectSpotify(spotifyCookieText) },
             colors = auroraButtonColors(),
             modifier = Modifier.padding(top = 8.dp),
             enabled = spotifyCookieText.isNotBlank(),

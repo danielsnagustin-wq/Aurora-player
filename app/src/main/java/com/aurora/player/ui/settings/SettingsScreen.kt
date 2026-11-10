@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
@@ -123,8 +122,6 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(
     modifier: Modifier = Modifier,
-    notificationsGranted: Boolean = false,
-    onRequestNotificationPermission: () -> Unit = {},
     onOpenEq: () -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -299,29 +296,21 @@ fun SettingsScreen(
                         spotifyCookieText = ""
                     }
                 },
-                onConnectSpotify = {
+                onConnectSpotify = { cookie ->
                     scope.launch {
-                        spotifyStatus = "Comprobando la cookie…"
-                        val token = SpotifyClient().fetchAccessToken(spotifyCookieText.trim())
+                        spotifyStatus = "Comprobando la sesión…"
+                        val token = SpotifyClient().fetchAccessToken(cookie.trim())
                         if (token != null) {
-                            spotifyStore.setCookie(spotifyCookieText.trim())
+                            spotifyStore.setCookie(cookie.trim())
                             spotifyCookieText = ""
                             spotifyStatus = "Conectado."
                         } else {
-                            spotifyStatus = "Esa cookie no funcionó. Revisa que la copiaste entera de open.spotify.com."
+                            spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
                         }
                     }
                 },
             )
         }
-
-        if (section == SettingsSection.NOTIFICATIONS) {
-            SettingsNotificationsSection(
-                notificationsGranted = notificationsGranted,
-                onRequestNotificationPermission = onRequestNotificationPermission,
-            )
-        }
-
 
         if (section == SettingsSection.ALARM) {
             // RONDA 7 P4: alarma musical.
@@ -381,11 +370,6 @@ enum class SettingsSection(
         "Biblioteca",
         "Duración mínima, pestañas, portadas y carpetas excluidas",
         Icons.Filled.LibraryMusic,
-    ),
-    NOTIFICATIONS(
-        "Notificaciones",
-        "Aviso de reproducción en la barra de estado",
-        Icons.Filled.Notifications,
     ),
     NETWORK(
         "Red",
