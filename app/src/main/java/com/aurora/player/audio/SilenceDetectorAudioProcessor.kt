@@ -90,7 +90,14 @@ class SilenceDetectorAudioProcessor(
                 consecutiveSilentFrames++
                 if (!notifiedThisSilence && consecutiveSilentFrames >= silentFramesNeeded) {
                     notifiedThisSilence = true
-                    onLongSilence()
+                    // El callback corre en el hilo de audio: si tira, el
+                    // proceso muere con él. Nunca se deja escapar nada.
+                    try {
+                        onLongSilence()
+                    } catch (_: Exception) {
+                        // El servicio registra su propio error; aquí solo
+                        // se protege el hilo de audio.
+                    }
                 }
             } else {
                 consecutiveSilentFrames = 0L
