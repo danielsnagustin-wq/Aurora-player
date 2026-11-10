@@ -1,6 +1,7 @@
 package com.aurora.player
 
 import com.aurora.player.online.parseSpotifyAccessToken
+import com.aurora.player.online.parseSpotifyProfile
 import com.aurora.player.online.parseSpotifyPlaylistTracks
 import com.aurora.player.online.parseSpotifyPlaylists
 import org.junit.Assert.assertEquals
@@ -53,6 +54,16 @@ class SpotifyAuthTest {
         assertEquals("Onyx", tracks[0].album)
         assertEquals("Duro", tracks[1].name)
         assertNull(tracks[1].album)
+    }
+
+    @Test
+    fun `perfil de la cuenta`() {
+        val json = """{"display_name":"Sn","images":[{"url":"https://i.scdn.co/image/perfil"}]}"""
+        val profile = parseSpotifyProfile(json)
+        assertEquals("Sn", profile?.displayName)
+        assertEquals("https://i.scdn.co/image/perfil", profile?.imageUrl)
+        assertNull(parseSpotifyProfile("""{"display_name":""}"""))
+        assertNull(parseSpotifyProfile("no es json"))
     }
 
     @Test
