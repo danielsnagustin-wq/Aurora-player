@@ -93,6 +93,7 @@ import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.data.SpotifyStore
+import com.aurora.player.data.YouTubeMusicStore
 import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
@@ -530,6 +531,9 @@ private fun AuroraApp(
     val spotifyStore = remember { SpotifyStore(context) }
     val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
     val spotifyCookie by spotifyStore.cookieFlow.collectAsState(initial = "")
+    // Sesión de YouTube Music (2026-11-10): solo cookies, en el teléfono.
+    val ytMusicStore = remember { YouTubeMusicStore(context) }
+    val ytMusicCookies by ytMusicStore.cookiesFlow.collectAsState(initial = "")
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -968,7 +972,9 @@ private fun AuroraApp(
         lyricsOffsetMs = try {
             offsetStore.offsetFor(id)
         } catch (_: Exception) {
-            0L
+            // offsetFor devuelve Int: el 0 tiene que ser Int, no Long
+            // (run #292: el 0L hacía el try de tipo Number).
+            0
         }
         lyrics = loadLyricsForPath(context, currentSongPath ?: "")
         // RONDA 2: línea de calidad real (códec/bitrate/muestreo);
@@ -1514,6 +1520,7 @@ private fun AuroraApp(
                 onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
+                ytMusicCookies = ytMusicCookies,
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
@@ -1532,6 +1539,14 @@ private fun AuroraApp(
                 onOpenEq = { showEq = true },
                 onImportTracks = { tracks -> playOnlineTracks(tracks) },
                 onShareErrorLog = { shareErrorLog() },
+                ytMusicConnected = ytMusicCookies.isNotBlank(),
+                onConnectYouTubeMusic = { cookies ->
+                    scope.launch { ytMusicStore.setCookies(cookies) }
+                },
+                onDisconnectYouTubeMusic = {
+                    scope.launch { ytMusicStore.clear() }
+                },
+                ytMusicCookies = ytMusicCookies,
             )
         }
     }
