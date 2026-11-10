@@ -112,6 +112,7 @@ fun themeSettingsToJsonValue(t: ThemeSettings): JsonValue.Obj = JsonValue.Obj(
 private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
     linkedMapOf(
         "crossfadeSeconds" to JsonValue.Num(p.crossfadeSeconds.toDouble()),
+        "crossfadeGaplessAlbumException" to JsonValue.Bool(p.crossfadeGaplessAlbumException),
         "playbackSpeed" to JsonValue.Num(p.playbackSpeed.toDouble()),
         "playbackPitch" to JsonValue.Num(p.playbackPitch.toDouble()),
         "skipSilence" to JsonValue.Bool(p.skipSilence),
@@ -223,6 +224,7 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
     val d = PlayerSettings.DEFAULT
     return d.copy(
         crossfadeSeconds = (v.obj("crossfadeSeconds").long()?.toInt() ?: d.crossfadeSeconds).coerceIn(0, 12),
+        crossfadeGaplessAlbumException = v.obj("crossfadeGaplessAlbumException").bool() ?: d.crossfadeGaplessAlbumException,
         playbackSpeed = (v.obj("playbackSpeed").double()?.toFloat() ?: d.playbackSpeed).coerceIn(0.5f, 2.0f),
         playbackPitch = (v.obj("playbackPitch").double()?.toFloat() ?: d.playbackPitch).coerceIn(0.5f, 2.0f),
         skipSilence = v.obj("skipSilence").bool() ?: d.skipSilence,

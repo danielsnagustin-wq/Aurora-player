@@ -96,6 +96,8 @@ data class ThemeSettings(
 data class PlayerSettings(
     // Audio (Etapa 1)
     val crossfadeSeconds: Int = 0, // 0 = OFF, 1..12
+    // Fase 1b: no solapar dentro del mismo álbum (gapless).
+    val crossfadeGaplessAlbumException: Boolean = true,
     val playbackSpeed: Float = 1.0f,
     // Audio (RONDA 6): tono independiente de la velocidad (0.5..2.0,
     // 1.0 = sin cambio) y saltar silencios largos (OFF por defecto).

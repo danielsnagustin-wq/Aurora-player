@@ -134,6 +134,7 @@ class PlayerSettingsStore(private val context: Context) {
 
     private object Keys {
         val CROSSFADE = intPreferencesKey("crossfade_seconds")
+        val CROSSFADE_GAPLESS = booleanPreferencesKey("crossfade_gapless_album")
         val SPEED = stringPreferencesKey("playback_speed")
         val PITCH = stringPreferencesKey("playback_pitch")
         val SKIP_SILENCE = booleanPreferencesKey("skip_silence")
@@ -158,6 +159,7 @@ class PlayerSettingsStore(private val context: Context) {
         val d = PlayerSettings.DEFAULT
         d.copy(
             crossfadeSeconds = (prefs[Keys.CROSSFADE] ?: d.crossfadeSeconds).coerceIn(0, 12),
+            crossfadeGaplessAlbumException = prefs[Keys.CROSSFADE_GAPLESS] ?: d.crossfadeGaplessAlbumException,
             playbackSpeed = (prefs[Keys.SPEED]?.toFloatOrNull() ?: d.playbackSpeed).coerceIn(0.5f, 2.0f),
             playbackPitch = (prefs[Keys.PITCH]?.toFloatOrNull() ?: d.playbackPitch).coerceIn(0.5f, 2.0f),
             skipSilence = prefs[Keys.SKIP_SILENCE] ?: d.skipSilence,
@@ -181,6 +183,7 @@ class PlayerSettingsStore(private val context: Context) {
     suspend fun save(settings: PlayerSettings) {
         context.playerDataStore.edit { prefs ->
             prefs[Keys.CROSSFADE] = settings.crossfadeSeconds
+            prefs[Keys.CROSSFADE_GAPLESS] = settings.crossfadeGaplessAlbumException
             prefs[Keys.SPEED] = settings.playbackSpeed.toString()
             prefs[Keys.PITCH] = settings.playbackPitch.toString()
             prefs[Keys.SKIP_SILENCE] = settings.skipSilence
