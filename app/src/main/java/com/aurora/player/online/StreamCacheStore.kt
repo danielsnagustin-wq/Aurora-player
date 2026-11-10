@@ -71,8 +71,29 @@ class StreamCacheStore(context: Context) {
             conn.readTimeout = 30000
             conn.connect()
             if (conn.responseCode !in 200..299) return@withContext null
+            // Copia con tope por archivo: la poda LRU solo corre al
+            // final, así que un flujo infinito llenaría el disco
+            // antes de podar (auditoría 2026-11-10).
+            var total = 0L
+            var capped = false
             conn.inputStream.use { input ->
-                part.outputStream().use { output -> input.copyTo(output) }
+                part.outputStream().use { output ->
+                    val buf = ByteArray(8192)
+                    while (!capped) {
+                        val n = input.read(buf)
+                        if (n <= 0) break
+                        total += n
+                        if (total > MAX_SINGLE_STREAM_BYTES) {
+                            capped = true
+                            break
+                        }
+                        output.write(buf, 0, n)
+                    }
+                }
+            }
+            if (capped) {
+                part.delete()
+                return@withContext null
             }
             if (part.length() == 0L || !part.renameTo(final)) {
                 part.delete()

@@ -94,6 +94,17 @@ private class ProtoReader(private val bytes: ByteArray) {
  * ninguno, el primero con imagen. Null si no hay Canvas.
  */
 fun parseCanvasResponse(bytes: ByteArray): SpotifyCanvas? {
+    // Un manifiesto corrupto no puede tumbar la app: null y el
+    // reproductor sigue con la portada (auditoría 2026-11-10).
+    return try {
+        parseCanvasResponseUnsafe(bytes)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/** Cuerpo sin protección (lo envuelve parseCanvasResponse). */
+private fun parseCanvasResponseUnsafe(bytes: ByteArray): SpotifyCanvas? {
     val reader = ProtoReader(bytes)
     var imageFallback: SpotifyCanvas? = null
     while (reader.pos < bytes.size) {
@@ -183,7 +194,9 @@ class SpotifyCanvasClient {
             conn.readTimeout = 10000
             try {
                 if (conn.responseCode != 200) return null
-                conn.inputStream.bufferedReader().use { it.readText() }
+                // Tope de 2 MB, como el resto de lecturas de red
+                // (misma familia del crash, auditoría 2026-11-10).
+                readCappedText(conn.inputStream)
             } finally {
                 conn.disconnect()
             }

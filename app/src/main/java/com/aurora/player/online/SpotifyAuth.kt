@@ -168,7 +168,10 @@ class SpotifyClient {
             conn.readTimeout = 10000
             try {
                 if (conn.responseCode != 200) return null
-                conn.inputStream.bufferedReader().use { it.readText() }
+                // Tope de 2 MB: la respuesta es JSON (KBs). Sin tope,
+                // una respuesta gigante tumba la app por memoria
+                // (misma familia del crash, auditoría 2026-11-10).
+                readCappedText(conn.inputStream)
             } finally {
                 conn.disconnect()
             }
@@ -176,4 +179,19 @@ class SpotifyClient {
             null
         }
     }
+}
+
+/** Lee el cuerpo con tope; null si supera [maxBytes]. Lo usan también InnerTube y Canvas. */
+internal fun readCappedText(stream: java.io.InputStream, maxBytes: Int = 2 * 1024 * 1024): String? {
+    val out = java.io.ByteArrayOutputStream()
+    val buf = ByteArray(8192)
+    var total = 0
+    while (true) {
+        val n = stream.read(buf)
+        if (n <= 0) break
+        total += n
+        if (total > maxBytes) return null
+        out.write(buf, 0, n)
+    }
+    return String(out.toByteArray(), Charsets.UTF_8)
 }

@@ -665,7 +665,10 @@ class InnerTubeClient(
                     onTokenRejected?.invoke(authToken)
                 }
                 if (code != 200) return null
-                conn.inputStream.bufferedReader().use { it.readText() }
+                // Tope de 2 MB: la respuesta es JSON (KBs). Sin tope,
+                // una respuesta gigante tumba la app por memoria
+                // (misma familia del crash, auditoría 2026-11-10).
+                readCappedText(conn.inputStream) ?: return null
             } finally {
                 conn.disconnect()
             }

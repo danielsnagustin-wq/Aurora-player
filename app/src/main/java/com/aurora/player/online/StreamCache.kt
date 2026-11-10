@@ -29,6 +29,9 @@ data class CachedStream(
 /** Límite por defecto de la caché: 500 MB. */
 const val DEFAULT_STREAM_CACHE_MAX_BYTES: Long = 500L * 1024L * 1024L
 
+/** Tope por archivo descargado: 256 MB (una canción nunca llega ahí; sin tope, un flujo corrupto llena el disco). */
+const val MAX_SINGLE_STREAM_BYTES: Long = 256L * 1024L * 1024L
+
 /** Extensión real del contenedor que da cada itag (251 es Opus en WebM). */
 fun streamExtensionForItag(itag: Int): String = when (itag) {
     251 -> "webm"
