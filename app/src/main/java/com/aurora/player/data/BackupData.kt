@@ -126,6 +126,8 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "onlineMode" to JsonValue.Bool(p.onlineMode),
         "swipeToChangeTrack" to JsonValue.Bool(p.swipeToChangeTrack),
         "doubleTapToFavorite" to JsonValue.Bool(p.doubleTapToFavorite),
+        "shakeToNext" to JsonValue.Bool(p.shakeToNext),
+        "volumeGesture" to JsonValue.Bool(p.volumeGesture),
     ),
 )
 
@@ -236,6 +238,10 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         onlineMode = v.obj("onlineMode").bool() ?: d.onlineMode,
         swipeToChangeTrack = v.obj("swipeToChangeTrack").bool() ?: d.swipeToChangeTrack,
         doubleTapToFavorite = v.obj("doubleTapToFavorite").bool() ?: d.doubleTapToFavorite,
+        doubleTapToFavorite = v.obj("doubleTapToFavorite").bool() ?: d.doubleTapToFavorite,
+        shakeToNext = v.obj("shakeToNext").bool() ?: d.shakeToNext,
+        shakeToNext = v.obj("shakeToNext").bool() ?: d.shakeToNext,
+        volumeGesture = v.obj("volumeGesture").bool() ?: d.volumeGesture,
     )
 }
 

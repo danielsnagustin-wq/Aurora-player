@@ -219,6 +219,10 @@ interface LibraryDao {
     @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")
     suspend fun mostPlayed(): List<PlayCount>
 
+    /** Estadísticas por canción (Fase 1b: exportar CSV). */
+    @Query("SELECT songId, COUNT(*) AS plays, COALESCE(SUM(durationListenedMs), 0) AS listenedMs, MAX(playedAt) AS lastPlayed FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY plays DESC")
+    suspend fun statsPerSong(): List<SongStatsRow>
+
     @Query("SELECT COUNT(*) FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun totalPlays(): Int
 
@@ -255,6 +259,9 @@ interface LibraryDao {
 }
 
 data class PlayCount(val songId: Long, val c: Int)
+
+/** Fila de estadísticas por canción (Fase 1b: exportar CSV). */
+data class SongStatsRow(val songId: Long, val plays: Int, val listenedMs: Long, val lastPlayed: Long)
 
 /**
  * SPEC 005 FR-007: migración 1 -> 2, solo crea las tablas de colas
