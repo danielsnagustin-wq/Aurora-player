@@ -609,6 +609,23 @@ private fun AuroraApp(
         }
     }
 
+    /** Siguiente (2026-11-10): con repetición de una canción, el
+     * "siguiente" de ExoPlayer reinicia la misma canción (así lo
+     * define Media3); como Spotify y YouTube Music, aquí avanza a
+     * la siguiente de la cola. En la última, no hace nada. */
+    fun skipToNext() {
+        val c = controller ?: return
+        if (c.repeatMode == Player.REPEAT_MODE_ONE) {
+            val next = c.currentMediaItemIndex + 1
+            if (next < c.mediaItemCount) {
+                c.seekTo(next, 0)
+                c.play()
+            }
+        } else {
+            c.seekToNextMediaItem()
+        }
+    }
+
     /** Cola flexible (ideas de Namida/Auxio): suena justo después. */
     fun playNext(song: Song) {
         val c = controller ?: return
@@ -628,7 +645,7 @@ private fun AuroraApp(
         val c = controller ?: return@LaunchedEffect
         when (action) {
             MainActivity.ACTION_WIDGET_TOGGLE -> if (c.isPlaying) c.pause() else c.play()
-            MainActivity.ACTION_WIDGET_NEXT -> c.seekToNextMediaItem()
+            MainActivity.ACTION_WIDGET_NEXT -> skipToNext()
             MainActivity.ACTION_WIDGET_PREV -> c.seekToPreviousMediaItem()
         }
         onWidgetActionHandled()
@@ -1235,7 +1252,7 @@ private fun AuroraApp(
             onClose = { showPlayer = false },
             onPlayPause = { controller?.let { if (it.isPlaying) it.pause() else it.play() } },
             onPrevious = { controller?.seekToPreviousMediaItem() },
-            onNext = { controller?.seekToNextMediaItem() },
+            onNext = { skipToNext() },
             onSeek = { controller?.seekTo(it) },
             onToggleShuffle = { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } },
             onCycleRepeat = {
