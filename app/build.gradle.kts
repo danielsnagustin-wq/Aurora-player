@@ -73,8 +73,12 @@ dependencies {
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     // Cast (Fase 2 app): framework de Google Cast para enviar
-    // las pistas online al Chromecast / TV.
-    implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
+    // las pistas online al Chromecast / TV. Versión 21.4.0: la 23.0.0
+    // trae mediarouter 1.9.0-beta01 + core 1.17.0, que exigen
+    // compileSdk 36/37 y AGP 9.1.0 (run #459, checkDebugAarMetadata);
+    // el proyecto compila contra SDK 34 con AGP 8.5.2. La 21.4.0 trae
+    // mediarouter 1.6.0-beta01 + core 1.10.1, compatibles, y tiene
+    // las mismas APIs que usa la Serie B (verificado con javap).
 
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).
