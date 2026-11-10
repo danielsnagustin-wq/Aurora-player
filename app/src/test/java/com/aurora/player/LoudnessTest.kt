@@ -38,8 +38,9 @@ class LoudnessTest {
         assertTrue(power > 0.0)
         val lufs = integratedLufs(listOf(power))
         assertTrue(lufs != null)
-        // K-weighting a 1 kHz apenas cambia: entre -23 y -17 LUFS.
-        assertTrue(lufs!! > -23.0 && lufs < -17.0)
+        // Simulación en Python del mismo filtro: -23.00 LUFS exactos.
+        // El filtro K apenas cambia a 1 kHz; margen holgado a ambos lados.
+        assertTrue(lufs!! > -24.5 && lufs < -21.5)
     }
 
     @Test
