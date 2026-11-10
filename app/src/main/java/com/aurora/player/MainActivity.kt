@@ -258,14 +258,13 @@ class MainActivity : ComponentActivity() {
                 // biblioteca. Solo se marca hecho con "Empezar"/"Saltar".
                 val introStore = remember { IntroStore(applicationContext) }
                 val setupDone by introStore.setupDoneFlow.collectAsState(initial = null)
-                // Animación de inicio PRIMERO al entrar (2026-11-10):
-                // antes la intro solo salía DESPUÉS del asistente de
-                // configuración; ahora va al abrir la app, como toca.
-                // initial=null en ambos flujos: mientras DataStore no
-                // responde no se dibuja nada (negro), para que nunca
-                // parpadee la pantalla equivocada al entrar.
-                val introShown by introStore.shownFlow.collectAsState(initial = null)
-                var showStart by remember(introShown) { mutableStateOf(introShown == false) }
+                // Animación de inicio SIEMPRE al entrar (2026-11-10,
+                // orden del usuario): sale cada vez que se abre la app,
+                // no solo la primera vez. initial=null en setupDone:
+                // mientras DataStore no responde no se dibuja nada
+                // (negro), para que nunca parpadee la pantalla
+                // equivocada al entrar.
+                var showStart by remember { mutableStateOf(true) }
                 val wizardScope = rememberCoroutineScope()
                 // RENDIMIENTO (spec 004): valores visuales EFECTIVOS.
                 // La bajada automática (ahorro de energía del sistema,
@@ -331,15 +330,12 @@ class MainActivity : ComponentActivity() {
                     animationsEnabled = effective.animationsEnabled,
                 )
                 AuroraPlayerTheme(settings = effectiveSettings) {
-                    if (introShown == null || setupDone == null) {
+                    if (setupDone == null) {
                         // Cargando los ajustes del disco: negro, sin parpadeo.
                         Box(Modifier.fillMaxSize().background(PureBlack))
                     } else if (showStart) {
                         StartScreen(
-                            onFinished = {
-                                showStart = false
-                                wizardScope.launch { introStore.markShown() }
-                            },
+                            onFinished = { showStart = false },
                         )
                     } else if (setupDone == false) {
                         SetupWizardScreen(
@@ -970,7 +966,7 @@ private fun AuroraApp(
             if (details.bitrateKbps == null && details.sampleRateHz == null) {
                 null
             } else {
-                val parts = mutableListOf(codecDisplayName(song.mimeType))
+                val parts = mutableListOf(codecDisplayName(song.mimeType, song.path))
                 details.bitrateKbps?.let { parts.add("$it kbps") }
                 details.sampleRateHz?.let { parts.add("${it / 1000} kHz") }
                 parts.joinToString(" · ")
