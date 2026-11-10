@@ -126,10 +126,22 @@ import com.aurora.player.audio.DsdInfo
 import com.aurora.player.util.dsdQualityLine
 import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -1337,6 +1349,51 @@ internal object AlbumArtCache {
     fun clear() {
         cache.evictAll()
     }
+
+    // Carga compartida por álbum (2026-11-10, bajar rápido): una
+    // sola carga por álbum aunque 20 filas lo pidan a la vez. El
+    // scope es propio: que una fila se recicle no cancela la carga
+    // que las demás esperan. 6 miniaturas a la vez como mucho.
+    private val loadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = HashMap<Long, Deferred<Bitmap?>>()
+    private val inFlightMutex = Mutex()
+    private val thumbPermits = Semaphore(6)
+
+    suspend fun load(context: Context, albumId: Long): Bitmap? {
+        get(albumId)?.let { return it }
+        val deferred = inFlightMutex.withLock {
+            get(albumId)?.let { return it }
+            inFlight.getOrPut(albumId) {
+                loadScope.async {
+                    thumbPermits.withPermit {
+                        try {
+                            context.contentResolver.loadThumbnail(
+                                albumArtUri(albumId),
+                                Size(144, 144),
+                                null,
+                            )
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
+                }
+            }
+        }
+        val bitmap = try {
+            deferred.await()
+        } catch (_: CancellationException) {
+            null
+        }
+        // Sacar de en-vuelo pase lo que pase (sin cancelar: si quien
+        // esperaba se fue, la carga ya terminó o terminó sola).
+        withContext(NonCancellable) {
+            inFlightMutex.withLock {
+                if (inFlight[albumId] === deferred) inFlight.remove(albumId)
+            }
+        }
+        if (bitmap != null) put(albumId, bitmap)
+        return bitmap
+    }
 }
 
 /**
@@ -1348,19 +1405,17 @@ internal object AlbumArtCache {
  * el siguiente scroll es rápido aunque la caché de la app se vacíe.
  */
 suspend fun warmAlbumArtCache(context: Context, albumIds: List<Long>) {
-    delay(500)
-    withContext(Dispatchers.IO) {
-        for (albumId in albumIds) {
-            ensureActive()
-            if (AlbumArtCache.get(albumId) != null) continue
-            try {
-                val uri = albumArtUri(albumId)
-                val thumb = context.contentResolver.loadThumbnail(uri, Size(144, 144), null)
-                AlbumArtCache.put(albumId, thumb)
-            } catch (_: Exception) {
-                // Sin portada: la fila muestra la inicial.
+    delay(150)
+    // En paralelo: cada álbum carga una sola vez (carga compartida)
+    // y 6 miniaturas a la vez como mucho. Con cientos de álbumes
+    // la caché se llena en segundos, no en minutos.
+    coroutineScope {
+        albumIds.map { albumId ->
+            async {
+                ensureActive()
+                AlbumArtCache.load(context, albumId)
             }
-        }
+        }.awaitAll()
     }
 }
 
@@ -1385,12 +1440,18 @@ fun AlbumCover(
     }
     LaunchedEffect(song.albumId, useCache) {
         if (bitmap == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val loaded = withContext(Dispatchers.IO) {
-                try {
-                    val uri = albumArtUri(song.albumId)
-                    context.contentResolver.loadThumbnail(uri, Size(144, 144), null)
-                } catch (_: Exception) {
-                    null
+            val loaded = if (useCache) {
+                // Carga compartida: si otra fila del mismo álbum ya
+                // la está cargando, esta espera ese mismo resultado.
+                AlbumArtCache.load(context, song.albumId)
+            } else {
+                withContext(Dispatchers.IO) {
+                    try {
+                        val uri = albumArtUri(song.albumId)
+                        context.contentResolver.loadThumbnail(uri, Size(144, 144), null)
+                    } catch (_: Exception) {
+                        null
+                    }
                 }
             } ?: loadEmbeddedCover(context, song.uri)
             if (loaded != null) {
