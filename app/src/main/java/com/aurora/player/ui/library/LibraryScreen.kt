@@ -1326,6 +1326,47 @@ private fun formatDate(millis: Long): String =
     if (millis <= 0) "—"
     else SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(millis))
 
+/** Portadas GRANDES en memoria (12 MB como mucho, ~12 de 1024 px).
+ * REFINAMIENTO (2026-11-10): la lista ya cacheaba la miniatura de
+ * 144 px, pero el reproductor pedía la de 1024 px desde cero en
+ * cada canción (~1 s de hueco). La grande se guarda aquí; la
+ * pequeña del desenfoque se recorta de ella. Clave: albumId, solo
+ * para URIs de albumart (el id de canción NO es el del álbum). */
+internal object LargeArtCache {
+    private const val MAX_KB = 12 * 1024
+    private val cache = object : LruCache<Long, Bitmap>(MAX_KB) {
+        override fun sizeOf(key: Long, value: Bitmap): Int = value.byteCount / 1024
+    }
+
+    fun get(albumId: Long): Bitmap? = cache.get(albumId)
+
+    fun put(albumId: Long, bitmap: Bitmap) {
+        cache.put(albumId, bitmap)
+    }
+
+    fun clear() {
+        cache.evictAll()
+    }
+
+    /** Carga la portada grande de un álbum y la guarda. */
+    suspend fun loadLarge(context: Context, albumId: Long): Bitmap? {
+        get(albumId)?.let { return it }
+        val loaded = withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.loadThumbnail(
+                    albumArtUri(albumId),
+                    Size(1024, 1024),
+                    null,
+                )
+            } catch (_: Exception) {
+                null
+            }
+        }
+        if (loaded != null) put(albumId, loaded)
+        return loaded
+    }
+}
+
 /** Caché pequeña de portadas en memoria (16 MB como mucho).
  * AUDITORÍA (2026-11-09): antes se contaban 32 entradas sin mirar
  * los bytes: 32 portadas grandes podían ser cientos de MB.
@@ -1417,6 +1458,16 @@ suspend fun warmAlbumArtCache(context: Context, albumIds: List<Long>) {
             }
         }.awaitAll()
     }
+    // La portada GRANDE de los 12 primeros álbumes: al tocar una
+    // canción de arriba, el reproductor ya la tiene y no hay hueco.
+    coroutineScope {
+        albumIds.take(12).map { albumId ->
+            async {
+                ensureActive()
+                LargeArtCache.loadLarge(context, albumId)
+            }
+        }.awaitAll()
+    }
 }
 
 /**
@@ -1492,15 +1543,34 @@ fun rememberArtworkBitmap(
 ): Bitmap? {
     val context = LocalContext.current
     var bitmap by remember(uri, songUri, sizePx) { mutableStateOf<Bitmap?>(null) }
+    // Solo las URIs de albumart llevan el albumId al final; el id
+    // de canción no vale (otro espacio de ids, chocaría).
+    val albumId = remember(uri) {
+        uri?.takeIf { it.path?.contains("/albumart/") == true }
+            ?.lastPathSegment?.toLongOrNull()
+    }
     LaunchedEffect(uri, songUri, sizePx) {
         if (uri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             bitmap = withContext(Dispatchers.IO) {
-                try {
-                    context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
-                } catch (_: Exception) {
-                    null
+                // La grande cacheada vale para cualquier tamaño: si
+                // se pide pequeña, se recorta de ella (el desenfoque
+                // de 64 px ya no pide nada al sistema).
+                val cachedLarge = albumId?.let { LargeArtCache.get(it) }
+                if (cachedLarge != null) {
+                    if (sizePx >= cachedLarge.width) cachedLarge
+                    else Bitmap.createScaledBitmap(cachedLarge, sizePx, sizePx, true)
+                } else {
+                    val loaded = try {
+                        context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
+                    } catch (_: Exception) {
+                        null
+                    } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
+                    if (loaded != null && sizePx >= 512 && albumId != null) {
+                        LargeArtCache.put(albumId, loaded)
+                    }
+                    loaded
                 }
-            } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
+            }
         } else if (songUri != null) {
             bitmap = loadEmbeddedCover(context, songUri, maxPx = sizePx)
         }
