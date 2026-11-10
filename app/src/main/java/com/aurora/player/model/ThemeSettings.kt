@@ -53,8 +53,10 @@ data class ThemeSettings(
     val cornerRadiusDp: Int = 16,
     val cardStyle: CardStyle = CardStyle.SOLID,
     val playerBackground: PlayerBackground = PlayerBackground.COVER,
-    /** Álbumes en cuadrícula de 2 columnas en vez de lista. */
+    /** Álbumes en cuadrícula en vez de lista. */
     val albumGrid: Boolean = false,
+    /** Columnas de la cuadrícula de álbumes (1..4; 2 como hasta ahora). */
+    val albumGridColumns: Int = 2,
     // RENDIMIENTO (spec 004): perfiles + interruptor de animaciones.
     // Solo gobiernan efectos reales (ver PerformanceProfile.kt).
     val performanceProfile: PerformanceProfile = PerformanceProfile.BALANCED,
