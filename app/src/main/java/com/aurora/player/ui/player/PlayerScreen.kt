@@ -78,6 +78,7 @@ import android.media.AudioManager
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
@@ -98,6 +99,8 @@ import java.util.Locale
 import androidx.media3.common.Player
 import com.aurora.player.data.NamedQueueWithCount
 import com.aurora.player.model.GestureAction
+import com.aurora.player.model.KaraokeMode
+import com.aurora.player.model.karaokeWordsActive
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.normalizeQueueName
@@ -221,6 +224,8 @@ fun PlayerScreen(
     doubleTapEnabled: Boolean = true,
     // Fase 2 — gestos configurables: qué hace el doble toque.
     doubleTapAction: GestureAction = GestureAction.FAVORITE,
+    // Fase 2 — modos de karaoke: cuándo se colorean las palabras.
+    karaokeMode: KaraokeMode = KaraokeMode.FULLSCREEN_ONLY,
     volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -547,7 +552,10 @@ fun PlayerScreen(
         }
         // Vista previa de la letra (2026-11-10, como BitChord): la
         // línea que suena bajo el título; tocar abre las letras.
-        val currentLyric = lyrics.getOrNull(currentLine)?.text
+        // Fase 2 — modos de karaoke: con "Siempre", la vista previa
+        // también colorea las palabras; si no, texto plano como antes.
+        val currentLyricLine = lyrics.getOrNull(currentLine)
+        val currentLyric = currentLyricLine?.text
         if (!showLyrics && currentLyric != null) {
             Row(
                 modifier = Modifier.fillMaxWidth()
@@ -556,14 +564,26 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    currentLyric,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false),
-                )
+                if (currentLyricLine != null && currentLyricLine.words.isNotEmpty() &&
+                    karaokeWordsActive(karaokeMode, fullscreen = false)
+                ) {
+                    Text(
+                        karaokeLineText(currentLyricLine, positionMs, lyricsOffsetMs, accent),
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                } else {
+                    Text(
+                        currentLyric,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                }
                 // Fase 2 — compartir verso: el verso que suena, como
                 // texto, a donde el usuario quiera. Sin verso (línea
                 // vacía), no hay nada que compartir.
@@ -862,6 +882,8 @@ fun PlayerScreen(
             onPlayPause = onPlayPause,
             onPrevious = onPrevious,
             onNext = onNext,
+            // Fase 2 — modos de karaoke.
+            karaokeMode = karaokeMode,
             onSeek = onSeek,
             onClose = { showLyrics = false },
             onlineMode = onlineMode,
@@ -1005,6 +1027,34 @@ private fun SavedQueuesDialog(
 }
 
 /**
+ * Texto de una línea con karaoke palabra por palabra (Fase 1b):
+ * ya cantadas en acento, la que suena en acento y negrita, las que
+ * faltan apagadas. Lo usan la vista a pantalla completa y (modo
+ * "Siempre") la vista previa del reproductor.
+ */
+private fun karaokeLineText(
+    line: LrcLine,
+    positionMs: Long,
+    lyricsOffsetMs: Int,
+    accent: Color,
+): AnnotatedString {
+    val wordIndex = LrcParser.currentWordIndex(line, positionMs + lyricsOffsetMs)
+    return buildAnnotatedString {
+        line.words.forEachIndexed { wi, word ->
+            if (wi > 0) append(" ")
+            withStyle(
+                SpanStyle(
+                    color = if (wi <= wordIndex) accent
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (wi == wordIndex) FontWeight.Bold
+                    else FontWeight.Normal,
+                ),
+            ) { append(word.text) }
+        }
+    }
+}
+
+/**
  * Lineas de la letra (sincronizadas + karaoke palabra por palabra +
  * traduccion debajo). Compartida por la vista a pantalla completa;
  * antes vivia incrustada en el reproductor.
@@ -1020,6 +1070,8 @@ private fun LyricsLines(
     accent: Color,
     listState: LazyListState,
     fullscreen: Boolean = false,
+    // Fase 2 — modos de karaoke: cuándo se colorean las palabras.
+    karaokeMode: KaraokeMode = KaraokeMode.FULLSCREEN_ONLY,
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
@@ -1029,27 +1081,13 @@ private fun LyricsLines(
         itemsIndexed(lyrics) { index, line ->
             val isCurrent = index == currentLine
             Column(modifier = Modifier.fillMaxWidth()) {
-                if (isCurrent && line.words.isNotEmpty()) {
-                    // Fase 1b - karaoke palabra por palabra: ya
-                    // cantadas en acento, la que suena en acento y
-                    // negrita, las que faltan apagadas.
-                    val wordIndex = LrcParser.currentWordIndex(
-                        line, positionMs + lyricsOffsetMs,
-                    )
+                // Fase 2 — modos de karaoke: las palabras solo se
+                // colorean cuando el modo lo permite en esta vista.
+                if (isCurrent && line.words.isNotEmpty() &&
+                    karaokeWordsActive(karaokeMode, fullscreen)
+                ) {
                     Text(
-                        buildAnnotatedString {
-                            line.words.forEachIndexed { wi, word ->
-                                if (wi > 0) append(" ")
-                                withStyle(
-                                    SpanStyle(
-                                        color = if (wi <= wordIndex) accent
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (wi == wordIndex) FontWeight.Bold
-                                        else FontWeight.Normal,
-                                    ),
-                                ) { append(word.text) }
-                            }
-                        },
+                        karaokeLineText(line, positionMs, lyricsOffsetMs, accent),
                         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                         textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleLarge,
@@ -1123,6 +1161,8 @@ private fun LyricsFullScreen(
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    // Fase 2 — modos de karaoke.
+    karaokeMode: KaraokeMode = KaraokeMode.FULLSCREEN_ONLY,
     onSeek: (Long) -> Unit,
     onClose: () -> Unit,
     onlineMode: Boolean,
@@ -1293,6 +1333,7 @@ private fun LyricsFullScreen(
                     accent = accent,
                     listState = listState,
                     fullscreen = true,
+                    karaokeMode = karaokeMode,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
             }
