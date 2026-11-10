@@ -143,12 +143,14 @@ fun parseDsfHeader(bytes: ByteArray): DsdInfo? {
  * comprimido, devuelve la info con compressedDst = true.
  */
 fun parseDffHeader(bytes: ByteArray): DsdInfo? {
-    if (bytes.size < 12) return null
+    if (bytes.size < 16) return null
     if (fourCc(bytes, 0) != "FRM8") return null
     if (fourCc(bytes, 8) != "DSD ") return null
     var sampleRate = 0
     var channels = 0
-    var pos = 12
+    // Cabecera FRM8: "FRM8"(4) + size(8) + tipo "DSD "(4) = 16;
+    // el primer chunk (FVER) empieza en 16, no en 12.
+    var pos = 16
     var dataOffset = -1
     var dataSize = 0L
     var compressedDst = false
