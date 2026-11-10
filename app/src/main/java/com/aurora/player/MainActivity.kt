@@ -1486,6 +1486,7 @@ private fun AuroraApp(
             Tab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
                 onOpenEq = { showEq = true },
+                onImportTracks = { tracks -> playOnlineTracks(tracks) },
             )
         }
     }
