@@ -95,6 +95,7 @@ import com.aurora.player.model.FolderEntry
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.model.childFolders
 import com.aurora.player.model.commonFolderPrefix
 import com.aurora.player.model.isDirectlyInFolder
@@ -167,6 +168,7 @@ fun LibraryScreen(
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     ytMusicCookies: String? = null,
+    streamQuality: StreamQuality = StreamQuality.HIGH,
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -307,6 +309,7 @@ fun LibraryScreen(
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = onImportOnlineTracks,
                 ytMusicCookies = ytMusicCookies,
+                streamQuality = streamQuality,
                 modifier = Modifier.fillMaxSize(),
             )
         } else when (val state = uiState) {
