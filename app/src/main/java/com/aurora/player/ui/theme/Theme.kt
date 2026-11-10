@@ -62,6 +62,56 @@ fun parseHexOrNull(hex: String): Color? {
     }
 }
 
+/**
+ * Resolución de colores por modo (2026-11-10, bug verificado en
+ * teléfono: elegir Claro dejaba la app negra). El HEX de fábrica
+ * (#000000 fondo, #111111 tarjeta/barra) significa "sin
+ * personalizar": al cambiar de modo manda el color DEL MODO. Un HEX
+ * distinto elegido por el usuario SIEMPRE se aplica, en cualquier
+ * modo. Puras y testeables: la UI solo las llama.
+ */
+fun resolveBackgroundColor(
+    settings: ThemeSettings,
+    useDark: Boolean,
+    isAmoled: Boolean,
+): Color {
+    val isFactory = settings.backgroundHex.equals(
+        ThemeSettings.DEFAULT.backgroundHex, ignoreCase = true,
+    )
+    return when {
+        !useDark && isFactory -> Color.White
+        !useDark -> parseHexOrNull(settings.backgroundHex) ?: Color.White
+        isAmoled -> parseHexOrNull(settings.backgroundHex) ?: PureBlack
+        isFactory -> Color(0xFF1E1E26)
+        else -> parseHexOrNull(settings.backgroundHex) ?: Color(0xFF1E1E26)
+    }
+}
+
+fun resolveSurfaceColor(settings: ThemeSettings, useDark: Boolean): Color {
+    val isFactory = settings.cardHex.equals(
+        ThemeSettings.DEFAULT.cardHex, ignoreCase = true,
+    )
+    return when {
+        !useDark && isFactory -> Color(0xFFF2F2F2)
+        else -> parseHexOrNull(settings.cardHex)
+            ?: if (useDark) CardBlack else Color(0xFFF2F2F2)
+    }
+}
+
+fun resolvePlayerBarColor(
+    settings: ThemeSettings,
+    useDark: Boolean,
+    surface: Color,
+): Color {
+    val isFactory = settings.playerBarHex.equals(
+        ThemeSettings.DEFAULT.playerBarHex, ignoreCase = true,
+    )
+    return when {
+        !useDark && isFactory -> surface
+        else -> parseHexOrNull(settings.playerBarHex) ?: surface
+    }
+}
+
 fun Color.toHex(): String {
     val r = (red * 255).toInt()
     val g = (green * 255).toInt()
@@ -184,20 +234,12 @@ fun AuroraPlayerTheme(
 
     val accent = parseHexOrNull(settings.accentHex) ?: IceBlue
     // COLORES (2026-11-10): el color elegido SIEMPRE se aplica; lo que
-    // se adapta es el texto, para que se siga leyendo. Antes, un fondo
-    // claro en modo oscuro (o uno oscuro en modo claro) se descartaba
-    // en silencio y el usuario veía que "ningún color funciona".
-    val background = when {
-        !useDark -> parseHexOrNull(settings.backgroundHex) ?: Color.White
-        isAmoled -> parseHexOrNull(settings.backgroundHex) ?: PureBlack
-        // OSCURO ≠ AMOLED: el fondo por defecto es #000000, y sin esta
-        // rama Oscuro se vería negro puro como AMOLED.
-        settings.backgroundHex.equals(ThemeSettings.DEFAULT.backgroundHex, ignoreCase = true) ->
-            Color(0xFF1E1E26)
-        else -> parseHexOrNull(settings.backgroundHex) ?: Color(0xFF1E1E26)
-    }
-    val surface = parseHexOrNull(settings.cardHex)
-        ?: if (useDark) CardBlack else Color(0xFFF2F2F2)
+    // se adapta es el texto, para que se siga leyendo. El HEX de
+    // fábrica significa "sin personalizar" y manda el color del modo
+    // (ver resolveBackgroundColor): sin esto, Claro pintaba negro
+    // porque el fondo guardado era #000000, el valor de AMOLED.
+    val background = resolveBackgroundColor(settings, useDark, isAmoled)
+    val surface = resolveSurfaceColor(settings, useDark)
     // El texto se adapta al fondo que haya quedado (ver readableTextOn):
     // fondo claro -> texto oscuro; fondo oscuro -> texto claro (el del
     // usuario cuando contrasta).
@@ -210,7 +252,7 @@ fun AuroraPlayerTheme(
     val secondaryText = readableTextOn(
         surface, settings.secondaryTextHex, Color(0xFF5A6470), Color(0xFF9AA7B8),
     )
-    val playerBar = parseHexOrNull(settings.playerBarHex) ?: surface
+    val playerBar = resolvePlayerBarColor(settings, useDark, surface)
     // Contraste real del texto sobre el color principal: acento claro
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
