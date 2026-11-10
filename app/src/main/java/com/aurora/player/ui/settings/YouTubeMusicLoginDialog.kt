@@ -1,5 +1,6 @@
 package com.aurora.player.ui.settings
 
+import android.app.Activity
 import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
@@ -7,6 +8,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,15 +34,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.aurora.player.online.GoogleAccountAuth
+import com.aurora.player.online.GoogleAccountAuth.TokenResult
 import com.aurora.player.online.YouTubeMusicAuth
 import com.aurora.player.ui.theme.auroraButtonColors
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.launch
 
 /**
  * Inicio de sesión con YouTube Music dentro de la app (2026-11-10,
@@ -52,6 +62,7 @@ import com.aurora.player.ui.theme.auroraButtonColors
 @Composable
 fun YouTubeMusicLoginDialog(
     onConnect: (String) -> Unit,
+    onConnectToken: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     var triedCookies by remember { mutableStateOf<String?>(null) }
@@ -59,6 +70,58 @@ fun YouTubeMusicLoginDialog(
     var loadFailed by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
+
+    // Cuenta de Google del teléfono (2026-11-10): el selector de
+    // cuentas del sistema, sin escribir nada. La primera vez Google
+    // puede pedir consentimiento: se lanza su pantalla y al volver
+    // se pide el token otra vez.
+    val dialogContext = LocalContext.current
+    val dialogScope = rememberCoroutineScope()
+    val consentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            hint = "Falta el permiso de Google para YouTube."
+            return@rememberLauncherForActivityResult
+        }
+        val account = GoogleSignIn.getLastSignedInAccount(dialogContext)
+        if (account == null) {
+            hint = "No se pudo leer la cuenta de Google."
+            return@rememberLauncherForActivityResult
+        }
+        dialogScope.launch {
+            when (val result = GoogleAccountAuth.fetchToken(dialogContext, account)) {
+                is TokenResult.Ok -> onConnectToken(result.token)
+                is TokenResult.NeedsConsent -> consentLauncher.launch(result.intent)
+                TokenResult.Failed -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
+            }
+        }
+    }
+    val googleLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            hint = "No se eligió ninguna cuenta."
+            return@rememberLauncherForActivityResult
+        }
+        val account = try {
+            GoogleSignIn.getSignedInAccountFromIntent(result.data)
+                .getResult(ApiException::class.java)
+        } catch (_: ApiException) {
+            null
+        }
+        if (account == null) {
+            hint = "No se pudo leer la cuenta de Google."
+            return@rememberLauncherForActivityResult
+        }
+        dialogScope.launch {
+            when (val result = GoogleAccountAuth.fetchToken(dialogContext, account)) {
+                is TokenResult.Ok -> onConnectToken(result.token)
+                is TokenResult.NeedsConsent -> consentLauncher.launch(result.intent)
+                TokenResult.Failed -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
+            }
+        }
+    }
 
     fun readCookies(): String? {
         val cookies = CookieManager.getInstance()
@@ -108,6 +171,23 @@ fun YouTubeMusicLoginDialog(
             Text(
                 "Entra con tu cuenta de Google. Aurora solo guarda la sesión en tu teléfono, no sube nada.",
                 modifier = Modifier.padding(top = 4.dp),
+            )
+            Button(
+                onClick = {
+                    googleLauncher.launch(
+                        GoogleAccountAuth.signInClient(dialogContext).signInIntent,
+                    )
+                },
+                colors = auroraButtonColors(),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Text("Usar mi cuenta de Google")
+            }
+            Text(
+                "Sin escribir correo ni contraseña: eliges tu cuenta y listo. Si prefieres, abajo sigue el inicio web de siempre.",
+                modifier = Modifier.padding(top = 4.dp),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
                 AndroidView(

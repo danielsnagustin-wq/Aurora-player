@@ -123,6 +123,7 @@ fun SettingsScreen(
     onShareErrorLog: () -> Unit = {},
     ytMusicConnected: Boolean = false,
     onConnectYouTubeMusic: (String) -> Unit = {},
+    onConnectYouTubeMusicToken: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
 ) {
@@ -294,6 +295,7 @@ fun SettingsScreen(
                 onImportTracks = onImportTracks,
                 ytMusicConnected = ytMusicConnected,
                 onConnectYouTubeMusic = onConnectYouTubeMusic,
+                onConnectYouTubeMusicToken = onConnectYouTubeMusicToken,
                 onDisconnectYouTubeMusic = onDisconnectYouTubeMusic,
                 ytMusicCookies = ytMusicCookies,
                 streamQuality = player.streamQuality,

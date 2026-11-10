@@ -56,6 +56,7 @@ fun IntegrationsScreen(
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
     ytMusicConnected: Boolean = false,
     onConnectYouTubeMusic: (String) -> Unit = {},
+    onConnectYouTubeMusicToken: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
     streamQuality: StreamQuality = StreamQuality.HIGH,
@@ -87,6 +88,7 @@ fun IntegrationsScreen(
     if (showYouTubeLogin) {
         YouTubeMusicLoginDialog(
             onConnect = { onConnectYouTubeMusic(it) },
+            onConnectToken = { onConnectYouTubeMusicToken(it) },
             onDismiss = { showYouTubeLogin = false },
         )
     }
