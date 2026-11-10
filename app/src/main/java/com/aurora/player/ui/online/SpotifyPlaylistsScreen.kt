@@ -68,6 +68,7 @@ fun SpotifyPlaylistsSection(
     spotifyConnected: Boolean,
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
     ytMusicCookies: String? = null,
+    ytMusicToken: String? = null,
     streamQuality: StreamQuality = StreamQuality.HIGH,
     modifier: Modifier = Modifier,
 ) {
@@ -79,7 +80,7 @@ fun SpotifyPlaylistsSection(
     val cookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val spotify = remember { SpotifyClient() }
     val cacheStore = remember { StreamCacheStore(context) }
-    val tube = remember(ytMusicCookies) { InnerTubeClient(ytMusicCookies) }
+    val tube = remember(ytMusicCookies, ytMusicToken) { InnerTubeClient(ytMusicCookies, ytMusicToken) }
 
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>?>(null) }
     var loadingPlaylists by remember { mutableStateOf(false) }
