@@ -145,7 +145,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 lastPlayedAtMs = r.lastPlayed,
             )
         }
-        return exportStatsCsv(application, rows)
+        return exportStatsCsv(getApplication(), rows)
     }
 
     fun refresh(hasAudioPermission: Boolean) {

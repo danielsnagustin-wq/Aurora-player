@@ -318,6 +318,11 @@ fun PlayerScreen(
         // en un teléfono denso son ~6 mm (cambia de pista sin querer)
         // y en uno poco denso ~16 mm. Ahora son 56 dp reales.
         val swipeThresholdPx = with(LocalDensity.current) { 56.dp.toPx() }
+        // Fase 1b: el AudioManager se lee AQUÍ (contexto @Composable);
+        // dentro de pointerInput no se puede leer LocalContext.current.
+        val audioManager = remember {
+            LocalContext.current.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        }
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
         ArtworkImage(
             uri = artworkUri,
@@ -352,8 +357,6 @@ fun PlayerScreen(
                     // Fase 1b: deslizar vertical sobre la portada
                     // sube/baja el volumen; la barra del sistema
                     // (FLAG_SHOW_UI) es la que da la respuesta visual.
-                    val audioManager = LocalContext.current
-                        .getSystemService(Context.AUDIO_SERVICE) as AudioManager
                     detectVerticalDragGestures(
                         onDragEnd = { dragTotalY = 0f },
                         onVerticalDrag = { _, dragAmount ->
