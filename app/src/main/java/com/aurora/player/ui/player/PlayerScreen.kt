@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -251,6 +252,10 @@ fun PlayerScreen(
     val useDynamicColor = LocalDynamicColor.current
     val playerBackground = LocalPlayerBackground.current
     val coverBitmap = rememberArtworkBitmap(artworkUri, songUri, sizePx = 1024)
+    // Fondo difuminado (2026-11-10, como BitChord): la misma portada
+    // a 64 px, estirada a pantalla completa (el escalado bilineal la
+    // difumina solo). Carga aparte de la grande (otra clave de caché).
+    val coverBlurBitmap = rememberArtworkBitmap(artworkUri, songUri, sizePx = 64)
     val dynamicAccent = remember(useDynamicColor, coverBitmap) {
         if (useDynamicColor) coverBitmap?.let { dominantColor(it) } else null
     }
@@ -261,12 +266,15 @@ fun PlayerScreen(
         modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
     ) {
         when (playerBackground) {
-            PlayerBackground.COVER -> if (coverBitmap != null) {
+            PlayerBackground.COVER -> if (coverBlurBitmap != null) {
+                // FONDO DIFUMINADO (2026-11-10, como BitChord): la
+                // portada a 64 px estirada a pantalla completa, a
+                // opacidad completa; el degradado a negro de abajo
+                // deja leer el texto y los controles.
                 Image(
-                    bitmap = coverBitmap.asImageBitmap(),
+                    bitmap = coverBlurBitmap.asImageBitmap(),
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
-                    alpha = 0.32f,
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -290,14 +298,14 @@ fun PlayerScreen(
         }
         // Sobre la portada de fondo, un degradado a negro para que el
         // texto y los controles se lean siempre.
-        if (playerBackground == PlayerBackground.COVER && coverBitmap != null) {
+        if (playerBackground == PlayerBackground.COVER && coverBlurBitmap != null) {
             Box(
                 modifier = Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
                         listOf(
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.35f),
                             Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                            MaterialTheme.colorScheme.background,
+                            MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
                         ),
                     ),
                 ),
@@ -464,6 +472,32 @@ fun PlayerScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
+        }
+        // Vista previa de la letra (2026-11-10, como BitChord): la
+        // línea que suena bajo el título; tocar abre las letras.
+        val currentLyric = lyrics.getOrNull(currentLine)?.text
+        if (!showLyrics && currentLyric != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 8.dp)
+                    .clickable { showLyrics = true },
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    currentLyric,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                Icon(
+                    Icons.Filled.KeyboardArrowRight,
+                    contentDescription = "Ver letras",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         val duration = durationMs.coerceAtLeast(0L)
         val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
@@ -765,7 +799,7 @@ fun PlayerScreen(
                 }
                 LazyColumn(
                     state = lyricsListState,
-                    modifier = Modifier.fillMaxWidth().height(240.dp),
+                    modifier = Modifier.fillMaxWidth().height(320.dp),
                 ) {
                     itemsIndexed(lyrics) { index, line ->
                         val isCurrent = index == currentLine
@@ -793,7 +827,7 @@ fun PlayerScreen(
                                 },
                                 modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                                 textAlign = TextAlign.Center,
-                                style = MaterialTheme.typography.titleMedium,
+                                style = MaterialTheme.typography.titleLarge,
                             )
                         } else {
                             Text(
@@ -802,7 +836,7 @@ fun PlayerScreen(
                                 textAlign = TextAlign.Center,
                                 color = if (isCurrent) accent
                                 else MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = if (isCurrent) MaterialTheme.typography.titleMedium
+                                style = if (isCurrent) MaterialTheme.typography.titleLarge
                                 else MaterialTheme.typography.bodyMedium,
                             )
                         }
