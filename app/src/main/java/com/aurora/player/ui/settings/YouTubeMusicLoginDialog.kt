@@ -90,10 +90,12 @@ fun YouTubeMusicLoginDialog(
             return@rememberLauncherForActivityResult
         }
         dialogScope.launch {
-            when (val result = GoogleAccountAuth.fetchToken(dialogContext, account)) {
-                is TokenResult.Ok -> onConnectToken(result.token)
-                is TokenResult.NeedsConsent -> consentLauncher.launch(result.intent)
-                TokenResult.Failed -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
+            // El consentimiento ya se aceptó: se pide el token otra
+            // vez directamente. (No se puede relanzar consentLauncher
+            // desde su propio callback: la variable aún no existe ahí.)
+            when (val retry = GoogleAccountAuth.fetchToken(dialogContext, account)) {
+                is TokenResult.Ok -> onConnectToken(retry.token)
+                else -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
             }
         }
     }
