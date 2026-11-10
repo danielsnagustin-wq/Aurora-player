@@ -120,6 +120,7 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "replayGainMode" to JsonValue.Str(p.replayGainMode),
         "replayGainPreAmpDb" to JsonValue.Num(p.replayGainPreAmpDb.toDouble()),
         "channelBalance" to JsonValue.Num(p.channelBalance.toDouble()),
+        "audioOutputMode" to JsonValue.Str(p.audioOutputMode),
         "autoPauseOnDisconnect" to JsonValue.Bool(p.autoPauseOnDisconnect),
         "autoplayOnConnect" to JsonValue.Bool(p.autoplayOnConnect),
         "minDurationMs" to JsonValue.Num(p.minDurationMs.toDouble()),
@@ -234,6 +235,8 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
             .takeIf { it in setOf("off", "track", "album", "smart") } ?: "off",
         replayGainPreAmpDb = (v.obj("replayGainPreAmpDb").double()?.toFloat() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
         channelBalance = (v.obj("channelBalance").double()?.toFloat() ?: d.channelBalance).coerceIn(-1f, 1f),
+        audioOutputMode = (v.obj("audioOutputMode").str() ?: d.audioOutputMode)
+            .takeIf { it in setOf("standard", "direct") } ?: "standard",
         autoPauseOnDisconnect = v.obj("autoPauseOnDisconnect").bool() ?: d.autoPauseOnDisconnect,
         autoplayOnConnect = v.obj("autoplayOnConnect").bool() ?: d.autoplayOnConnect,
         minDurationMs = v.obj("minDurationMs").long() ?: d.minDurationMs,
