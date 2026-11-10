@@ -12,7 +12,9 @@ package com.aurora.player.audio
  * sin un DAC USB no hay bit-perfect total. La línea de estado lo
  * dice así, con la frecuencia real de la pista que suena. El DVC
  * (control de volumen directo del DAC) y la salida USB directa
- * quedan para la ronda de audio USB, no se fingen aquí.
+ * (driver USB propio) quedan pendientes y no se fingen aquí. El
+ * enrutado al DAC USB ya existe desde la ronda USB Serie A
+ * (setPreferredDevice en el servicio).
  */
 fun isDirectMode(mode: String): Boolean = mode == "direct"
 
