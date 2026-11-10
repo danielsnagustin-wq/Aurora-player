@@ -990,7 +990,6 @@ fun SettingsScreen(
             modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(top = 8.dp),
         ) {
             for ((dp, label) in listOf(
                 32 to "Pequeña", 40 to "Normal", 56 to "Grande", 72 to "Muy grande",
