@@ -1032,6 +1032,7 @@ private fun SavedQueuesDialog(
  * faltan apagadas. Lo usan la vista a pantalla completa y (modo
  * "Siempre") la vista previa del reproductor.
  */
+@Composable
 private fun karaokeLineText(
     line: LrcLine,
     positionMs: Long,
