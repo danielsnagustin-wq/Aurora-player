@@ -58,8 +58,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
+import com.aurora.player.audio.WaveformCache
+import com.aurora.player.audio.measureWaveform
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -230,6 +230,28 @@ fun PlayerScreen(
     // soltar, no en cada paso del arrastre (antes se pedían decenas de
     // seeks por segundo y el sonido se entrecortaba).
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
+    // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
+    // de caché o medidos en segundo plano al cambiar de pista. Las
+    // pistas online (https) no se miden: nunca se dibuja una onda
+    // inventada ni se descarga el audio entero para medirlo.
+    var waveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
+    val playerContext = LocalContext.current
+    LaunchedEffect(songUri) {
+        waveformPeaks = emptyList()
+        val uri = songUri ?: return@LaunchedEffect
+        if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
+        val key = uri.toString()
+        val cached = WaveformCache.read(playerContext, key)
+        if (cached != null) {
+            waveformPeaks = cached
+        } else {
+            val measured = measureWaveform(playerContext, uri)
+            if (measured != null) {
+                WaveformCache.write(playerContext, key, measured)
+                waveformPeaks = measured
+            }
+        }
+    }
     val lyricsListState = rememberLazyListState()
     val screenScrollState = rememberScrollState()
     var showLyricsEditor by remember { mutableStateOf(false) }
@@ -536,7 +558,8 @@ fun PlayerScreen(
         }
         val duration = durationMs.coerceAtLeast(0L)
         val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
-        Slider(
+        WaveformSeekBar(
+            peaks = waveformPeaks,
             value = shownPosition,
             onValueChange = { sliderPosition = it },
             onValueChangeFinished = {
@@ -544,7 +567,8 @@ fun PlayerScreen(
                 sliderPosition = null
             },
             valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
-            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
+            accent = accent,
+            dimmed = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp).alpha(controlsAlpha),
         )
         Row(
@@ -1079,6 +1103,28 @@ private fun LyricsFullScreen(
     listState: LazyListState,
 ) {
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
+    // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
+    // de caché o medidos en segundo plano al cambiar de pista. Las
+    // pistas online (https) no se miden: nunca se dibuja una onda
+    // inventada ni se descarga el audio entero para medirlo.
+    var waveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
+    val playerContext = LocalContext.current
+    LaunchedEffect(songUri) {
+        waveformPeaks = emptyList()
+        val uri = songUri ?: return@LaunchedEffect
+        if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
+        val key = uri.toString()
+        val cached = WaveformCache.read(playerContext, key)
+        if (cached != null) {
+            waveformPeaks = cached
+        } else {
+            val measured = measureWaveform(playerContext, uri)
+            if (measured != null) {
+                WaveformCache.write(playerContext, key, measured)
+                waveformPeaks = measured
+            }
+        }
+    }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (canvasUrl != null) {
             CanvasVideo(url = canvasUrl, modifier = Modifier.fillMaxSize())
@@ -1213,7 +1259,8 @@ private fun LyricsFullScreen(
             // play / siguiente.
             val duration = durationMs.coerceAtLeast(0L)
             val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
-            Slider(
+            WaveformSeekBar(
+                peaks = waveformPeaks,
                 value = shownPosition,
                 onValueChange = { sliderPosition = it },
                 onValueChangeFinished = {
@@ -1221,7 +1268,8 @@ private fun LyricsFullScreen(
                     sliderPosition = null
                 },
                 valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
-                colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
+                accent = accent,
+                dimmed = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
             Row(
