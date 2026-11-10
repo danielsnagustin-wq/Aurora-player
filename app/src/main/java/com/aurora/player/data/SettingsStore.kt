@@ -15,6 +15,7 @@ import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.PlayerSettings
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
@@ -147,6 +148,7 @@ class PlayerSettingsStore(private val context: Context) {
         val RESUME = booleanPreferencesKey("resume_where_left")
         val LOCAL_RADIO = booleanPreferencesKey("local_radio")
         val ONLINE_MODE = booleanPreferencesKey("online_mode")
+        val STREAM_QUALITY = stringPreferencesKey("stream_quality")
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
         val SHAKE_TO_NEXT = booleanPreferencesKey("shake_to_next")
@@ -173,6 +175,7 @@ class PlayerSettingsStore(private val context: Context) {
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
             onlineMode = prefs[Keys.ONLINE_MODE] ?: d.onlineMode,
+            streamQuality = StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] } ?: d.streamQuality,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
             shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
@@ -196,6 +199,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.RESUME] = settings.resumeWhereLeft
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
             prefs[Keys.ONLINE_MODE] = settings.onlineMode
+            prefs[Keys.STREAM_QUALITY] = settings.streamQuality.name
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
             prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
