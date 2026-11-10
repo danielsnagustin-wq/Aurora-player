@@ -24,6 +24,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.session.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.aurora.player.MainActivity
@@ -113,7 +114,7 @@ object AudioEffects {
 
 class PlaybackService : MediaSessionService() {
 
-    private var mediaSession: MediaSession? = null
+    private var mediaSession: MediaLibrarySession? = null
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
     private var audioOutputDirect: Boolean = false
@@ -218,7 +219,21 @@ class PlaybackService : MediaSessionService() {
         // apps mientras Aurora corría, y no estaba atado a su sesión.
         // Se crea en onAudioSessionIdChanged, con la sesión real.
         AudioEffects.clear()
-        mediaSession = MediaSession.Builder(this, exoPlayer)
+        // Android Auto (Fase 2 app): MediaLibrarySession con el
+        // árbol de AutoBrowse; el coche navega por carpetas y toca
+        // canciones reales de MediaStore.
+        mediaSession = MediaLibrarySession.Builder(
+            this,
+            exoPlayer,
+            AuroraLibraryCallback(
+                context = this,
+                scope = serviceScope,
+                loadSongs = { MusicRepository(this).loadSongs() },
+                loadFavoriteIds = {
+                    AuroraDatabase.getInstance(this).libraryDao().favoriteIds().toSet()
+                },
+            ),
+        )
             // Portadas de la notificación: MediaStore, incrustada en el
             // archivo o inicial de Aurora; nunca sin carátula.
             .setBitmapLoader(AuroraBitmapLoader(this))
