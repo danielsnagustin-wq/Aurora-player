@@ -132,6 +132,10 @@ data class PlayerSettings(
     // internet: letras online (LRCLIB) y escuchar de YouTube. La
     // música local nunca usa la red. Apagado, nada sale a la red.
     val onlineMode: Boolean = false,
+    // Calidad de streaming (BitChord, 2026-11-10): Alta es lo
+    // mejor que da YouTube (Opus ~160 kbps); no hay tier sin
+    // perdida porque YouTube no lo ofrece.
+    val streamQuality: StreamQuality = StreamQuality.HIGH,
     // Gestos (Etapa 1: ya existen en el reproductor; el interruptor
     // decide si están activos. El doble toque viene activado porque
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
