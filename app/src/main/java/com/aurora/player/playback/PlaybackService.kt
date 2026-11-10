@@ -32,6 +32,8 @@ import com.aurora.player.alarm.AlarmSettings
 import com.aurora.player.alarm.AlarmSource
 import com.aurora.player.audio.ChannelBalanceAudioProcessor
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.currentOutputRoute
+import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
 import com.aurora.player.audio.replayGainFromMetadata
@@ -218,6 +220,9 @@ class PlaybackService : MediaSessionService() {
                     intent.getIntExtra(BluetoothA2dp.EXTRA_STATE, -1),
                 )
                 if (connected) maybeAutoplayOnConnect()
+                // EQ por salida: al cambiar la salida (conectar o
+                // quitar auriculares/BT) se aplica el EQ de la nueva.
+                applyRouteEq()
             }
         }
         headphoneReceiver = autoplayReceiver
@@ -414,6 +419,32 @@ class PlaybackService : MediaSessionService() {
                 eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
+                applyRouteEq()
+            }
+        }
+    }
+
+    /**
+     * EQ por salida: si está activado y la salida actual tiene un EQ
+     * guardado, se aplica sobre el EQ global (también al de solape,
+     * para que el tono no cambie a mitad del fundido).
+     */
+    private fun applyRouteEq() {
+        val eq = equalizer ?: return
+        serviceScope.launch {
+            val store = EqStateStore(this@PlaybackService)
+            if (!store.perOutputFlow.first()) return@launch
+            val (route, name) = currentOutputRoute(this@PlaybackService)
+            val saved = store.routeStateFlow(routeKey(route, name)).first() ?: return@launch
+            eq.setEnabled(saved.enabled)
+            eq.applyPreset(EqualizerManager.Preset("Salida", saved.levelsDb))
+            eq.setBassBoost(saved.bassBoost.toShort())
+            eq.setVirtualizer(saved.virtualizer.toShort())
+            overlapEqualizer?.let { overlap ->
+                overlap.setEnabled(saved.enabled)
+                overlap.applyPreset(EqualizerManager.Preset("Salida", saved.levelsDb))
+                overlap.setBassBoost(saved.bassBoost.toShort())
+                overlap.setVirtualizer(saved.virtualizer.toShort())
             }
         }
     }
@@ -593,6 +624,7 @@ class PlaybackService : MediaSessionService() {
                 eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
+                applyRouteEq()
             }
         }
     }
