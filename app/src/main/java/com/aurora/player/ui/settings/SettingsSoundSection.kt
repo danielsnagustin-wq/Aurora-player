@@ -10,6 +10,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.aurora.player.audio.directModeStatusLine
+import com.aurora.player.audio.isDirectMode
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.ui.design.AuroraOptionChips
 import com.aurora.player.ui.design.AuroraSectionHeader
@@ -118,4 +120,22 @@ fun SettingsSoundSection(
             steps = 23,
         )
     }
+    // Fase 2, Salida Directa: la app no toca el audio. Sin formato
+    // de pista a mano aquí, la línea es la genérica honesta.
+    AuroraSectionHeader(
+        title = "Salida de audio",
+        description = "Directa apaga ReplayGain, silencio, balance, EQ del sistema y crossfade, y deja el volumen a 1.0.",
+    )
+    AuroraOptionChips(
+        options = listOf(
+            "standard" to "Estándar",
+            "direct" to "Directa",
+        ),
+        selected = player.audioOutputMode,
+        onSelect = { onSavePlayer(player.copy(audioOutputMode = it)) },
+    )
+    Text(
+        directModeStatusLine(isDirectMode(player.audioOutputMode), null, null),
+        modifier = Modifier.padding(top = 8.dp),
+    )
 }
