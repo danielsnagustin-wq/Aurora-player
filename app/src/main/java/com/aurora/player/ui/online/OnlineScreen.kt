@@ -18,6 +18,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.aurora.player.online.ChartsResult
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.model.StreamQuality
@@ -75,6 +77,12 @@ fun OnlineScreen(
     val cacheStore = remember { StreamCacheStore(context) }
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
+    // Fase 2 — Para ti: los charts se cargan una sola vez por
+    // entrada a la pestaña; si YouTube no responde, se dice claro.
+    var charts by remember { mutableStateOf<ChartsResult?>(null) }
+    var chartsLoading by remember { mutableStateOf(false) }
+    var chartsError by remember { mutableStateOf<String?>(null) }
+    var chartsLoaded by remember { mutableStateOf(false) }
     // Fase 2 — Fuentes: la sección de listas de Spotify se puede
     // ocultar (solo tiene sentido conectada) y el chip de YouTube
     // pone el foco en la búsqueda con el teclado abierto.
@@ -102,6 +110,18 @@ fun OnlineScreen(
             } finally {
                 searching = false
             }
+        }
+    }
+
+    LaunchedEffect(onlineMode) {
+        if (!onlineMode || chartsLoaded) return@LaunchedEffect
+        chartsLoaded = true
+        chartsLoading = true
+        val loaded = client.getCharts()
+        charts = loaded
+        chartsLoading = false
+        if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
+            chartsError = "No se pudieron cargar los charts de YouTube Music."
         }
     }
 
@@ -173,6 +193,17 @@ fun OnlineScreen(
                 streamQuality = streamQuality,
             )
         }
+        // Fase 2 — Para ti: charts de YouTube Music. Tocar una
+        // lista o un artista busca su nombre en YouTube Music.
+        ForYouSection(
+            charts = charts,
+            loading = chartsLoading,
+            error = chartsError,
+            onSearchQuery = { q ->
+                query = q
+                doSearch()
+            },
+        )
         if (searching) {
             Box(
                 modifier = Modifier.fillMaxSize(),
