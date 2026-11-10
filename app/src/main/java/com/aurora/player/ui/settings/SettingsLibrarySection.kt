@@ -66,7 +66,7 @@ fun SettingsLibrarySection(
     )
     AuroraMultiChips(
         options = listOf(
-            "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
+            "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online", "Listas",
         ).withIndex().map { (index, label) -> index.toString() to label },
         selected = visibleTabs.map { it.toString() }.toSet(),
         onToggle = { onSetTabVisible(it.toInt(), it.toInt() !in visibleTabs) },
