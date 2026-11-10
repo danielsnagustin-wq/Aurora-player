@@ -13,8 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,7 +20,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
@@ -36,6 +33,10 @@ import com.aurora.player.model.applyTo
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
+import com.aurora.player.ui.design.AuroraOptionChips
+import com.aurora.player.ui.design.AuroraSectionHeader
+import com.aurora.player.ui.design.AuroraSliderRow
+import com.aurora.player.ui.design.AuroraSwitchRow
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.ui.theme.parseHexOrNull
 import kotlinx.coroutines.launch
@@ -65,31 +66,20 @@ fun SettingsInterfaceSection(
     onResetTheme: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    SettingsGroupTitle("Tema")
-    SettingsGroupDescription("Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.")
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for (mode in ThemeMode.entries) {
-            val selected = applied.themeMode == mode
-            if (selected) {
-                Button(
-                    onClick = { onSaveTheme(applied.copy(themeMode = mode)) },
-                    colors = auroraButtonColors(),
-                ) {
-                    Text(mode.label)
-                }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(themeMode = mode)) }) {
-                    Text(mode.label)
-                }
-            }
-        }
-    }
+    AuroraSectionHeader(
+        title = "Tema",
+        description = "Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.",
+    )
+    AuroraOptionChips(
+        options = ThemeMode.entries.map { it.name to it.label },
+        selected = applied.themeMode.name,
+        onSelect = { onSaveTheme(applied.copy(themeMode = ThemeMode.valueOf(it))) },
+    )
 
-    SettingsGroupTitle("Color principal (acento)")
-    SettingsGroupDescription("El color que tiñe botones, iconos y detalles. Toca un preset o escribe tu HEX abajo.")
+    AuroraSectionHeader(
+        title = "Color principal (acento)",
+        description = "El color que tiñe botones, iconos y detalles. Toca un preset o escribe tu HEX abajo.",
+    )
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -142,8 +132,10 @@ fun SettingsInterfaceSection(
 
     // SPEC 007: cada color en su fila compacta (muestra + nombre
     // + HEX); tocar abre el picker avanzado (HEX/RGB/HSL).
-    SettingsGroupTitle("Colores")
-    SettingsGroupDescription("Toca un color para afinarlo. Cada cambio se aplica al instante y se guarda solo.")
+    AuroraSectionHeader(
+        title = "Colores",
+        description = "Toca un color para afinarlo. Cada cambio se aplica al instante y se guarda solo.",
+    )
     ColorRow("Color principal (acento)", applied.accentHex) { onEditingColorChange("accent") }
     ColorRow("Fondo", applied.backgroundHex) { onEditingColorChange("background") }
     ColorRow("Tarjeta", applied.cardHex) { onEditingColorChange("card") }
@@ -187,7 +179,7 @@ fun SettingsInterfaceSection(
         )
     }
 
-    SettingsGroupTitle("Así se ve ahora")
+    AuroraSectionHeader(title = "Así se ve ahora")
     Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         if (previewMode == 0) {
             Button(
@@ -218,201 +210,108 @@ fun SettingsInterfaceSection(
         if (previewMode == 0) MiniLibraryPreview(applied) else MiniPlayerPreview(applied)
     }
 
-    SettingsGroupTitle("Tamaño de texto")
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for ((size, label) in listOf(
+    AuroraSectionHeader(title = "Tamaño de texto")
+    AuroraOptionChips(
+        options = listOf(
             TextSize.SMALL to "Pequeño",
             TextSize.MEDIUM to "Normal",
             TextSize.LARGE to "Grande",
-        )) {
-            if (applied.textSize == size) {
-                Button(
-                    onClick = { onSaveTheme(applied.copy(textSize = size)) },
-                    colors = auroraButtonColors(),
-                ) { Text(label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(textSize = size)) }) {
-                    Text(label)
-                }
-            }
-        }
-    }
+        ).map { (size, label) -> size.name to label },
+        selected = applied.textSize.name,
+        onSelect = { onSaveTheme(applied.copy(textSize = TextSize.valueOf(it))) },
+    )
 
-    SettingsGroupTitle("Forma de portada")
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for ((shape, label) in listOf(
+    AuroraSectionHeader(title = "Forma de portada")
+    AuroraOptionChips(
+        options = listOf(
             CoverShape.SQUARE to "Cuadrada",
             CoverShape.ROUNDED to "Redondeada",
             CoverShape.CIRCLE to "Circular",
-        )) {
-            if (applied.coverShape == shape) {
-                Button(
-                    onClick = { onSaveTheme(applied.copy(coverShape = shape)) },
-                    colors = auroraButtonColors(),
-                ) { Text(label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(coverShape = shape)) }) {
-                    Text(label)
-                }
-            }
-        }
-    }
+        ).map { (shape, label) -> shape.name to label },
+        selected = applied.coverShape.name,
+        onSelect = { onSaveTheme(applied.copy(coverShape = CoverShape.valueOf(it))) },
+    )
 
-    SettingsGroupTitle("Densidad de lista")
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for ((density, label) in listOf(
+    AuroraSectionHeader(title = "Densidad de lista")
+    AuroraOptionChips(
+        options = listOf(
             ListDensity.COMPACT to "Compacta",
             ListDensity.COMFORTABLE to "Cómoda",
-        )) {
-            if (applied.listDensity == density) {
-                Button(
-                    onClick = { onSaveTheme(applied.copy(listDensity = density)) },
-                    colors = auroraButtonColors(),
-                ) { Text(label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(listDensity = density)) }) {
-                    Text(label)
-                }
-            }
-        }
-    }
+        ).map { (density, label) -> density.name to label },
+        selected = applied.listDensity.name,
+        onSelect = { onSaveTheme(applied.copy(listDensity = ListDensity.valueOf(it))) },
+    )
 
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Material You (colores del sistema)", modifier = Modifier.weight(1f))
-        Switch(
-            checked = applied.useMaterialYou,
-            onCheckedChange = { onSaveTheme(applied.copy(useMaterialYou = it)) },
-        )
-    }
-    SettingsGroupDescription(
-        "Android 12 o más: el tema toma los colores del fondo de pantalla. Tu color de botones sigue valiendo.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSwitchRow(
+        title = "Material You (colores del sistema)",
+        checked = applied.useMaterialYou,
+        onCheckedChange = { onSaveTheme(applied.copy(useMaterialYou = it)) },
+        description = "Android 12 o más: el tema toma los colores del fondo de pantalla. Tu color de botones sigue valiendo.",
     )
     // RONDA 5 (2026-11-09): "AMOLED cuando el sistema está en
     // oscuro" existía en el modelo, se guardaba y el tema lo
     // leía, pero NO HABÍA interruptor para cambiarlo: siempre
     // valía true. Ahora aparece cuando el modo es Sistema.
     if (applied.themeMode == ThemeMode.SYSTEM) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                "Negro AMOLED cuando el sistema está en oscuro",
-                modifier = Modifier.weight(1f),
-            )
-            Switch(
-                checked = applied.amoledWhenSystemDark,
-                onCheckedChange = { onSaveTheme(applied.copy(amoledWhenSystemDark = it)) },
-            )
-        }
-        SettingsGroupDescription(
-            "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
-            modifier = Modifier.padding(top = 4.dp),
+        AuroraSwitchRow(
+            title = "Negro AMOLED cuando el sistema está en oscuro",
+            checked = applied.amoledWhenSystemDark,
+            onCheckedChange = { onSaveTheme(applied.copy(amoledWhenSystemDark = it)) },
+            description = "Con el sistema en oscuro, el fondo es negro puro AMOLED en vez de gris oscuro.",
         )
     }
 
     // DISEÑO PREMIUM (spec 003): todo personalizable, todo con
     // efecto real. Cada ajuste se aplica al tocar, como el resto.
-    SettingsGroupTitle("Diseño")
-    SettingsGroupDescription("Cómo se ve la app: colores que siguen a la portada, fondo del reproductor, tarjetas y esquinas.")
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Color dinámico de la portada", modifier = Modifier.weight(1f))
-        Switch(
-            checked = applied.dynamicColor,
-            // Cambio manual a un ajuste que gobierna el perfil:
-            // el perfil pasa a Personalizado.
-            onCheckedChange = {
-                onSaveTheme(applied.copy(dynamicColor = it, performanceProfile = PerformanceProfile.CUSTOM))
-            },
-        )
-    }
-    SettingsGroupDescription(
-        "El acento del reproductor sigue el color de la portada que suena. Apagado, manda tu color principal.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSectionHeader(
+        title = "Diseño",
+        description = "Cómo se ve la app: colores que siguen a la portada, fondo del reproductor, tarjetas y esquinas.",
     )
-    SettingsGroupTitle("Fondo del reproductor")
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for ((bg, label) in listOf(
+    AuroraSwitchRow(
+        title = "Color dinámico de la portada",
+        checked = applied.dynamicColor,
+        // Cambio manual a un ajuste que gobierna el perfil:
+        // el perfil pasa a Personalizado.
+        onCheckedChange = {
+            onSaveTheme(applied.copy(dynamicColor = it, performanceProfile = PerformanceProfile.CUSTOM))
+        },
+        description = "El acento del reproductor sigue el color de la portada que suena. Apagado, manda tu color principal.",
+    )
+    AuroraSectionHeader(title = "Fondo del reproductor")
+    AuroraOptionChips(
+        options = listOf(
             PlayerBackground.COVER to "Portada",
             PlayerBackground.GRADIENT to "Degradado",
             PlayerBackground.SOLID to "Plano",
-        )) {
+        ).map { (bg, label) -> bg.name to label },
+        selected = applied.playerBackground.name,
+        onSelect = {
+            val bg = PlayerBackground.valueOf(it)
             // Tocar el fondo ya elegido no cambia nada (y no debe
             // pasar el perfil a Personalizado sin motivo).
             val next = if (applied.playerBackground == bg) applied
                 else applied.copy(playerBackground = bg, performanceProfile = PerformanceProfile.CUSTOM)
-            if (applied.playerBackground == bg) {
-                Button(
-                    onClick = { onSaveTheme(next) },
-                    colors = auroraButtonColors(),
-                ) { Text(label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(next) }) {
-                    Text(label)
-                }
-            }
-        }
-    }
-    SettingsGroupTitle("Estilo de tarjetas")
-    FlowRow(
-        modifier = Modifier.padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for ((style, label) in listOf(
+            onSaveTheme(next)
+        },
+    )
+    AuroraSectionHeader(title = "Estilo de tarjetas")
+    AuroraOptionChips(
+        options = listOf(
             CardStyle.SOLID to "Sólido",
             CardStyle.GLASS to "Cristal",
             CardStyle.OUTLINE to "Contorno",
-        )) {
-            if (applied.cardStyle == style) {
-                Button(
-                    onClick = { onSaveTheme(applied.copy(cardStyle = style)) },
-                    colors = auroraButtonColors(),
-                ) { Text(label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(cardStyle = style)) }) {
-                    Text(label)
-                }
-            }
-        }
-    }
+        ).map { (style, label) -> style.name to label },
+        selected = applied.cardStyle.name,
+        onSelect = { onSaveTheme(applied.copy(cardStyle = CardStyle.valueOf(it))) },
+    )
     // El radio se guarda al soltar la barra, no a cada paso del
     // arrastre (como el crossfade: si no, escribe en DataStore
     // decenas de veces por arrastre).
     var cornerRadius by remember(applied.cornerRadiusDp) {
         mutableStateOf(applied.cornerRadiusDp.toFloat())
     }
-    Text(
-        "Radio de esquinas: ${cornerRadius.toInt()} dp",
-        modifier = Modifier.padding(top = 16.dp),
-    )
-    Slider(
+    AuroraSliderRow(
+        label = "Radio de esquinas: ${cornerRadius.toInt()} dp",
         value = cornerRadius,
         onValueChange = { cornerRadius = it },
         onValueChangeFinished = {
@@ -425,62 +324,35 @@ fun SettingsInterfaceSection(
         },
         valueRange = 0f..28f,
         steps = 27,
-        modifier = Modifier.fillMaxWidth(),
     )
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Álbumes en cuadrícula", modifier = Modifier.weight(1f))
-        Switch(
-            checked = applied.albumGrid,
-            onCheckedChange = { onSaveTheme(applied.copy(albumGrid = it)) },
-        )
-    }
-    SettingsGroupDescription(
-        "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSwitchRow(
+        title = "Álbumes en cuadrícula",
+        checked = applied.albumGrid,
+        onCheckedChange = { onSaveTheme(applied.copy(albumGrid = it)) },
+        description = "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
     )
 
     // RENDIMIENTO (spec 004): perfiles + animaciones + restablecer.
     // Solo gobierna efectos reales; cada cambio se aplica al tocar.
-    SettingsGroupTitle("Rendimiento")
-    SettingsGroupDescription("Cuánto trabajo visual hace la app. Equilibrado es el aspecto actual; Ahorro gasta menos batería; Alto rendimiento nunca se baja solo.")
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for (profile in PerformanceProfile.entries) {
-            val next = profile.applyTo(applied).copy(performanceProfile = profile)
-            if (applied.performanceProfile == profile) {
-                Button(
-                    onClick = { onSaveTheme(next) },
-                    colors = auroraButtonColors(),
-                ) { Text(profile.label) }
-            } else {
-                OutlinedButton(onClick = { onSaveTheme(next) }) {
-                    Text(profile.label)
-                }
-            }
-        }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Animaciones", modifier = Modifier.weight(1f))
-        Switch(
-            checked = applied.animationsEnabled,
-            onCheckedChange = {
-                onSaveTheme(applied.copy(animationsEnabled = it, performanceProfile = PerformanceProfile.CUSTOM))
-            },
-        )
-    }
-    SettingsGroupDescription(
-        "Apagadas, la pantalla de inicio se muestra estática y las letras saltan de línea sin animación.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSectionHeader(
+        title = "Rendimiento",
+        description = "Cuánto trabajo visual hace la app. Equilibrado es el aspecto actual; Ahorro gasta menos batería; Alto rendimiento nunca se baja solo.",
+    )
+    AuroraOptionChips(
+        options = PerformanceProfile.entries.map { it.name to it.label },
+        selected = applied.performanceProfile.name,
+        onSelect = {
+            val profile = PerformanceProfile.valueOf(it)
+            onSaveTheme(profile.applyTo(applied).copy(performanceProfile = profile))
+        },
+    )
+    AuroraSwitchRow(
+        title = "Animaciones",
+        checked = applied.animationsEnabled,
+        onCheckedChange = {
+            onSaveTheme(applied.copy(animationsEnabled = it, performanceProfile = PerformanceProfile.CUSTOM))
+        },
+        description = "Apagadas, la pantalla de inicio se muestra estática y las letras saltan de línea sin animación.",
     )
     SettingsGroupDescription(
         "Con el perfil Equilibrado, si Android entra en ahorro de energía o el teléfono se calienta mucho, la app baja sola a los valores de Ahorro sin tocar lo que guardaste: al salir, vuelve sola. La música no se corta nunca por esto.",
