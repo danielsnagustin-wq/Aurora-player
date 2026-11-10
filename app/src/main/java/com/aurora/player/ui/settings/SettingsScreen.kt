@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -66,6 +68,9 @@ import com.aurora.player.data.BackupData
 import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.FolderStore
 import com.aurora.player.data.LibraryPrefsStore
+import com.aurora.player.data.LyricsProviderStore
+import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
+import com.aurora.player.lyrics.moveProvider
 import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.ThemeSettingsStore
@@ -148,6 +153,14 @@ fun SettingsScreen(
         initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
     )
 
+    // Fase 2 — orden de los proveedores de letras (hoja "Elegir
+    // proveedor" como BitChord).
+    val lyricsProviderStore = remember { LyricsProviderStore(context) }
+    val providerOrder by lyricsProviderStore.orderFlow.collectAsState(
+        initial = DEFAULT_PROVIDER_ORDER,
+    )
+    var showProviders by remember { mutableStateOf(false) }
+
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
     }
@@ -164,6 +177,17 @@ fun SettingsScreen(
         if (showAlarm) {
             AlarmScreen(onClose = { showAlarm = false })
             return@Column
+        }
+        if (showProviders) {
+            ProvidersDialog(
+                order = providerOrder,
+                onMove = { name, up ->
+                    scope.launch {
+                        lyricsProviderStore.setOrder(moveProvider(providerOrder, name, up))
+                    }
+                },
+                onClose = { showProviders = false },
+            )
         }
         if (section == null) {
             Text("Ajustes", style = MaterialTheme.typography.titleLarge)
@@ -991,6 +1015,22 @@ fun SettingsScreen(
             "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
             modifier = Modifier.padding(top = 4.dp),
         )
+        // Fase 2 — proveedores de letras (como BitChord): el primero
+        // que encuentre la letra gana; se reordena con las flechas.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Proveedores de letras", modifier = Modifier.weight(1f))
+            OutlinedButton(onClick = { showProviders = true }) {
+                Text("Elegir proveedor")
+            }
+        }
+        Text(
+            "Orden actual: ${providerOrder.joinToString(" → ")}",
+            modifier = Modifier.padding(top = 4.dp),
+        )
         }
 
         if (section == SettingsSection.NOTIFICATIONS) {
@@ -1348,6 +1388,58 @@ enum class SettingsSection(
 }
 
 @Composable
+/**
+ * Fase 2 — hoja "Elegir proveedor" (como BitChord). Reordena con
+ * las flechas: el primero que encuentre la letra gana.
+ */
+@Composable
+private fun ProvidersDialog(
+    order: List<String>,
+    onMove: (String, Boolean) -> Unit,
+    onClose: () -> Unit,
+) {
+    val descriptions = mapOf(
+        "LRCLIB" to "Gratis, sin clave. Letras sincronizadas y texto plano.",
+        "BetterLyrics" to "Letras con sílabas (TTML). Sin clave.",
+        "BiniLyrics" to "Letras palabra a palabra vía lrc.red. Sin clave.",
+    )
+    AlertDialog(
+        onDismissRequest = onClose,
+        title = { Text("Elegir proveedor de letras") },
+        text = {
+            Column {
+                Text("El primero que encuentre la letra gana. Sube o baja cada proveedor con las flechas.")
+                order.forEachIndexed { index, name ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(name)
+                            Text(descriptions[name].orEmpty())
+                        }
+                        IconButton(
+                            onClick = { onMove(name, true) },
+                            enabled = index > 0,
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Subir $name")
+                        }
+                        IconButton(
+                            onClick = { onMove(name, false) },
+                            enabled = index < order.size - 1,
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Bajar $name")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onClose) { Text("Cerrar") }
+        },
+    )
+}
+
 private fun SettingsHome(onOpen: (SettingsSection) -> Unit) {
     Column(modifier = Modifier.fillMaxWidth()) {
         for (section in SettingsSection.entries) {
