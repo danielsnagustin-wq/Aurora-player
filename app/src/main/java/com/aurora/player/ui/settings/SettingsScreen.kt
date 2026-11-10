@@ -24,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -219,8 +220,8 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.INTERFACE) {
-        Text("Tema", modifier = Modifier.padding(top = 16.dp))
-        Text("Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.")
+        SettingsGroupTitle("Tema")
+        SettingsGroupDescription("Claro, oscuro o negro AMOLED. AMOLED apaga los píxeles negros y ahorra batería.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -242,8 +243,8 @@ fun SettingsScreen(
             }
         }
 
-        Text("Color principal (acento)", modifier = Modifier.padding(top = 16.dp))
-        Text("El color que tiñe botones, iconos y detalles. Toca un preset o escribe tu HEX abajo.")
+        SettingsGroupTitle("Color principal (acento)")
+        SettingsGroupDescription("El color que tiñe botones, iconos y detalles. Toca un preset o escribe tu HEX abajo.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -296,8 +297,8 @@ fun SettingsScreen(
 
         // SPEC 007: cada color en su fila compacta (muestra + nombre
         // + HEX); tocar abre el picker avanzado (HEX/RGB/HSL).
-        Text("Colores", modifier = Modifier.padding(top = 16.dp))
-        Text("Toca un color para afinarlo. Cada cambio se aplica al instante y se guarda solo.")
+        SettingsGroupTitle("Colores")
+        SettingsGroupDescription("Toca un color para afinarlo. Cada cambio se aplica al instante y se guarda solo.")
         ColorRow("Color principal (acento)", applied.accentHex) { editingColor = "accent" }
         ColorRow("Fondo", applied.backgroundHex) { editingColor = "background" }
         ColorRow("Tarjeta", applied.cardHex) { editingColor = "card" }
@@ -306,7 +307,7 @@ fun SettingsScreen(
         ColorRow("Botón", applied.buttonHex) { editingColor = "button" }
         ColorRow("Barra del reproductor", applied.playerBarHex) { editingColor = "playerBar" }
         ColorRow("Color secundario", applied.visualizerHex) { editingColor = "visualizer" }
-        Text("El color secundario tiñe detalles y acentos secundarios; también será el color del visualizador cuando llegue.")
+        SettingsGroupDescription("El color secundario tiñe detalles y acentos secundarios; también será el color del visualizador cuando llegue.")
         val editing = editingColor
         if (editing != null) {
             val currentHex = when (editing) {
@@ -341,7 +342,7 @@ fun SettingsScreen(
             )
         }
 
-        Text("Así se ve ahora", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Así se ve ahora")
         Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
             if (previewMode == 0) {
                 Button(
@@ -372,8 +373,9 @@ fun SettingsScreen(
             if (previewMode == 0) MiniLibraryPreview(applied) else MiniPlayerPreview(applied)
         }
 
-        Text("Tamaño de texto", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Tamaño de texto")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -395,8 +397,9 @@ fun SettingsScreen(
             }
         }
 
-        Text("Forma de portada", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Forma de portada")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -418,8 +421,9 @@ fun SettingsScreen(
             }
         }
 
-        Text("Densidad de lista", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Densidad de lista")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -482,8 +486,8 @@ fun SettingsScreen(
 
         // DISEÑO PREMIUM (spec 003): todo personalizable, todo con
         // efecto real. Cada ajuste se aplica al tocar, como el resto.
-        Text("Diseño", modifier = Modifier.padding(top = 16.dp))
-        Text("Cómo se ve la app: colores que siguen a la portada, fondo del reproductor, tarjetas y esquinas.")
+        SettingsGroupTitle("Diseño")
+        SettingsGroupDescription("Cómo se ve la app: colores que siguen a la portada, fondo del reproductor, tarjetas y esquinas.")
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -503,8 +507,9 @@ fun SettingsScreen(
             "El acento del reproductor sigue el color de la portada que suena. Apagado, manda tu color principal.",
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text("Fondo del reproductor", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Fondo del reproductor")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -529,8 +534,9 @@ fun SettingsScreen(
                 }
             }
         }
-        Text("Estilo de tarjetas", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Estilo de tarjetas")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -594,8 +600,8 @@ fun SettingsScreen(
 
         // RENDIMIENTO (spec 004): perfiles + animaciones + restablecer.
         // Solo gobierna efectos reales; cada cambio se aplica al tocar.
-        Text("Rendimiento", modifier = Modifier.padding(top = 16.dp))
-        Text("Cuánto trabajo visual hace la app. Equilibrado es el aspecto actual; Ahorro gasta menos batería; Alto rendimiento nunca se baja solo.")
+        SettingsGroupTitle("Rendimiento")
+        SettingsGroupDescription("Cuánto trabajo visual hace la app. Equilibrado es el aspecto actual; Ahorro gasta menos batería; Alto rendimiento nunca se baja solo.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -650,8 +656,8 @@ fun SettingsScreen(
         // RENDIMIENTO (spec 004) — DIAGNÓSTICO: mediciones reales de
         // este teléfono. El medidor de FPS solo mide mientras Ajustes
         // está abierto; al salir se para.
-        Text("Diagnóstico", modifier = Modifier.padding(top = 16.dp))
-        Text("Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.")
+        SettingsGroupTitle("Diagnóstico")
+        SettingsGroupDescription("Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.")
         val meter = remember { FrameRateMeter() }
         val fps by meter.fps.collectAsState()
         val dropped by meter.dropped.collectAsState()
@@ -687,8 +693,8 @@ fun SettingsScreen(
         if (section == SettingsSection.SOUND) {
         // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
         // reanudar la cola). Todo se guarda al tocar, como el tema.
-        Text("Reproducción", modifier = Modifier.padding(top = 16.dp))
-        Text("Cómo suena y qué pasa al quitar los auriculares o al reabrir la app.")
+        SettingsGroupTitle("Reproducción")
+        SettingsGroupDescription("Cómo suena y qué pasa al quitar los auriculares o al reabrir la app.")
         Button(
             onClick = onOpenEq,
             colors = auroraButtonColors(),
@@ -755,8 +761,8 @@ fun SettingsScreen(
         // RONDA 6: ReplayGain de verdad (antes el ajuste existía en
         // el modelo pero nada lo aplicaba). Usa la etiqueta ReplayGain
         // del archivo: sin etiqueta, no cambia el volumen.
-        Text("ReplayGain (normalización de volumen)", modifier = Modifier.padding(top = 16.dp))
-        Text("Iguala el volumen entre canciones con la etiqueta ReplayGain del archivo. Sin etiqueta, no cambia nada.")
+        SettingsGroupTitle("ReplayGain (normalización de volumen)")
+        SettingsGroupDescription("Iguala el volumen entre canciones con la etiqueta ReplayGain del archivo. Sin etiqueta, no cambia nada.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -873,8 +879,8 @@ fun SettingsScreen(
         // AUDITORÍA (2026-11-09): los gestos del reproductor existían
         // pero no se podían apagar; sus ajustes vivían muertos en el
         // modelo. Ahora cada gesto tiene su interruptor real.
-        Text("Gestos", modifier = Modifier.padding(top = 16.dp))
-        Text("Lo que hace la portada del reproductor al tocarla.")
+        SettingsGroupTitle("Gestos")
+        SettingsGroupDescription("Lo que hace la portada del reproductor al tocarla.")
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -928,8 +934,8 @@ fun SettingsScreen(
         // modelo y la biblioteca la usaba, pero NO HABÍA control para
         // cambiarla en Ajustes: era un ajuste muerto. Ahora sí se
         // puede tocar; se aplica al volver a escanear la biblioteca.
-        Text("Biblioteca", modifier = Modifier.padding(top = 16.dp))
-        Text("Qué canciones entran en la biblioteca. Las muy cortas suelen ser tonos o notas de voz.")
+        SettingsGroupTitle("Biblioteca")
+        SettingsGroupDescription("Qué canciones entran en la biblioteca. Las muy cortas suelen ser tonos o notas de voz.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -957,8 +963,8 @@ fun SettingsScreen(
             "Se aplica al volver a escanear la biblioteca.",
             modifier = Modifier.padding(top = 4.dp),
         )
-        Text("Pestañas visibles", modifier = Modifier.padding(top = 16.dp))
-        Text("Elige qué pestañas se ven en el inicio. Siempre queda al menos una visible.")
+        SettingsGroupTitle("Pestañas visibles")
+        SettingsGroupDescription("Elige qué pestañas se ven en el inicio. Siempre queda al menos una visible.")
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -979,8 +985,9 @@ fun SettingsScreen(
                 }
             }
         }
-        Text("Tamaño de portada en la fila", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Tamaño de portada en la fila")
         FlowRow(
+            modifier = Modifier.padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 8.dp),
@@ -1007,7 +1014,7 @@ fun SettingsScreen(
         // defecto: con el interruptor apagado la app no toca la red
         // jamás. Con él encendido: letras online (LRCLIB, solo si no
         // hay .lrc local) y la pestaña Online para escuchar de YouTube.
-        Text("Modo online", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Modo online")
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1042,9 +1049,9 @@ fun SettingsScreen(
         // Fase 2 — Spotify como BitChord: conexión por cookie sp_dc
         // (sin app registrada ni client_id). Con ella se cargan TUS
         // listas; la música suena por YouTube Music, como BitChord.
-        Text("Spotify", modifier = Modifier.padding(top = 16.dp))
+        SettingsGroupTitle("Spotify")
         if (spotifyConnected) {
-            Text(
+            SettingsGroupDescription(
                 "Conectado con tu cookie sp_dc. Tus listas se cargan de Spotify y suenan por YouTube Music.",
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -1061,7 +1068,7 @@ fun SettingsScreen(
                 Text("Desconectar Spotify")
             }
         } else {
-            Text(
+            SettingsGroupDescription(
                 "1. Entra a open.spotify.com en el navegador e inicia sesión.\n2. Abre las herramientas de desarrollador, Aplicación y Cookies.\n3. Copia el valor de la cookie sp_dc.\n4. Pégala aquí.",
                 modifier = Modifier.padding(top = 4.dp),
             )
@@ -1099,8 +1106,8 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.NOTIFICATIONS) {
-            Text("Notificaciones", modifier = Modifier.padding(top = 16.dp))
-            Text(
+            SettingsGroupTitle("Notificaciones")
+            SettingsGroupDescription(
                 if (notificationsGranted) {
                     "El aviso de reproducción sale en la barra de estado y en la pantalla de bloqueo."
                 } else {
@@ -1270,8 +1277,8 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.THEMES) {
-        Text("Mis temas", modifier = Modifier.padding(top = 16.dp))
-        Text("Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.")
+        SettingsGroupTitle("Mis temas")
+        SettingsGroupDescription("Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.")
         val pickTheme = rememberLauncherForActivityResult(
             ActivityResultContracts.OpenDocument(),
         ) { uri ->
@@ -1520,7 +1527,7 @@ private fun SettingsHome(onOpen: (SettingsSection) -> Unit) {
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp),
                 )
-                Column(modifier = Modifier.padding(start = 16.dp)) {
+                Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
                     Text(section.title, style = MaterialTheme.typography.titleMedium)
                     Text(
                         section.subtitle,
@@ -1528,6 +1535,11 @@ private fun SettingsHome(onOpen: (SettingsSection) -> Unit) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
