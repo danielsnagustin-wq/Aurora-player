@@ -205,7 +205,23 @@ class SpotifyCanvasClient {
             try {
                 conn.outputStream.use { it.write(body) }
                 if (conn.responseCode != 200) return null
-                conn.inputStream.use { it.readBytes() }
+                // Tope de 1 MB: la respuesta es un manifiesto
+                // protobuf (URLs del vídeo), nunca megabytes. Sin
+                // tope, una respuesta gigante tumba la app por
+                // memoria (misma familia del crash, 2026-11-10).
+                conn.inputStream.use { stream ->
+                    val out = java.io.ByteArrayOutputStream()
+                    val buf = ByteArray(8192)
+                    var total = 0
+                    while (true) {
+                        val n = stream.read(buf)
+                        if (n <= 0) break
+                        total += n
+                        if (total > 1024 * 1024) return null
+                        out.write(buf, 0, n)
+                    }
+                    out.toByteArray()
+                }
             } finally {
                 conn.disconnect()
             }
