@@ -36,7 +36,9 @@ import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
+import com.aurora.player.audio.LufsCache
 import com.aurora.player.audio.VisualizerCapture
+import com.aurora.player.audio.measureFileLufs
 import com.aurora.player.audio.applyTone2d
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
 import com.aurora.player.audio.replayGainFromMetadata
@@ -135,6 +137,10 @@ class PlaybackService : MediaSessionService() {
     private var replayGainPreAmpDb = 0f
     private var trackGainDb: Float? = null
     private var albumGainDb: Float? = null
+    /** LUFS medido de la pista que suena (modo "lufs"), null = sin medir. */
+    private var trackLufsDb: Float? = null
+    private var overlapLufsDb: Float? = null
+    private var lufsJob: Job? = null
     /** Saltar silencio (RONDA 6): procesador en la cadena + ajuste. */
     private var silenceProcessor: SilenceDetectorAudioProcessor? = null
     private var skipSilenceEnabled = false
@@ -302,6 +308,9 @@ class PlaybackService : MediaSessionService() {
                     // el fade-in. La ganancia se resetea igual.
                     trackGainDb = null
                     albumGainDb = null
+                    // Traspaso del solape: B ya midió el LUFS de esta
+                    // pista; A lo hereda para no medir dos veces.
+                    trackLufsDb = overlapLufsDb
                     applyReplayGain()
                     return
                 }
@@ -313,7 +322,9 @@ class PlaybackService : MediaSessionService() {
                 // la ganancia a 0 hasta que llegue su metadata.
                 trackGainDb = null
                 albumGainDb = null
+                trackLufsDb = null
                 applyReplayGain()
+                measureLufsFor(mediaItem, isOverlap = false)
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -388,9 +399,54 @@ class PlaybackService : MediaSessionService() {
      */
     private fun applyReplayGain() {
         val processor = replayGainProcessor ?: return
-        val gainDb = selectReplayGainDb(replayGainMode, trackGainDb, albumGainDb, replayGainPreAmpDb)
+        val gainDb = selectReplayGainDb(
+            replayGainMode, trackGainDb, albumGainDb,
+            replayGainPreAmpDb, trackLufsDb,
+        )
         processor.enabled = replayGainMode != "off" && gainDb != 0f
         processor.setTargetGainDb(gainDb)
+    }
+
+    /**
+     * LUFS (Fase 2): mide la sonoridad de la pista en segundo plano
+     * cuando el modo es "lufs". Primero la caché; si no está, se
+     * decodifica el archivo entero (puede tardar segundos) y se
+     * aplica solo si la pista sigue siendo la actual. Las pistas
+     * online ("yt:") no se miden: su audio es un stream, no un archivo.
+     */
+    private fun measureLufsFor(item: MediaItem?, isOverlap: Boolean) {
+        if (replayGainMode != "lufs") return
+        val id = item?.mediaId ?: return
+        if (id.startsWith("yt:")) return
+        val uri = item.localConfiguration?.uri ?: return
+        LufsCache.read(this, id)?.let { cached ->
+            if (isOverlap) {
+                overlapLufsDb = cached.toFloat()
+                applyOverlapReplayGain()
+            } else {
+                trackLufsDb = cached.toFloat()
+                applyReplayGain()
+            }
+            return
+        }
+        lufsJob?.cancel()
+        lufsJob = serviceScope.launch {
+            val measured = measureFileLufs(this@PlaybackService, uri) ?: return@launch
+            LufsCache.write(this@PlaybackService, id, measured)
+            val currentId = if (isOverlap) {
+                overlapPlayer?.currentMediaItem?.mediaId
+            } else {
+                player?.currentMediaItem?.mediaId
+            }
+            if (currentId != id) return@launch
+            if (isOverlap) {
+                overlapLufsDb = measured.toFloat()
+                applyOverlapReplayGain()
+            } else {
+                trackLufsDb = measured.toFloat()
+                applyReplayGain()
+            }
+        }
     }
 
     /**
@@ -609,6 +665,7 @@ class PlaybackService : MediaSessionService() {
             }
         })
         b.setMediaItem(nextItem)
+        measureLufsFor(nextItem, isOverlap = true)
         b.prepare()
         b.volume = 0f
         b.play()
@@ -667,6 +724,7 @@ class PlaybackService : MediaSessionService() {
         overlapBalanceProcessor = null
         overlapTrackGainDb = null
         overlapAlbumGainDb = null
+        overlapLufsDb = null
     }
 
     /** EQ del solape: segundo manager sobre la sesión de B con el
@@ -703,7 +761,10 @@ class PlaybackService : MediaSessionService() {
 
     private fun applyOverlapReplayGain() {
         val processor = overlapGainProcessor ?: return
-        val gainDb = selectReplayGainDb(replayGainMode, overlapTrackGainDb, overlapAlbumGainDb, replayGainPreAmpDb)
+        val gainDb = selectReplayGainDb(
+            replayGainMode, overlapTrackGainDb, overlapAlbumGainDb,
+            replayGainPreAmpDb, overlapLufsDb,
+        )
         processor.enabled = replayGainMode != "off" && gainDb != 0f
         processor.setTargetGainDb(gainDb)
     }
@@ -891,6 +952,7 @@ class PlaybackService : MediaSessionService() {
         try { headphoneReceiver?.let { unregisterReceiver(it) } } catch (_: IllegalArgumentException) { }
         headphoneReceiver = null
         fadeJob?.cancel()
+        lufsJob?.cancel()
         overlapJob?.cancel()
         releaseOverlapPlayer()
         mediaSession?.release()
