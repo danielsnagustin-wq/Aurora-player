@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.ThemePresetStore
+import com.aurora.player.model.AppFont
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
@@ -232,6 +233,18 @@ fun SettingsInterfaceSection(
             widgetStyle = next
             AuroraWidgetProvider.setStyle(widgetContext, next)
         },
+    )
+
+    // Fase 2 — selector de fuentes: solo familias del sistema, sin
+    // descargar nada. Se aplica a toda la app al instante.
+    AuroraSectionHeader(
+        title = "Fuente",
+        description = "La letra de toda la app. Son las fuentes del sistema, sin descargar nada.",
+    )
+    AuroraOptionChips(
+        options = AppFont.entries.map { it.name to it.label },
+        selected = applied.fontFamily.name,
+        onSelect = { onSaveTheme(applied.copy(fontFamily = AppFont.valueOf(it))) },
     )
 
     AuroraSectionHeader(title = "Tamaño de texto")
