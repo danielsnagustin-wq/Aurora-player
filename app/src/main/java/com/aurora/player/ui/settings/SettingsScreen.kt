@@ -120,6 +120,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     onOpenEq: () -> Unit = {},
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
+    onShareErrorLog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
@@ -216,6 +217,7 @@ fun SettingsScreen(
                         playerStore.resetToDefault()
                     }
                 },
+                onShareErrorLog = onShareErrorLog,
             )
         }
 

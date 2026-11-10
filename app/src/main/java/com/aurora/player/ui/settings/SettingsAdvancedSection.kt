@@ -13,7 +13,10 @@ import com.aurora.player.ui.design.AuroraSectionHeader
  * se quitó (no se entendía); queda solo Restablecer por defecto.
  */
 @Composable
-fun SettingsAdvancedSection(onResetDefaults: () -> Unit) {
+fun SettingsAdvancedSection(
+    onResetDefaults: () -> Unit,
+    onShareErrorLog: () -> Unit = {},
+) {
     AuroraSectionHeader(
         title = "Avanzadas",
         description = "Restablecer devuelve los ajustes y la reproducción a sus valores de fábrica. Tu música, listas y favoritos no se tocan.",
@@ -24,4 +27,14 @@ fun SettingsAdvancedSection(onResetDefaults: () -> Unit) {
     ) {
         Text("Restablecer por defecto")
     }
+    TextButton(
+        onClick = onShareErrorLog,
+        modifier = Modifier.padding(top = 8.dp),
+    ) {
+        Text("Compartir registro de errores")
+    }
+    Text(
+        "Si la app se cierra sola, comparte este registro: lleva la causa exacta, sin rutas, sin títulos ni datos personales.",
+        modifier = Modifier.padding(top = 4.dp),
+    )
 }
