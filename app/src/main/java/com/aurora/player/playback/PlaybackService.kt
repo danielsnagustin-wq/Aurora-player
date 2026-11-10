@@ -182,6 +182,11 @@ class PlaybackService : MediaLibraryService() {
         super.onCreate()
         createNotificationChannel()
         createAlarmChannel()
+        // startForeground() INMEDIATO (auditoría Codex, ronda 2):
+        // la notificación se publica al arrancar el servicio, ANTES
+        // de crear el player y la sesión: si algo de eso fallara, el
+        // servicio no moriría por ForegroundServiceDidNotStartInTime.
+        startForeground(NOTIFICATION_ID, buildPlaceholderNotification())
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
@@ -413,9 +418,6 @@ class PlaybackService : MediaLibraryService() {
                 delay(if (p?.isPlaying == true) 250 else 2000)
             }
         }
-        // startForeground() INMEDIATO: la notificación de MediaSession
-        // se publica al arrancar el servicio, antes de cualquier play().
-        startForeground(NOTIFICATION_ID, buildPlaceholderNotification())
     }
 
     /**
@@ -1015,12 +1017,14 @@ class PlaybackService : MediaLibraryService() {
         lufsJob?.cancel()
         overlapJob?.cancel()
         releaseOverlapPlayer()
-        mediaSession?.release()
-        bitmapLoader?.shutdown()
+        // Cada liberación con su propio try/catch (auditoría Codex,
+        // ronda 2): si una falla, el resto de la limpieza sigue.
+        try { mediaSession?.release() } catch (_: Exception) { }
+        try { bitmapLoader?.shutdown() } catch (_: Exception) { }
         bitmapLoader = null
-        player?.release()
-        equalizer?.release()
-        visualizerCapture?.release()
+        try { player?.release() } catch (_: Exception) { }
+        try { equalizer?.release() } catch (_: Exception) { }
+        try { visualizerCapture?.release() } catch (_: Exception) { }
         visualizerCapture = null
         AudioEffects.clear()
         equalizerSessionId = 0
