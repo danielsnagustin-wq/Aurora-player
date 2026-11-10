@@ -156,6 +156,7 @@ fun PlayerScreen(
     artist: String?,
     album: String?,
     artworkUri: Uri?,
+    canvasUrl: String? = null,
     songUri: Uri? = null,
     isPlaying: Boolean,
     positionMs: Long,
@@ -329,11 +330,12 @@ fun PlayerScreen(
             context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
-        ArtworkImage(
-            uri = artworkUri,
-            songUri = songUri,
-            letter = title.take(1).uppercase(),
-            sizePx = 1024,
+        // Canvas de Spotify (Fase 2): cuando la canción tiene
+        // Canvas, el vídeo en bucle ocupa el lugar de la portada;
+        // si no, la portada de siempre. Los gestos (deslizar, doble
+        // toque, volumen) viven en la caja, iguales para los dos,
+        // para no duplicar la cadena.
+        Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 // Resplandor con el color de la portada (spec 003).
                 .shadow(24.dp, coverCorner, ambientColor = accent.copy(alpha = 0.45f), spotColor = accent.copy(alpha = 0.45f))
@@ -383,7 +385,22 @@ fun PlayerScreen(
                         },
                     )
                 },
-        )
+        ) {
+            if (canvasUrl != null) {
+                CanvasVideo(
+                    url = canvasUrl,
+                    modifier = Modifier.fillMaxSize().clip(coverCorner),
+                )
+            } else {
+                ArtworkImage(
+                    uri = artworkUri,
+                    songUri = songUri,
+                    letter = title.take(1).uppercase(),
+                    sizePx = 1024,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         Spacer(Modifier.height(24.dp))
         Text(
             title,
