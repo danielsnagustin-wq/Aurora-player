@@ -1309,9 +1309,18 @@ private fun AuroraApp(
             )
             .build()
 
+    fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
+        val c = controller ?: return
+        c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
+        c.prepare()
+        c.play()
+    }
+
     // Fase 2 app — YouTube con vídeo: baja los subtítulos (es a
     // mano, si los hay), abre el diálogo y suena el vídeo por el
     // reproductor de siempre. Sin subtítulos, el vídeo se ve igual.
+    // Va DESPUÉS de playOnlineTrack: una función local no puede
+    // llamar a otra que se declara después.
     fun playVideo(track: OnlineTrack, video: ResolvedVideo) {
         scope.launch {
             val captions = selectCaptionTrack(video.captions)
@@ -1320,13 +1329,6 @@ private fun AuroraApp(
             videoCaptions = captions
             playOnlineTrack(track, video.url)
         }
-    }
-
-    fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
-        val c = controller ?: return
-        c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
-        c.prepare()
-        c.play()
     }
 
     // Fase 2 — Spotify como BitChord: una lista importada suena por
