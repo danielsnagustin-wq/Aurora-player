@@ -3,6 +3,7 @@ package com.aurora.player.ui.online
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -11,7 +12,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,6 +43,7 @@ import com.aurora.player.online.QuickPick
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
+import com.aurora.player.online.ResolvedVideo
 import kotlinx.coroutines.launch
 
 /**
@@ -52,6 +58,7 @@ import kotlinx.coroutines.launch
 fun OnlineScreen(
     onlineMode: Boolean,
     onPlayTrack: (OnlineTrack, String) -> Unit,
+    onPlayVideo: (OnlineTrack, ResolvedVideo) -> Unit = { _, _ -> },
     spotifyConnected: Boolean = false,
     onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     ytMusicCookies: String? = null,
@@ -158,6 +165,28 @@ fun OnlineScreen(
         }
     }
 
+    // Fase 2 app — YouTube con vídeo: resuelve el progresivo con
+    // audio y lo entrega ya resuelto a quien reproduce el vídeo.
+    fun watchVideo(track: OnlineTrack) {
+        if (resolvingId != null) return
+        resolvingId = track.videoId
+        error = null
+        scope.launch {
+            try {
+                val video = client.resolveVideo(track.videoId)
+                if (video != null) {
+                    onPlayVideo(track, video)
+                } else {
+                    error = "YouTube no devolvió vídeo para \"${track.title}\". Prueba con otro resultado."
+                }
+            } catch (_: Exception) {
+                error = "Sin conexión o YouTube no respondió."
+            } finally {
+                resolvingId = null
+            }
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         SourcesRow(
             localCount = localCount,
@@ -252,8 +281,17 @@ fun OnlineScreen(
                         headlineContent = { Text(track.title) },
                         supportingContent = { Text(subtitle) },
                         trailingContent = {
-                            if (resolvingId == track.videoId) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (resolvingId == track.videoId) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                } else {
+                                    IconButton(onClick = { watchVideo(track) }) {
+                                        Icon(
+                                            Icons.Filled.OndemandVideo,
+                                            contentDescription = "Ver vídeo",
+                                        )
+                                    }
+                                }
                             }
                         },
                         modifier = Modifier.clickable { play(track) },
