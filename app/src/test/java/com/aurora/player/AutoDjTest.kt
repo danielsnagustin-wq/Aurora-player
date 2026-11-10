@@ -1,6 +1,5 @@
 package com.aurora.player
 
-import android.net.Uri
 import com.aurora.player.library.autoDjNext
 import com.aurora.player.model.Song
 import org.junit.Assert.assertEquals
@@ -19,7 +18,7 @@ class AutoDjTest {
         plays: Int = 0,
     ) = Song(
         id = id, title = "T$id", artist = artist, album = album, albumId = 1,
-        durationMs = 180_000, path = "/x/$id.mp3", uri = Uri.EMPTY,
+        durationMs = 180_000, path = "/x/$id.mp3", uri = fakeUri(),
         mimeType = "audio/mpeg", sizeBytes = 1000, dateAdded = 0,
         genre = genre, playCount = plays,
     )
