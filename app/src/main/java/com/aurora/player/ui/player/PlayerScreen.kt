@@ -1020,8 +1020,9 @@ private fun SavedQueuesDialog(
             TextButton(onClick = onDismiss) { Text("Cerrar") }
         },
     )
-    if (toDelete != null) {
-        val item = toDelete!!
+    val itemToDelete = toDelete
+    if (itemToDelete != null) {
+        val item = itemToDelete
         AlertDialog(
             onDismissRequest = { toDelete = null },
             title = { Text("Borrar cola") },
