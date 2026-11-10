@@ -34,6 +34,7 @@ import com.aurora.player.audio.ChannelBalanceAudioProcessor
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
+import com.aurora.player.audio.findUsbDac
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
 import com.aurora.player.audio.LufsCache
@@ -117,6 +118,9 @@ class PlaybackService : MediaLibraryService() {
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
     private var audioOutputDirect: Boolean = false
+    // Ronda USB Serie A: los sumideros de audio (principal + solape)
+    // para fijarles el DAC USB como dispositivo preferido.
+    private val audioSinks = mutableListOf<DefaultAudioSink>()
     private var visualizerCapture: VisualizerCapture? = null
 
     /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
@@ -199,11 +203,13 @@ class PlaybackService : MediaLibraryService() {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): AudioSink? {
-                return DefaultAudioSink.Builder(context)
+                val sink = DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(gainProcessor, silenceDetector, balance))
                     .build()
+                audioSinks.add(sink)
+                return sink
             }
         }
         val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
@@ -211,6 +217,9 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true) // auto-pausa al quitar auriculares
             .build()
         player = exoPlayer
+        // Ronda USB Serie A: si ya hay un DAC conectado, el
+        // AudioTrack va directo a él desde la primera pista.
+        applyUsbRouting()
         // RONDA 2 (2026-11-09): el EQ NO se crea aquí. Al arrancar,
         // exoPlayer.audioSessionId aún es 0 (la sesión se crea al
         // preparar la primera pista) y Equalizer(0, 0) se engancha a
@@ -257,6 +266,7 @@ class PlaybackService : MediaLibraryService() {
                 // EQ por salida: al cambiar la salida (conectar o
                 // quitar auriculares/BT) se aplica el EQ de la nueva.
                 applyRouteEq()
+                applyUsbRouting()
             }
         }
         headphoneReceiver = autoplayReceiver
@@ -523,6 +533,7 @@ class PlaybackService : MediaLibraryService() {
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!direct) applyRouteEq()
+                applyUsbRouting()
             }
         }
     }
@@ -549,6 +560,28 @@ class PlaybackService : MediaLibraryService() {
             return
         }
         visualizerCapture = capture
+    }
+
+    /**
+     * Ronda USB Serie A: el AudioTrack del reproductor va directo
+     * al DAC USB cuando lo hay (setPreferredDevice, Media3 1.4.1 —
+     * null lo limpia, verificado en el bytecode del AAR). Sin DAC,
+     * se limpia la preferencia y Android elige la salida normal.
+     * Se llama en los mismos sitios que applyRouteEq: al cambiar
+     * la salida y al cambiar los ajustes.
+     */
+    private fun applyUsbRouting() {
+        val dac = try {
+            findUsbDac(this@PlaybackService)?.first
+        } catch (_: Exception) {
+            null
+        }
+        for (sink in audioSinks) {
+            try {
+                sink.setPreferredDevice(dac)
+            } catch (_: Exception) {
+            }
+        }
     }
 
     /**
@@ -652,11 +685,13 @@ class PlaybackService : MediaLibraryService() {
                 enableFloatOutput: Boolean,
                 enableAudioTrackPlaybackParams: Boolean,
             ): AudioSink? {
-                return DefaultAudioSink.Builder(context)
+                val sink = DefaultAudioSink.Builder(context)
                     .setEnableFloatOutput(enableFloatOutput)
                     .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
                     .setAudioProcessors(arrayOf(gainB, balanceB))
                     .build()
+                audioSinks.add(sink)
+                return sink
             }
         }
         val audioAttributesB = AudioAttributes.Builder()
@@ -769,6 +804,7 @@ class PlaybackService : MediaLibraryService() {
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!audioOutputDirect) applyRouteEq()
+                applyUsbRouting()
             }
         }
     }
