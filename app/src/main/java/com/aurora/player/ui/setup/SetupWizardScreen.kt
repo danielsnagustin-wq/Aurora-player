@@ -1,7 +1,15 @@
 package com.aurora.player.ui.setup
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.DocumentsContract
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -28,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.FolderStore
@@ -36,6 +45,7 @@ import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.PerformanceProfile
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
+import com.aurora.player.model.treeDocumentIdToPath
 import com.aurora.player.model.applyTo
 import com.aurora.player.ui.library.AlbumArtCache
 import kotlinx.coroutines.launch
@@ -80,6 +90,21 @@ fun SetupWizardScreen(
     val imageCacheEnabled by libraryPrefs.imageCacheEnabledFlow.collectAsState(initial = true)
     var step by remember { mutableStateOf(0) }
     var cacheCleared by remember { mutableStateOf(false) }
+    val systemDark = isSystemInDarkTheme()
+    // Selector de carpetas (2026-11-10): el paso 4 solo dejaba
+    // QUITAR carpetas; ahora también se puede AÑADIR una desde
+    // aquí, sin pasar por la pestaña Carpetas.
+    val folderPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            val treeId = DocumentsContract.getTreeDocumentId(uri)
+            val path = treeDocumentIdToPath(treeId)
+            if (path != null) {
+                scope.launch { folderStore.exclude(path) }
+            }
+        }
+    }
 
     fun save(next: ThemeSettings) {
         scope.launch { themeStore.save(next) }
@@ -116,7 +141,16 @@ fun SetupWizardScreen(
                     Text("Tema", style = MaterialTheme.typography.titleLarge)
                     Text("Elige cómo se ve la app. Lo puedes cambiar después en Ajustes.")
                     Spacer(Modifier.height(12.dp))
+                    // Vista previa del fondo de cada tema (2026-11-10):
+                    // Oscuro y AMOLED se veían iguales; la muestra deja
+                    // la diferencia a la vista al instante.
                     for (mode in ThemeMode.entries) {
+                        val preview = when (mode) {
+                            ThemeMode.LIGHT -> Color.White
+                            ThemeMode.DARK -> Color(0xFF1E1E26)
+                            ThemeMode.AMOLED -> Color.Black
+                            ThemeMode.SYSTEM -> if (systemDark) Color(0xFF1E1E26) else Color.White
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
@@ -125,7 +159,23 @@ fun SetupWizardScreen(
                                 selected = applied.themeMode == mode,
                                 onClick = { save(applied.copy(themeMode = mode)) },
                             )
-                            Text(mode.label)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(mode.label)
+                                Text(
+                                    mode.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Box(
+                                modifier = Modifier.size(width = 40.dp, height = 24.dp)
+                                    .background(preview, RoundedCornerShape(4.dp))
+                                    .border(
+                                        1.dp,
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                        RoundedCornerShape(4.dp),
+                                    ),
+                            )
                         }
                     }
                 }
@@ -144,7 +194,14 @@ fun SetupWizardScreen(
                                     save(profile.applyTo(applied).copy(performanceProfile = profile))
                                 },
                             )
-                            Text(profile.label)
+                            Column {
+                                Text(profile.label)
+                                Text(
+                                    profile.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }
@@ -170,7 +227,11 @@ fun SetupWizardScreen(
                 }
                 3 -> {
                     Text("Carpetas excluidas", style = MaterialTheme.typography.titleLarge)
-                    Text("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Se excluye una carpeta manteniéndola pulsada en la pestaña Carpetas; aquí se quitan.")
+                    Text("Estas carpetas no aparecen en ninguna pestaña, ni en la búsqueda, ni en la cola. Se excluye una carpeta manteniéndola pulsada en la pestaña Carpetas, o añadiéndola aquí.")
+                    Spacer(Modifier.height(12.dp))
+                    Button(onClick = { folderPicker.launch(null) }) {
+                        Text("Añadir carpeta a excluir")
+                    }
                     Spacer(Modifier.height(12.dp))
                     if (excludedFolders.isEmpty()) {
                         Text("Ninguna carpeta excluida.")
