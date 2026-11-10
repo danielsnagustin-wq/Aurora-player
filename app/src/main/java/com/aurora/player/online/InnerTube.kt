@@ -40,6 +40,9 @@ data class AudioFormat(
     val bitrate: Long,
 )
 
+/** Audio resuelto: su URL directa y el itag elegido. */
+data class ResolvedStream(val url: String, val itag: Int)
+
 /** Una identidad de cliente InnerTube: todo son datos, no lógica. */
 data class YtClient(
     val name: String,
@@ -282,20 +285,29 @@ class InnerTubeClient(private val authCookies: String? = null) {
         parseSearchResults(body)
     }
 
-    /** Resuelve la URL de audio directa probando la escalera de
-     * clientes; en cada uno, el formato sigue la calidad pedida. */
-    suspend fun resolveStreamUrl(
+    /** Resuelve el audio probando la escalera de clientes; en cada
+     * uno, el formato sigue la calidad pedida. Devuelve la URL y el
+     * itag elegido (la caché lo necesita para nombrar el archivo). */
+    suspend fun resolveStream(
         videoId: String,
         quality: StreamQuality = StreamQuality.HIGH,
-    ): String? = withContext(Dispatchers.IO) {
+    ): ResolvedStream? = withContext(Dispatchers.IO) {
         for (client in PLAYER_CLIENTS) {
             val url = "https://${client.host}/youtubei/v1/player?prettyPrint=false"
             val body = postJson(url, buildPlayerBody(client, videoId), client) ?: continue
             val formats = parsePlayerFormats(body) ?: continue
-            selectAudioFormat(formats, quality.preferredItags)?.let { return@withContext it.url }
+            selectAudioFormat(formats, quality.preferredItags)?.let {
+                return@withContext ResolvedStream(it.url, it.itag.toInt())
+            }
         }
         null
     }
+
+    /** Solo la URL (atajo para quien no necesita el itag). */
+    suspend fun resolveStreamUrl(
+        videoId: String,
+        quality: StreamQuality = StreamQuality.HIGH,
+    ): String? = resolveStream(videoId, quality)?.url
 
     private fun postJson(url: String, bodyJson: String, client: YtClient): String? {
         return try {
