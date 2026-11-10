@@ -29,12 +29,17 @@ class WaveformTest {
     }
 
     @Test
-    fun rms_esMenorQuePico() {
-        val samples = floatArrayOf(1f, 0f, 0f, 0f)
-        val peaks = waveformPeaks(samples, 1)
-        val rms = waveformRms(samples, 1)
+    fun rms_suavizaMasQuePico() {
+        // Columna 0: un pico aislado (1,0,0,0); columna 1: nivel
+        // constante 0.5. El pico marca 1.0 y 0.5; el RMS suaviza el
+        // pico aislado y marca 1.0 en ambas tras normalizar.
+        val samples = floatArrayOf(1f, 0f, 0f, 0f, 0.5f, 0.5f, 0.5f, 0.5f)
+        val peaks = waveformPeaks(samples, 2)
+        val rms = waveformRms(samples, 2)
         assertEquals(1f, peaks[0], 0.001f)
-        assertEquals(0.5f, rms[0], 0.001f)
-        assertTrue(rms[0] < peaks[0])
+        assertEquals(0.5f, peaks[1], 0.001f)
+        assertEquals(1f, rms[0], 0.001f)
+        assertEquals(1f, rms[1], 0.001f)
+        assertTrue(rms[1] > peaks[1])
     }
 }
