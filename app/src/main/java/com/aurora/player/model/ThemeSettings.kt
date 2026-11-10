@@ -113,6 +113,12 @@ data class PlayerSettings(
     // a la izquierda, 0 = centro, +1 = todo a la derecha). Solo
     // estéreo; mono o multicanal no se tocan.
     val channelBalance: Float = 0f,
+    // Audio (Fase 2, Salida Directa): "standard" | "direct". En
+    // Directa la app no toca el audio: sin ReplayGain, sin saltar
+    // silencios, sin balance, sin EQ del sistema, sin crossfade y
+    // con el volumen a 1.0. No se promete bit-perfect total: Android
+    // puede resamplear en su mezclador y sin DAC USB no lo hay.
+    val audioOutputMode: String = "standard",
     // Auriculares / Bluetooth (Etapa 1)
     val autoPauseOnDisconnect: Boolean = true,
     // Fase 1b: reproducir al conectar auriculares/BT (OFF por
