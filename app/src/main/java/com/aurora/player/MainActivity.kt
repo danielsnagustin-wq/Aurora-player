@@ -94,6 +94,8 @@ import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.data.YouTubeMusicStore
+import com.aurora.player.library.autoDjQueue
+import com.aurora.player.library.enrichSongs
 import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
@@ -687,6 +689,11 @@ private fun AuroraApp(
      * Definida ANTES del listener que la llama (las funciones locales
      * no se pueden usar antes de su declaración).
      */
+    // Fase 2 — Auto-DJ: la radio ahora elige con autoDjQueue
+    // (mismo artista > mismo género > mismo álbum > más
+    // escuchadas, nunca repite), sobre canciones ENRIQUECIDAS con
+    // sus reproducciones reales. Antes mezclaba a ciegas: mismo
+    // artista, mismo género y resto, sin saber qué se escucha más.
     fun refillRadio() {
         val c = controller ?: return
         if (radioBusy) return
@@ -695,21 +702,17 @@ private fun AuroraApp(
             val picked: List<Song> = try {
                 withContext(Dispatchers.IO) {
                     val settings = playerStore.settingsFlow.first()
-                    val songs = MusicRepository(context).loadSongs(settings.minDurationMs)
+                    val rawSongs = MusicRepository(context).loadSongs(settings.minDurationMs)
+                    val dao = db.libraryDao()
+                    val stats = dao.statsPerSong().associateBy { it.songId }
+                    val favs = dao.favoriteIdsFlow().first().toSet()
+                    val songs = enrichSongs(rawSongs, favs, stats)
                     val currentId = c.currentMediaItem?.mediaId?.toLongOrNull()
                     val current = songs.firstOrNull { it.id == currentId }
                     val inQueue = (0 until c.mediaItemCount)
                         .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }.toSet()
                     val excluded = inQueue + radioRecentIds.toSet()
-                    val sameArtist = songs.filter {
-                        it.id !in excluded && current != null && it.artist == current.artist
-                    }
-                    val sameGenre = songs.filter {
-                        it.id !in excluded && current?.genre != null && it.genre == current.genre
-                    }
-                    val rest = songs.filter { it.id !in excluded }
-                    (sameArtist.shuffled() + sameGenre.shuffled() + rest.shuffled())
-                        .distinctBy { it.id }.take(10)
+                    autoDjQueue(current, songs, count = 10, recentlyPlayedIds = excluded)
                 }
             } catch (e: Exception) {
                 ErrorLog.log(context, "Radio local", e)
