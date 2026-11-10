@@ -232,7 +232,9 @@ fun PlayerScreen(
     volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    var showQueue by remember { mutableStateOf(false) }
+    // REFINAMIENTO (2026-11-10, como BitChord): "A continuación"
+    // visible al abrir el reproductor, no escondida tras el botón.
+    var showQueue by remember { mutableStateOf(true) }
     var showSavedQueues by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
     var showTranslation by remember { mutableStateOf(true) }
