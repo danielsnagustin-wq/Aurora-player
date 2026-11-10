@@ -213,7 +213,11 @@ suspend fun loadOnlineLyrics(
     artist: String,
     album: String?,
     durationSec: Long,
-    providers: List<LyricsProvider> = listOf(LrclibProvider()),
+    providers: List<LyricsProvider> = listOf(
+        LrclibProvider(),
+        BetterLyricsProvider(),
+        BiniLyricsProvider(),
+    ),
 ): List<LrcLine> = withContext(Dispatchers.IO) {
     LyricsCache.read(context, cacheKey)?.let { cached ->
         if (cached.isNotBlank()) {
