@@ -1162,7 +1162,7 @@ private fun SongDetailsDialog(
                     DetailRow("Compositor", details?.composer ?: song.composer)
                     DetailRow("Pista", if (song.trackNumber > 0) song.trackNumber.toString() else null)
                     DetailRow("Disco", if (song.discNumber > 1) song.discNumber.toString() else null)
-                    DetailRow("Formato", codecDisplayName(details?.mimeType ?: song.mimeType))
+                    DetailRow("Formato", codecDisplayName(details?.mimeType ?: song.mimeType, song.path))
                     DetailRow("Bitrate", details?.bitrateKbps?.let { "$it kbps" })
                     DetailRow("Sample rate", details?.sampleRateHz?.let { "$it Hz" })
                     DetailRow(
