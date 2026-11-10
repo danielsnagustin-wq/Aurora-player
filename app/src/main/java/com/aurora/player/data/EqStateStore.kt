@@ -38,6 +38,50 @@ class EqStateStore(context: Context) {
         val LEVELS = stringPreferencesKey("eq_levels")
         val BASS = intPreferencesKey("eq_bass")
         val VIRTUALIZER = intPreferencesKey("eq_virtualizer")
+        val PER_OUTPUT = booleanPreferencesKey("eq_per_output")
+    }
+
+    /** EQ distinto por salida (OFF por defecto: un solo EQ global, como hasta ahora). */
+    val perOutputFlow: Flow<Boolean> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[Keys.PER_OUTPUT] ?: false }
+
+    suspend fun savePerOutput(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[Keys.PER_OUTPUT] = enabled }
+    }
+
+    /**
+     * EQ guardado para una salida ("speaker", "wired", "usb",
+     * "bluetooth:<nombre>"). Formato: "enabled|niveles,bass|virt".
+     * Si no hay nada guardado para esa salida, sale el EQ global.
+     */
+    fun routeStateFlow(routeKey: String): Flow<EqState> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs ->
+            val raw = prefs[stringPreferencesKey("eq_route_$routeKey")] ?: return@map null
+            parseRouteState(raw)
+        }
+
+    suspend fun saveRoute(routeKey: String, state: EqState) {
+        dataStore.edit { prefs ->
+            prefs[stringPreferencesKey("eq_route_$routeKey")] =
+                "${if (state.enabled) 1 else 0}|" +
+                state.levelsDb.map { it.coerceIn(-15f, 15f) }.joinToString(",") +
+                "|${state.bassBoost.coerceIn(0, 1000)}|${state.virtualizer.coerceIn(0, 1000)}"
+        }
+    }
+
+    private fun parseRouteState(raw: String): EqState? {
+        val parts = raw.split("|")
+        if (parts.size != 4) return null
+        val levels = parts[1].split(",").mapNotNull { it.toFloatOrNull() }
+            .takeIf { it.size == 10 } ?: return null
+        return EqState(
+            enabled = parts[0] == "1",
+            levelsDb = levels,
+            bassBoost = parts[2].toIntOrNull()?.coerceIn(0, 1000) ?: return null,
+            virtualizer = parts[3].toIntOrNull()?.coerceIn(0, 1000) ?: return null,
+        )
     }
 
     val stateFlow: Flow<EqState> = dataStore.data
