@@ -257,7 +257,10 @@ fun SettingsScreen(
 
         // Spotify: conectar/desconectar vive aquí porque lo usan
         // la sección Red y la pantalla Cuenta e integraciones.
-        val disconnectSpotify = {
+        // El tipo explícito () -> Unit es necesario: sin él, la
+        // lambda devuelve el Job de scope.launch y no compila
+        // (run #286: Argument type mismatch, líneas 284 y 297).
+        val disconnectSpotify: () -> Unit = {
             scope.launch {
                 spotifyStore.clear()
                 spotifyStatus = null
