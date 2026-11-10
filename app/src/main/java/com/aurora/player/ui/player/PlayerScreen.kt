@@ -3,6 +3,7 @@ package com.aurora.player.ui.player
 
 import android.net.Uri
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -12,6 +13,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.draw.alpha
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +65,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -229,6 +232,24 @@ fun PlayerScreen(
     val lyricsListState = rememberLazyListState()
     val screenScrollState = rememberScrollState()
     var showLyricsEditor by remember { mutableStateOf(false) }
+    // CANVAS (Fase 2, 2026-11-10, como BitChord): con el video
+    // en bucle sonando, los controles se ocultan solos a los 5 s
+    // sin tocar nada; un toque en la portada los vuelve a
+    // mostrar. Sin Canvas (o en pausa) todo siempre visible.
+    var canvasControlsVisible by remember { mutableStateOf(true) }
+    var canvasHideKey by remember { mutableStateOf(0) }
+    val controlsAlpha by animateFloatAsState(
+        targetValue = if (canvasUrl != null && !canvasControlsVisible) 0f else 1f,
+        label = "canvasControls",
+    )
+    LaunchedEffect(canvasUrl, isPlaying, canvasHideKey) {
+        if (canvasUrl != null && isPlaying) {
+            delay(5000)
+            canvasControlsVisible = false
+        } else {
+            canvasControlsVisible = true
+        }
+    }
     val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
     // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
     // al instante en vez de desplazarse animada.
@@ -384,6 +405,7 @@ fun PlayerScreen(
                 .pointerInput(doubleTapEnabled) {
                     detectTapGestures(
                         onDoubleTap = { if (doubleTapEnabled) onToggleFavorite() },
+                        onTap = { canvasControlsVisible = true; canvasHideKey++ },
                     )
                 }
                 .pointerInput(volumeGestureEnabled) {
@@ -511,10 +533,10 @@ fun PlayerScreen(
             },
             valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
             colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).alpha(controlsAlpha),
         )
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().alpha(controlsAlpha),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
@@ -529,7 +551,7 @@ fun PlayerScreen(
             )
         }
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).alpha(controlsAlpha),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -588,7 +610,7 @@ fun PlayerScreen(
         // arriba, textos abajo) y los nombres no caían bajo su icono:
         // el temporizador parecía llamarse "Cola".
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp).alpha(controlsAlpha),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.Top,
         ) {
