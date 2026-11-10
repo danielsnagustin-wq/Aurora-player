@@ -1238,8 +1238,10 @@ private fun formatDate(millis: Long): String =
 
 /** Caché pequeña de portadas en memoria (16 MB como mucho).
  * AUDITORÍA (2026-11-09): antes se contaban 32 entradas sin mirar
- * los bytes: 32 portadas grandes podían ser cientos de MB. */
-private object AlbumArtCache {
+ * los bytes: 32 portadas grandes podían ser cientos de MB.
+ * Asistente de configuración (2026-11-09): el usuario puede
+ * apagarla (cada fila recarga su portada) y vaciarla. */
+internal object AlbumArtCache {
     private const val MAX_KB = 16 * 1024
     private val cache = object : LruCache<Long, Bitmap>(MAX_KB) {
         override fun sizeOf(key: Long, value: Bitmap): Int = value.byteCount / 1024
@@ -1249,6 +1251,10 @@ private object AlbumArtCache {
 
     fun put(albumId: Long, bitmap: Bitmap) {
         cache.put(albumId, bitmap)
+    }
+
+    fun clear() {
+        cache.evictAll()
     }
 }
 
@@ -1260,8 +1266,15 @@ private object AlbumArtCache {
 @Composable
 fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    var bitmap by remember(song.albumId) { mutableStateOf(AlbumArtCache.get(song.albumId)) }
-    LaunchedEffect(song.albumId) {
+    // Asistente de configuración (2026-11-09): si la caché de
+    // imágenes está apagada, cada fila recarga su portada desde
+    // MediaStore y no se guarda nada en memoria.
+    val libraryPrefs = remember { LibraryPrefsStore(context) }
+    val useCache by libraryPrefs.imageCacheEnabledFlow.collectAsState(initial = true)
+    var bitmap by remember(song.albumId, useCache) {
+        mutableStateOf(if (useCache) AlbumArtCache.get(song.albumId) else null)
+    }
+    LaunchedEffect(song.albumId, useCache) {
         if (bitmap == null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             val loaded = withContext(Dispatchers.IO) {
                 try {
@@ -1272,7 +1285,7 @@ fun AlbumCover(song: Song, size: Dp, modifier: Modifier = Modifier) {
                 }
             } ?: loadEmbeddedCover(context, song.uri)
             if (loaded != null) {
-                AlbumArtCache.put(song.albumId, loaded)
+                if (useCache) AlbumArtCache.put(song.albumId, loaded)
                 bitmap = loaded
             }
         }

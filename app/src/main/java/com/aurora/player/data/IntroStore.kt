@@ -28,6 +28,7 @@ class IntroStore(context: Context) {
 
     companion object {
         private val SHOWN_KEY = booleanPreferencesKey("intro_shown")
+        private val SETUP_KEY = booleanPreferencesKey("setup_done")
     }
 
     val shownFlow: Flow<Boolean> =
@@ -37,5 +38,19 @@ class IntroStore(context: Context) {
 
     suspend fun markShown() {
         dataStore.edit { prefs -> prefs[SHOWN_KEY] = true }
+    }
+
+    /**
+     * Asistente de configuración (estilo Namida, 2026-11-09): la
+     * primera vez la app abre el asistente en vez de la biblioteca.
+     * Solo se marca hecho cuando el usuario pulsa "Empezar".
+     */
+    val setupDoneFlow: Flow<Boolean> =
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> prefs[SETUP_KEY] ?: false }
+
+    suspend fun markSetupDone() {
+        dataStore.edit { prefs -> prefs[SETUP_KEY] = true }
     }
 }
