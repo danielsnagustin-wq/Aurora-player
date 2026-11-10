@@ -70,6 +70,7 @@ class ThemeSettingsStore(private val context: Context) {
         val CARD_STYLE = stringPreferencesKey("card_style")
         val PLAYER_BACKGROUND = stringPreferencesKey("player_background")
         val ALBUM_GRID = booleanPreferencesKey("album_grid")
+        val ALBUM_GRID_COLUMNS = intPreferencesKey("album_grid_columns")
     }
 
     val settingsFlow: Flow<ThemeSettings> = context.themeDataStore.data
@@ -96,6 +97,7 @@ class ThemeSettingsStore(private val context: Context) {
             cardStyle = CardStyle.entries.find { it.name == prefs[Keys.CARD_STYLE] } ?: d.cardStyle,
             playerBackground = PlayerBackground.entries.find { it.name == prefs[Keys.PLAYER_BACKGROUND] } ?: d.playerBackground,
             albumGrid = prefs[Keys.ALBUM_GRID] ?: d.albumGrid,
+            albumGridColumns = (prefs[Keys.ALBUM_GRID_COLUMNS] ?: d.albumGridColumns).coerceIn(1, 4),
             performanceProfile = PerformanceProfile.entries.find { it.name == prefs[Keys.PERFORMANCE_PROFILE] } ?: d.performanceProfile,
             animationsEnabled = prefs[Keys.ANIMATIONS_ENABLED] ?: d.animationsEnabled,
         )
@@ -123,6 +125,7 @@ class ThemeSettingsStore(private val context: Context) {
             prefs[Keys.CARD_STYLE] = settings.cardStyle.name
             prefs[Keys.PLAYER_BACKGROUND] = settings.playerBackground.name
             prefs[Keys.ALBUM_GRID] = settings.albumGrid
+            prefs[Keys.ALBUM_GRID_COLUMNS] = settings.albumGridColumns
             prefs[Keys.PERFORMANCE_PROFILE] = settings.performanceProfile.name
             prefs[Keys.ANIMATIONS_ENABLED] = settings.animationsEnabled
         }

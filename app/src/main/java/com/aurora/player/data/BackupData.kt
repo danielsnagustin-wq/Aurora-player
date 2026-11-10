@@ -105,6 +105,7 @@ fun themeSettingsToJsonValue(t: ThemeSettings): JsonValue.Obj = JsonValue.Obj(
         "cardStyle" to JsonValue.Str(t.cardStyle.name),
         "playerBackground" to JsonValue.Str(t.playerBackground.name),
         "albumGrid" to JsonValue.Bool(t.albumGrid),
+        "albumGridColumns" to JsonValue.Num(t.albumGridColumns.toDouble()),
         "performanceProfile" to JsonValue.Str(t.performanceProfile.name),
         "animationsEnabled" to JsonValue.Bool(t.animationsEnabled),
     ),
@@ -218,6 +219,7 @@ fun themeSettingsFromJsonValue(v: JsonValue?): ThemeSettings {
         cardStyle = enumFrom(v.obj("cardStyle").str(), CardStyle.entries.toTypedArray(), d.cardStyle),
         playerBackground = enumFrom(v.obj("playerBackground").str(), PlayerBackground.entries.toTypedArray(), d.playerBackground),
         albumGrid = v.obj("albumGrid").bool() ?: d.albumGrid,
+        albumGridColumns = (v.obj("albumGridColumns").long()?.toInt() ?: d.albumGridColumns).coerceIn(1, 4),
         performanceProfile = enumFrom(v.obj("performanceProfile").str(), PerformanceProfile.entries.toTypedArray(), d.performanceProfile),
         animationsEnabled = v.obj("animationsEnabled").bool() ?: d.animationsEnabled,
     )
