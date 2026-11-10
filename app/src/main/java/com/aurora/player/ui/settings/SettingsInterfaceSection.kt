@@ -329,8 +329,18 @@ fun SettingsInterfaceSection(
         title = "Álbumes en cuadrícula",
         checked = applied.albumGrid,
         onCheckedChange = { onSaveTheme(applied.copy(albumGrid = it)) },
-        description = "La pestaña Álbumes se ve en cuadrícula de 2 columnas en vez de lista.",
+        description = "La pestaña Álbumes se ve en cuadrícula en vez de lista.",
     )
+    // Fase 2 — cuadrícula 1-4 (Retro): cuántas columnas tiene la
+    // cuadrícula de álbumes. Solo se muestra con la cuadrícula
+    // encendida, para no ser un adorno.
+    if (applied.albumGrid) {
+        AuroraOptionChips(
+            options = listOf("1" to "1 columna", "2" to "2 columnas", "3" to "3 columnas", "4" to "4 columnas"),
+            selected = applied.albumGridColumns.toString(),
+            onSelect = { onSaveTheme(applied.copy(albumGridColumns = it.toInt())) },
+        )
+    }
 
     // RENDIMIENTO (spec 004): perfiles + animaciones + restablecer.
     // Solo gobierna efectos reales; cada cambio se aplica al tocar.
