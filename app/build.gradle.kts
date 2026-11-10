@@ -81,8 +81,11 @@ dependencies {
     // las mismas APIs que usa la Serie B (verificado con javap).
     implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
     // Inicio de sesión de YouTube Music con la cuenta del teléfono
-    // (Google Sign-In + GoogleAuthUtil, 2026-11-10).
-    implementation("com.google.android.gms:play-services-auth:22.0.0")
+    // (Google Sign-In + GoogleAuthUtil, 2026-11-10). PIN 21.2.0:
+    // la 22.0.0 ELIMINÓ GoogleSignIn/GoogleSignInClient (verificado
+    // en su classes.jar; la 21.2.0 sí los trae) y tumba los runs
+    // #490-#493 con Unresolved reference.
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).
