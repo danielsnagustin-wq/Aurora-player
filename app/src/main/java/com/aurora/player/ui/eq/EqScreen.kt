@@ -37,6 +37,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.currentOutputRoute
+import com.aurora.player.audio.routeKey
+import com.aurora.player.audio.routeLabel
 import com.aurora.player.data.CustomPresetStore
 import com.aurora.player.data.EqState
 import com.aurora.player.data.EqStateStore
@@ -68,14 +71,36 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var virtualizer by remember { mutableStateOf(0f) }
     var selectedPreset by remember { mutableStateOf<String?>(null) }
     var newPresetName by remember { mutableStateOf("") }
+    // EQ por salida: la salida actual se lee al entrar; el EQ de cada
+    // salida se guarda aparte solo cuando el interruptor está puesto.
+    val (route, routeName) = remember { currentOutputRoute(context) }
+    var perOutput by remember { mutableStateOf(false) }
     // RONDA 7 P1: asistente de EQ + gráfica de respuesta.
     var showWizard by remember { mutableStateOf(false) }
 
     /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
     fun persist() {
         scope.launch {
-            eqStateStore.save(EqState(enabled, levels, bass.toInt(), virtualizer.toInt()))
+            val state = EqState(enabled, levels, bass.toInt(), virtualizer.toInt())
+            if (perOutput) {
+                eqStateStore.saveRoute(routeKey(route, routeName), state)
+            } else {
+                eqStateStore.save(state)
+            }
         }
+    }
+
+    /** Carga un estado en los deslizadores y en el manager real. */
+    fun loadState(state: EqState) {
+        val m = manager ?: return
+        m.setEnabled(state.enabled)
+        m.applyPreset(EqualizerManager.Preset("Guardado", state.levelsDb))
+        m.setBassBoost(state.bassBoost.toShort())
+        m.setVirtualizer(state.virtualizer.toShort())
+        enabled = state.enabled
+        levels = state.levelsDb
+        bass = state.bassBoost.toFloat()
+        virtualizer = state.virtualizer.toFloat()
     }
 
     LaunchedEffect(manager) {
@@ -84,14 +109,18 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         // cero. Si nunca se guardó nada, el estado por defecto es apagado
         // con niveles en cero, igual que un manager recién creado.
         val saved = eqStateStore.stateFlow.first()
-        m.setEnabled(saved.enabled)
-        m.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
-        m.setBassBoost(saved.bassBoost.toShort())
-        m.setVirtualizer(saved.virtualizer.toShort())
-        enabled = saved.enabled
-        levels = saved.levelsDb
-        bass = saved.bassBoost.toFloat()
-        virtualizer = saved.virtualizer.toFloat()
+        perOutput = eqStateStore.perOutputFlow.first()
+        if (perOutput) {
+            // Con EQ por salida, esta pantalla muestra el EQ de la
+            // salida actual; si no tiene uno, empieza como copia del
+            // global y se guarda al primer cambio.
+            val routeSaved = eqStateStore.routeStateFlow(routeKey(route, routeName)).first()
+            if (routeSaved != null) {
+                loadState(routeSaved)
+                return@LaunchedEffect
+            }
+        }
+        loadState(saved)
     }
 
     Column(
@@ -153,6 +182,47 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 },
             )
             return@Column
+        }
+
+        Text(
+            "Salida actual: ${routeLabel(route, routeName)}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("EQ distinto por salida")
+            Switch(
+                checked = perOutput,
+                onCheckedChange = { on ->
+                    perOutput = on
+                    scope.launch {
+                        eqStateStore.savePerOutput(on)
+                        if (on) {
+                            // Al encenderlo, la salida actual empieza
+                            // con el EQ que se está viendo.
+                            eqStateStore.saveRoute(
+                                routeKey(route, routeName),
+                                EqState(enabled, levels, bass.toInt(), virtualizer.toInt()),
+                            )
+                        } else {
+                            // Al apagarlo, vuelve el EQ global.
+                            loadState(eqStateStore.stateFlow.first())
+                        }
+                    }
+                },
+            )
+        }
+        if (perOutput) {
+            Text(
+                "Cada salida guarda su propio EQ: cambia de altavoz a auriculares y el EQ cambia solo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Row(
