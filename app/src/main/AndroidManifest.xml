@@ -17,6 +17,9 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Fase 2, códec BT: solo para mostrar el códec A2DP activo en el
+         EQ; se pide solo al tocar "Ver códec Bluetooth", nunca al abrir. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <!-- RONDA 7 P4: alarma musical (sin internet, todo local). -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
