@@ -72,6 +72,10 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
     implementation("androidx.datastore:datastore-preferences:1.1.1")
+    // Cast (Fase 2 app): framework de Google Cast para enviar
+    // las pistas online al Chromecast / TV.
+    implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
+
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).
     implementation("com.google.guava:guava:33.3.1-android")
