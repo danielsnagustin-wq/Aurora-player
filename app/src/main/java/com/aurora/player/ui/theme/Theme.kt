@@ -18,6 +18,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import android.graphics.Typeface
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -193,11 +195,24 @@ fun auroraButtonColors() = ButtonDefaults.buttonColors(
     contentColor = LocalOnButtonColor.current,
 )
 
-/** Tipografía escalada por el tamaño de texto elegido (ETAPA 6). */
-private fun scaledTypography(scale: Float): Typography {
+/**
+ * Tipografía escalada por el tamaño de texto elegido (ETAPA 6) y
+ * con la fuente elegida en Ajustes (Fase 2 — selector de fuentes).
+ * Las familias son las del sistema: si el teléfono no trae una,
+ * Typeface.create cae a la predeterminada sin romperse.
+ */
+private fun scaledTypography(scale: Float, font: com.aurora.player.model.AppFont): Typography {
+    val family = when (font) {
+        com.aurora.player.model.AppFont.DEFAULT -> FontFamily.Default
+        com.aurora.player.model.AppFont.SANS -> FontFamily.SansSerif
+        com.aurora.player.model.AppFont.SERIF -> FontFamily.Serif
+        com.aurora.player.model.AppFont.MONO -> FontFamily.Monospace
+        else -> FontFamily(Typeface.create(font.family, Typeface.NORMAL))
+    }
     fun TextStyle.scaled(): TextStyle = copy(
         fontSize = fontSize * scale,
         lineHeight = lineHeight * scale,
+        fontFamily = family,
     )
     return Typography(
         titleLarge = AuroraTypography.titleLarge.scaled(),
@@ -334,7 +349,7 @@ fun AuroraPlayerTheme(
         LocalAlbumGridColumns provides settings.albumGridColumns.coerceIn(1, 4),
         LocalAnimationsEnabled provides settings.animationsEnabled,
     ) {
-        MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale), content = content)
+        MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale, settings.fontFamily), content = content)
     }
 }
 
