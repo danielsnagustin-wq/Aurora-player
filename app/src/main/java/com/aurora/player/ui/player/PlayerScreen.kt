@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.Equalizer
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -111,6 +112,7 @@ import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.dominantColor
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
+import com.aurora.player.util.shareVerse
 import com.aurora.player.util.TimeFormat
 
 /**
@@ -549,6 +551,19 @@ fun PlayerScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f, fill = false),
                 )
+                // Fase 2 — compartir verso: el verso que suena, como
+                // texto, a donde el usuario quiera. Sin verso (línea
+                // vacía), no hay nada que compartir.
+                IconButton(
+                    onClick = { shareVerse(playerContext, currentLyric, title, artist) },
+                    enabled = currentLyric.isNotBlank(),
+                ) {
+                    Icon(
+                        Icons.Filled.Share,
+                        contentDescription = "Compartir verso",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Icon(
                     Icons.Filled.KeyboardArrowRight,
                     contentDescription = "Ver letras",
@@ -1189,6 +1204,19 @@ private fun LyricsFullScreen(
                         contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
                         tint = if (isFavorite) accent else MaterialTheme.colorScheme.onSurface,
                     )
+                }
+                // Fase 2 — compartir verso (igual que en la vista
+                // previa): la línea que suena ahora mismo.
+                val currentLineText = lyrics.getOrNull(currentLine)?.text
+                IconButton(
+                    onClick = {
+                        if (!currentLineText.isNullOrBlank()) {
+                            shareVerse(playerContext, currentLineText, title, artist)
+                        }
+                    },
+                    enabled = !currentLineText.isNullOrBlank(),
+                ) {
+                    Icon(Icons.Filled.Share, contentDescription = "Compartir verso")
                 }
                 IconButton(onClick = onClose) {
                     Icon(Icons.Filled.Close, contentDescription = "Cerrar letras")
