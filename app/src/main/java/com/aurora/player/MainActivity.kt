@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -1394,6 +1395,12 @@ private fun AuroraApp(
                             Icon(
                                 if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                                 contentDescription = if (isPlaying) "Pausar" else "Reproducir",
+                            )
+                        }
+                        IconButton(onClick = { skipToNext() }) {
+                            Icon(
+                                Icons.Filled.SkipNext,
+                                contentDescription = "Siguiente",
                             )
                         }
                     }
