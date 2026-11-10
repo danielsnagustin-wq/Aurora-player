@@ -44,6 +44,30 @@ enum class AppFont(val label: String, val family: String) {
 fun parseAppFont(value: String?, default: AppFont): AppFont =
     AppFont.entries.find { it.name == value } ?: default
 
+/**
+ * Modo de karaoke por palabra (Fase 2 app, Apple Music: ALWAYS_ON /
+ * ONLY_WHEN_VA_ON / OFF). El modo del medio de Apple se activa con la
+ * atenuación de voz (Sing), que no tenemos y no se va a fingir: aquí
+ * el medio es "solo a pantalla completa", la vista de cantar. Por
+ * defecto es ese modo, que es como se ve hoy.
+ */
+enum class KaraokeMode(val label: String) {
+    ALWAYS("Siempre"),
+    FULLSCREEN_ONLY("Solo a pantalla completa"),
+    OFF("Apagado"),
+}
+
+/** Lee un modo guardado como texto; un valor desconocido o vacío usa el defecto. */
+fun parseKaraokeMode(value: String?, default: KaraokeMode): KaraokeMode =
+    KaraokeMode.entries.find { it.name == value } ?: default
+
+/** ¿Se colorean las palabras en esta vista? Puro, con tabla de verdad en los tests. */
+fun karaokeWordsActive(mode: KaraokeMode, fullscreen: Boolean): Boolean = when (mode) {
+    KaraokeMode.ALWAYS -> true
+    KaraokeMode.FULLSCREEN_ONLY -> fullscreen
+    KaraokeMode.OFF -> false
+}
+
 /** Estilo de tarjetas (spec 003): sólido, cristal o solo contorno. */
 enum class CardStyle { SOLID, GLASS, OUTLINE }
 
@@ -185,6 +209,11 @@ data class PlayerSettings(
     // Fase 2 — gestos configurables: qué hace el doble toque en la
     // portada. FAVORITE por defecto, como hasta ahora.
     val doubleTapAction: String = "favorite",
+    // Fase 2 — modos de karaoke: cuándo se colorean las palabras.
+    // FULLSCREEN_ONLY por defecto: como se ve hoy (solo a pantalla
+    // completa); "Siempre" lo lleva también a la vista previa del
+    // reproductor; "Apagado" deja solo el color de la línea.
+    val karaokeMode: KaraokeMode = KaraokeMode.FULLSCREEN_ONLY,
 ) {
     companion object {
         val DEFAULT = PlayerSettings()
