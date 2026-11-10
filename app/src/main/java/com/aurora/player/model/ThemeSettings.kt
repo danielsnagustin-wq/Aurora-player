@@ -24,6 +24,26 @@ enum class CoverShape { SQUARE, ROUNDED, CIRCLE }
 enum class ListDensity { COMPACT, COMFORTABLE }
 enum class TextSize { SMALL, MEDIUM, LARGE }
 
+/**
+ * Fuente de la app (Fase 2 app — selector de fuentes): solo
+ * familias del sistema Android, sin descargar nada ni engordar la
+ * APK. Si un teléfono no trae una familia, Android cae a la
+ * predeterminada: nunca se rompe, como mucho se ve igual que antes.
+ */
+enum class AppFont(val label: String, val family: String) {
+    DEFAULT("Predeterminada", ""),
+    SANS("Sans", "sans-serif"),
+    SERIF("Serif", "serif"),
+    MONO("Monoespaciada", "monospace"),
+    LIGHT("Ligera", "sans-serif-light"),
+    CONDENSED("Condensada", "sans-serif-condensed"),
+    MEDIUM("Mediana", "sans-serif-medium"),
+}
+
+/** Lee una fuente guardada como texto; un valor desconocido o vacío usa el defecto. */
+fun parseAppFont(value: String?, default: AppFont): AppFont =
+    AppFont.entries.find { it.name == value } ?: default
+
 /** Estilo de tarjetas (spec 003): sólido, cristal o solo contorno. */
 enum class CardStyle { SOLID, GLASS, OUTLINE }
 
@@ -44,6 +64,9 @@ data class ThemeSettings(
     val visualizerHex: String = "#A99ACD", // lavanda
     val useMaterialYou: Boolean = false, // Fase 1b, apagado por defecto
     val textSize: TextSize = TextSize.MEDIUM,
+    // Fase 2 — selector de fuentes: la familia del sistema que usa
+    // toda la app (títulos, listas y reproductor).
+    val fontFamily: AppFont = AppFont.DEFAULT,
     val coverShape: CoverShape = CoverShape.ROUNDED,
     val listDensity: ListDensity = ListDensity.COMFORTABLE,
     // DISEÑO PREMIUM (spec 003): todo personalizable, todo con efecto.
