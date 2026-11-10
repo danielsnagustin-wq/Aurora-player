@@ -222,6 +222,7 @@ fun PlayerScreen(
     // seeks por segundo y el sonido se entrecortaba).
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
     val lyricsListState = rememberLazyListState()
+    val screenScrollState = rememberScrollState()
     var showLyricsEditor by remember { mutableStateOf(false) }
     val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
     // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
@@ -231,6 +232,15 @@ fun PlayerScreen(
         if (showLyrics && currentLine >= 0) {
             if (animationsEnabled) lyricsListState.animateScrollToItem(currentLine)
             else lyricsListState.scrollToItem(currentLine)
+        }
+    }
+    // LETRAS / COLA (2026-11-10): al abrirlas, la pantalla baja sola
+    // hasta ellas. Antes solo asomaba la fila de ajuste cortada abajo
+    // y las líneas quedaban fuera de la pantalla.
+    LaunchedEffect(showLyrics, showQueue) {
+        if (showLyrics || showQueue) {
+            if (animationsEnabled) screenScrollState.animateScrollTo(screenScrollState.maxValue)
+            else screenScrollState.scrollTo(screenScrollState.maxValue)
         }
     }
     // DISEÑO PREMIUM (spec 003): fondo y acento siguen a la portada
@@ -294,7 +304,7 @@ fun PlayerScreen(
     Column(
         modifier = Modifier.fillMaxSize()
             .statusBarsPadding()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(screenScrollState)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
