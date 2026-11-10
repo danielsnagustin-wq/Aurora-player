@@ -163,6 +163,36 @@ fun AuroraOptionChips(
     }
 }
 
+// Lo mismo, pero con varias opciones a la vez (pestañas visibles:
+// cada pestaña se enciende o se apaga sola).
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun AuroraMultiChips(
+    options: List<Pair<String, String>>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FlowRow(
+        modifier = modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        for ((value, label) in options) {
+            if (value in selected) {
+                Button(
+                    onClick = { onToggle(value) },
+                    colors = auroraButtonColors(),
+                ) { Text(label) }
+            } else {
+                OutlinedButton(onClick = { onToggle(value) }) {
+                    Text(label)
+                }
+            }
+        }
+    }
+}
+
 // Botón principal y secundario con la forma del tema (radio de
 // esquinas elegido en Ajustes), para que todos los botones de la
 // app tengan la misma forma.
