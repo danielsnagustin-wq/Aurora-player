@@ -32,3 +32,29 @@ fun autoDjNext(
     if (mostPlayed.isNotEmpty()) return mostPlayed.first()
     return pool.random(random)
 }
+
+/**
+ * Auto-DJ en tanda: encadena [autoDjNext] hasta [count] canciones.
+ * Cada canción elegida pasa a ser la "actual" de la siguiente
+ * elección (la tanda suena coherente: de una parecida a la
+ * siguiente parecida) y se añade a los excluidos, así la tanda
+ * nunca repite. Si el pool se agota, la tanda sale más corta.
+ */
+fun autoDjQueue(
+    current: Song?,
+    songs: List<Song>,
+    count: Int = 10,
+    recentlyPlayedIds: Set<Long> = emptySet(),
+    random: Random = Random.Default,
+): List<Song> {
+    val picked = mutableListOf<Song>()
+    val excluded = recentlyPlayedIds.toMutableSet()
+    var cursor = current
+    repeat(count) {
+        val next = autoDjNext(cursor, songs, excluded, random) ?: return picked
+        picked += next
+        excluded += next.id
+        cursor = next
+    }
+    return picked
+}
