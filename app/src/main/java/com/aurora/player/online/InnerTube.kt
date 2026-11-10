@@ -557,6 +557,7 @@ fun selectAudioFormat(
 class InnerTubeClient(
     private val authCookies: String? = null,
     private val authToken: String? = null,
+    private val onTokenRejected: ((String) -> Unit)? = null,
 ) {
     suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
@@ -656,7 +657,14 @@ class InnerTubeClient(
             conn.readTimeout = 10000
             try {
                 conn.outputStream.bufferedWriter().use { it.write(bodyJson) }
-                if (conn.responseCode != 200) return null
+                val code = conn.responseCode
+                // Token OAuth caducado (2026-11-10): Google lo
+                // rechaza con 401 al cabo de ~1 h. Se avisa para
+                // renovarlo; sin esto la búsqueda se queda muda.
+                if (code == 401 && client.name == "WEB_REMIX" && !authToken.isNullOrBlank()) {
+                    onTokenRejected?.invoke(authToken)
+                }
+                if (code != 200) return null
                 conn.inputStream.bufferedReader().use { it.readText() }
             } finally {
                 conn.disconnect()

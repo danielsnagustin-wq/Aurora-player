@@ -63,4 +63,24 @@ object GoogleAccountAuth {
                 TokenResult.Failed
             }
         }
+
+    /**
+     * Renueva un token rechazado (401): invalida el viejo en Google
+     * para que no lo vuelva a dar y pide uno nuevo con la misma
+     * cuenta. Sin cuenta, Failed (quien llama cae a anónimo).
+     */
+    suspend fun refreshToken(context: Context, oldToken: String): TokenResult =
+        withContext(Dispatchers.IO) {
+            try {
+                GoogleAuthUtil.clearToken(context, oldToken)
+            } catch (_: Exception) {
+                // El viejo ya no vale; se sigue pidiendo uno nuevo.
+            }
+            val account = try {
+                GoogleSignIn.getLastSignedInAccount(context)
+            } catch (_: Exception) {
+                null
+            } ?: return@withContext TokenResult.Failed
+            fetchToken(context, account)
+        }
 }
