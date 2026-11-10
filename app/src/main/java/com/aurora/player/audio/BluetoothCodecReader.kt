@@ -62,7 +62,7 @@ suspend fun readActiveBtCodec(context: Context): BtCodecInfo? =
                 return@withContext null
             }
             val adapter = BluetoothAdapter.getDefaultAdapter() ?: return@withContext null
-            val a2dp = suspendCancellableCoroutine { cont ->
+            val a2dp = suspendCancellableCoroutine<BluetoothA2dp?> { cont ->
                 val listener = object : BluetoothProfile.ServiceListener {
                     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
                         if (cont.isActive) cont.resume(proxy as? BluetoothA2dp)
@@ -74,12 +74,13 @@ suspend fun readActiveBtCodec(context: Context): BtCodecInfo? =
                 if (!ok && cont.isActive) cont.resume(null)
             } ?: return@withContext null
             try {
-                val devices = try {
+                val devices: List<BluetoothDevice> = try {
                     a2dp.connectedDevices
                 } catch (_: Exception) {
                     emptyList()
                 }
-                val device = devices.firstOrNull() ?: return@withContext null
+                val device: BluetoothDevice =
+                    devices.firstOrNull() ?: return@withContext null
                 val status = try {
                     a2dp.javaClass
                         .getMethod("getCodecStatus", BluetoothDevice::class.java)
