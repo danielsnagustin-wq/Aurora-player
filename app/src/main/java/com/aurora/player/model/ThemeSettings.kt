@@ -134,6 +134,12 @@ data class PlayerSettings(
     // decide si están activos. El doble toque viene activado porque
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
     val swipeToChangeTrack: Boolean = true,
+    // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
+    // Solo salta si está sonando; en pausa no hace nada.
+    val shakeToNext: Boolean = false,
+    // Fase 1b: gesto de volumen — deslizar vertical sobre la
+    // portada sube/baja el volumen (como los otros gestos, activo).
+    val volumeGesture: Boolean = true,
     val doubleTapToFavorite: Boolean = true,
 ) {
     companion object {
