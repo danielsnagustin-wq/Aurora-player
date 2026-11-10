@@ -16,6 +16,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
+import com.aurora.player.widget.AuroraWidgetProvider
+import com.aurora.player.widget.WidgetStyle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -209,6 +212,27 @@ fun SettingsInterfaceSection(
     Box(Modifier.padding(top = 8.dp)) {
         if (previewMode == 0) MiniLibraryPreview(applied) else MiniPlayerPreview(applied)
     }
+
+    // Fase 2 — estilos de widget (Retro): cómo se ve el widget en
+    // la pantalla de inicio. Se guarda en las preferencias del
+    // widget y se aplica al instante (sin abrir la app).
+    val widgetContext = LocalContext.current
+    var widgetStyle by remember {
+        mutableStateOf(AuroraWidgetProvider.getStyle(widgetContext))
+    }
+    AuroraSectionHeader(
+        title = "Estilo del widget",
+        description = "Cómo se ve el widget en la pantalla de inicio. "Con portada" muestra la portada del álbum que suena.",
+    )
+    AuroraOptionChips(
+        options = WidgetStyle.entries.map { it.name to it.label },
+        selected = widgetStyle.name,
+        onSelect = {
+            val next = WidgetStyle.valueOf(it)
+            widgetStyle = next
+            AuroraWidgetProvider.setStyle(widgetContext, next)
+        },
+    )
 
     AuroraSectionHeader(title = "Tamaño de texto")
     AuroraOptionChips(
