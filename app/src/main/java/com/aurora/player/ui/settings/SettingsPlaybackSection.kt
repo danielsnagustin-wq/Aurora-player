@@ -2,6 +2,9 @@ package com.aurora.player.ui.settings
 
 import androidx.compose.runtime.Composable
 import com.aurora.player.model.PlayerSettings
+import com.aurora.player.model.KaraokeMode
+import com.aurora.player.ui.design.AuroraOptionChips
+import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.ui.design.AuroraSwitchRow
 
 /**
@@ -15,6 +18,19 @@ fun SettingsPlaybackSection(
     player: PlayerSettings,
     onSavePlayer: (PlayerSettings) -> Unit,
 ) {
+    // Fase 2 — modos de karaoke (Apple Music): cuándo se colorean
+    // las palabras de la letra. "Siempre" lo lleva también a la
+    // vista previa del reproductor; "Solo a pantalla completa" es
+    // como se ve hoy; "Apagado" deja solo el color de la línea.
+    AuroraSectionHeader(
+        title = "Karaoke por palabra",
+        description = "Cuándo se colorean las palabras de la letra que suena.",
+    )
+    AuroraOptionChips(
+        options = KaraokeMode.entries.map { it.name to it.label },
+        selected = player.karaokeMode.name,
+        onSelect = { onSavePlayer(player.copy(karaokeMode = KaraokeMode.valueOf(it))) },
+    )
     AuroraSwitchRow(
         title = "Pausar al quitar los auriculares",
         checked = player.autoPauseOnDisconnect,
