@@ -36,6 +36,7 @@ import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
+import com.aurora.player.audio.VisualizerCapture
 import com.aurora.player.audio.SilenceDetectorAudioProcessor
 import com.aurora.player.audio.replayGainFromMetadata
 import com.aurora.player.audio.selectReplayGainDb
@@ -84,8 +85,16 @@ object AudioEffects {
     var equalizerUnsupported: Boolean by mutableStateOf(false)
         private set
 
+    /** Barras del visualizador real (FFT de la sesión que suena). */
+    var visualizerBars: List<Float> by mutableStateOf(emptyList())
+        private set
+
     internal fun publish(manager: EqualizerManager?) {
         equalizerManager = manager
+    }
+
+    internal fun publishBars(bars: List<Float>) {
+        visualizerBars = bars
     }
 
     internal fun markUnsupported() {
@@ -95,6 +104,7 @@ object AudioEffects {
     internal fun clear() {
         equalizerManager = null
         equalizerUnsupported = false
+        visualizerBars = emptyList()
     }
 }
 
@@ -104,6 +114,7 @@ class PlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
     private var audioOutputDirect: Boolean = false
+    private var visualizerCapture: VisualizerCapture? = null
 
     /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -337,6 +348,7 @@ class PlaybackService : MediaSessionService() {
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 setupEqualizer(audioSessionId)
+                setupVisualizer(audioSessionId)
             }
         })
         serviceScope.launch {
@@ -437,6 +449,30 @@ class PlaybackService : MediaSessionService() {
                 if (!direct) applyRouteEq()
             }
         }
+    }
+
+    /**
+     * Visualizador real: captura la FFT de la sesión que suena y
+     * publica las barras en AudioEffects. Al cambiar de sesión se
+     * suelta la captura vieja; si el dispositivo no lo soporta, no
+     * se publica nada y el reproductor no muestra espectro.
+     */
+    private fun setupVisualizer(sessionId: Int) {
+        visualizerCapture?.release()
+        visualizerCapture = null
+        if (sessionId == 0) {
+            AudioEffects.publishBars(emptyList())
+            return
+        }
+        val capture = VisualizerCapture(sessionId) { bars ->
+            AudioEffects.publishBars(bars)
+        }
+        if (!capture.isAvailable) {
+            capture.release()
+            AudioEffects.publishBars(emptyList())
+            return
+        }
+        visualizerCapture = capture
     }
 
     /**
@@ -839,6 +875,8 @@ class PlaybackService : MediaSessionService() {
         mediaSession?.release()
         player?.release()
         equalizer?.release()
+        visualizerCapture?.release()
+        visualizerCapture = null
         AudioEffects.clear()
         equalizerSessionId = 0
         replayGainProcessor = null
