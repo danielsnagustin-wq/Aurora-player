@@ -1105,26 +1105,10 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.NOTIFICATIONS) {
-            SettingsGroupTitle("Notificaciones")
-            SettingsGroupDescription(
-                if (notificationsGranted) {
-                    "El aviso de reproducción sale en la barra de estado y en la pantalla de bloqueo."
-                } else {
-                    "Sin este permiso, en Android 13+ no sale el aviso de reproducción con los controles."
-                },
-                modifier = Modifier.padding(top = 4.dp),
+            SettingsNotificationsSection(
+                notificationsGranted = notificationsGranted,
+                onRequestNotificationPermission = onRequestNotificationPermission,
             )
-            Button(
-                onClick = onRequestNotificationPermission,
-                colors = auroraButtonColors(),
-                modifier = Modifier.padding(top = 8.dp),
-                enabled = !notificationsGranted,
-            ) {
-                Text(
-                    if (notificationsGranted) "Notificaciones activadas"
-                    else "Activar notificaciones"
-                )
-            }
         }
 
         if (section == SettingsSection.ADVANCED) {
@@ -1142,19 +1126,8 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.ALARM) {
-        // RONDA 7 P4: alarma musical.
-        SettingsGroupTitle("Alarma")
-        SettingsGroupDescription(
-            "Despiértate con tu música: elige una hora y qué suena. Suena aunque la app esté cerrada y sobrevive a un reinicio.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Button(
-            onClick = { showAlarm = true },
-            colors = auroraButtonColors(),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text("Programar alarma")
-        }
+            // RONDA 7 P4: alarma musical.
+            SettingsAlarmSection(onShowAlarm = { showAlarm = true })
         }
 
         if (section == SettingsSection.BACKUP) {
