@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.LibraryResult
-import androidx.media3.session.MediaLibrarySession
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
 import com.aurora.player.model.Song
 import com.google.common.collect.ImmutableList
@@ -30,7 +30,7 @@ class AuroraLibraryCallback(
     private val scope: CoroutineScope,
     private val loadSongs: suspend () -> List<Song>,
     private val loadFavoriteIds: suspend () -> Set<Long>,
-) : MediaLibrarySession.Callback {
+) : MediaLibraryService.Callback {
 
     private fun rootItem(): MediaItem =
         MediaItem.Builder()
@@ -45,20 +45,20 @@ class AuroraLibraryCallback(
             .build()
 
     override fun onGetLibraryRoot(
-        session: MediaLibrarySession,
+        session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
-        params: MediaLibrarySession.LibraryParams?,
+        params: MediaLibraryService.MediaLibrarySession.LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> =
         SettableFuture.create<LibraryResult<MediaItem>>()
             .apply { set(LibraryResult.ofItem(rootItem(), params)) }
 
     override fun onGetChildren(
-        session: MediaLibrarySession,
+        session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         parentId: String,
         page: Int,
         pageSize: Int,
-        params: MediaLibrarySession.LibraryParams?,
+        params: MediaLibraryService.MediaLibrarySession.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
         scope.launch {
@@ -76,7 +76,7 @@ class AuroraLibraryCallback(
     }
 
     override fun onGetItem(
-        session: MediaLibrarySession,
+        session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
         mediaId: String,
     ): ListenableFuture<LibraryResult<MediaItem>> {
