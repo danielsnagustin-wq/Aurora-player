@@ -42,7 +42,10 @@ class OutputEqTest {
 
     @Test
     fun claveBluetooth_limpiaNombre() {
-        assertEquals("bluetooth:sony_wh_1000xm4", routeKey(OutputRoute.BLUETOOTH, "Sony WH-1000XM4"))
+        // El guion se conserva en la clave (solo los espacios y
+        // otros signos se vuelven '_'): "Sony WH-1000XM4" da
+        // "sony_wh-1000xm4", no "sony_wh_1000xm4".
+        assertEquals("bluetooth:sony_wh-1000xm4", routeKey(OutputRoute.BLUETOOTH, "Sony WH-1000XM4"))
         assertEquals("bluetooth", routeKey(OutputRoute.BLUETOOTH, null))
         assertEquals("bluetooth", routeKey(OutputRoute.BLUETOOTH, "   "))
     }
