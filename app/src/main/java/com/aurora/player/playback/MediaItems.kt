@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
-import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.albumArtUri
 import com.aurora.player.model.Song
 
 /**
@@ -23,7 +23,7 @@ fun songToMediaItem(context: Context, song: Song): MediaItem =
                 .setTitle(song.title)
                 .setArtist(song.artist)
                 .setAlbumTitle(song.album)
-                .setArtworkUri(MusicRepository(context).albumArtUri(song.albumId))
+                .setArtworkUri(albumArtUri(song.albumId))
                 .setExtras(Bundle().apply { putString("aurora_path", song.path) })
                 .build(),
         )

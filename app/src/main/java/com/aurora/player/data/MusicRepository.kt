@@ -154,11 +154,11 @@ class MusicRepository(private val context: Context) {
             )
         }.sortedBy { it.name.lowercase() }
 
-    /** Portada del álbum vía MediaStore; null = sin portada (se muestra inicial, nunca una ajena). */
-    // La URI es pura (solo depende del id): existe también como
-    // función de nivel superior para no instanciar el repositorio
-    // por cada fila de la biblioteca (2026-11-10, rendimiento).
-    fun albumArtUri(albumId: Long): Uri = albumArtUri(albumId)
+    // La portada vive como función de nivel superior albumArtUri
+    // (línea 22, pura, sin repositorio). NO añadir aquí un método
+    // con el mismo nombre: dentro de la clase ese nombre resuelve
+    // al propio método y se llama a sí mismo en bucle infinito
+    // (StackOverflowError en el teléfono, 2026-11-10).
 }
 
 /**
