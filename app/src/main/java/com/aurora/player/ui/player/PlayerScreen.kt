@@ -347,7 +347,7 @@ fun PlayerScreen(
                     detectTapGestures(
                         onDoubleTap = { if (doubleTapEnabled) onToggleFavorite() },
                     )
-                },
+                }
                 .pointerInput(volumeGestureEnabled) {
                     // Fase 1b: deslizar vertical sobre la portada
                     // sube/baja el volumen; la barra del sistema

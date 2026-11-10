@@ -173,8 +173,6 @@ class PlayerSettingsStore(private val context: Context) {
             onlineMode = prefs[Keys.ONLINE_MODE] ?: d.onlineMode,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
-            doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
-            shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
             shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
             volumeGesture = prefs[Keys.VOLUME_GESTURE] ?: d.volumeGesture,
         )
@@ -197,8 +195,6 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.ONLINE_MODE] = settings.onlineMode
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
-            prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
-            prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
             prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
             prefs[Keys.VOLUME_GESTURE] = settings.volumeGesture
         }
