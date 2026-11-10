@@ -120,6 +120,7 @@ import com.aurora.player.util.ShakeDetector
 import com.aurora.player.util.LyricsOffsetStore
 import com.aurora.player.util.resolveEffective
 import com.aurora.player.lyrics.loadOnlineLyrics
+import com.aurora.player.lyrics.nextIndexToPrefetch
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadLyricsForPath
 import com.aurora.player.util.saveLyricsForSong
@@ -951,6 +952,43 @@ private fun AuroraApp(
             }
             if (track.isNotBlank() && artist.isNotBlank()) {
                 lyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec)
+            }
+        }
+        // Precarga (idea de BitChord, 2026-11-09): mientras suena la
+        // actual, la letra de la siguiente se busca en segundo plano
+        // (solo con el modo online encendido) y queda en LyricsCache,
+        // así que al empezar la siguiente ya está ahí, antes de que
+        // empiece a sonar. El resultado se descarta: loadOnlineLyrics
+        // escribe en la caché. Si cambia la canción, el efecto se
+        // reinicia y la precarga vieja se cancela.
+        if (playerSettings.onlineMode) {
+            val c = controller
+            if (c != null) {
+                val next = nextIndexToPrefetch(
+                    c.currentMediaItemIndex,
+                    c.mediaItemCount,
+                    c.repeatMode == Player.REPEAT_MODE_ALL,
+                )
+                if (next != null) {
+                    launch {
+                        val item = c.getMediaItemAt(next)
+                        val meta = item.mediaMetadata
+                        val track = meta.title?.toString().orEmpty()
+                        val artist = meta.artist?.toString().orEmpty()
+                        if (track.isNotBlank() && artist.isNotBlank()) {
+                            val album = meta.albumTitle?.toString()
+                            val window = Timeline.Window()
+                            val durationSec = try {
+                                c.currentTimeline.getWindow(next, window).durationMs.let {
+                                    if (it > 0) it / 1000 else 0L
+                                }
+                            } catch (_: Exception) {
+                                0L
+                            }
+                            loadOnlineLyrics(context, item.mediaId, track, artist, album, durationSec)
+                        }
+                    }
+                }
             }
         }
     }
