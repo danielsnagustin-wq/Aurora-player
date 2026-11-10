@@ -1,5 +1,6 @@
 package com.aurora.player.ui.settings
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -29,7 +30,6 @@ import kotlinx.coroutines.launch
  * carpetas excluidas). Las carpetas se miden solas: crean su propio
  * FolderStore dentro.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsLibrarySection(
     player: PlayerSettings,
