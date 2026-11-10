@@ -80,14 +80,16 @@ fun pickNativeRate(trackRateHz: Int?, dacRates: List<Int>): Int? {
     return if (dacRates.contains(trackRateHz)) trackRateHz else null
 }
 
-/** "44.1, 48, 96, 192 kHz" */
+/** "44.1, 48, 96, 192 kHz" — el sufijo va una sola vez, al final. */
 fun formatUsbRates(ratesHz: List<Int>): String {
     if (ratesHz.isEmpty()) return "sin tasas conocidas"
-    return ratesHz.distinct().sorted().joinToString(", ") { formatRate(it) }
+    return ratesHz.distinct().sorted().joinToString(", ") { formatRateNumber(it) } + " kHz"
 }
 
-private fun formatRate(rateHz: Int): String =
-    if (rateHz % 1000 == 0) "${rateHz / 1000} kHz" else "${rateHz / 1000.0} kHz"
+private fun formatRateNumber(rateHz: Int): String =
+    if (rateHz % 1000 == 0) "${rateHz / 1000}" else "${rateHz / 1000.0}"
+
+private fun formatRate(rateHz: Int): String = "${formatRateNumber(rateHz)} kHz"
 
 /** Línea honesta para Sonido cuando hay un DAC USB. */
 fun usbStatusLine(dac: UsbDacInfo?, trackRateHz: Int?, mixerRateHz: Int?): String {
