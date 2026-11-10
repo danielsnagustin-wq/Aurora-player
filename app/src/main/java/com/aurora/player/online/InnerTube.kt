@@ -256,6 +256,109 @@ fun parsePlayerFormats(json: String): List<AudioFormat>? {
     }
 }
 
+/** Una lista de charts: título visible, ID de lista de YouTube (sin el prefijo VL) y portada. */
+data class ChartPlaylist(
+    val title: String,
+    val playlistId: String,
+    val thumbnailUrl: String?,
+)
+
+/** Un artista en los charts: puesto, tendencia y suscriptores (todo puede faltar sin login). */
+data class ChartArtist(
+    val title: String,
+    val browseId: String?,
+    val subscribers: String?,
+    val rank: String?,
+    val trend: String?,
+    val thumbnailUrl: String?,
+)
+
+/** Lo que devuelve Para ti: listas de vídeos top y artistas top. Vacío si YouTube no respondió. */
+data class ChartsResult(
+    val videoPlaylists: List<ChartPlaylist>,
+    val artists: List<ChartArtist>,
+)
+
+private fun twoRowTitle(item: JsonValue?): String? =
+    item?.obj("musicTwoRowItemRenderer")?.obj("title")?.obj("runs")?.arr()
+        ?.firstOrNull()?.obj("text")?.str()
+
+private fun twoRowBrowseId(item: JsonValue?): String? =
+    item?.obj("musicTwoRowItemRenderer")?.obj("title")?.obj("runs")?.arr()
+        ?.firstOrNull()?.obj("navigationEndpoint")?.obj("browseEndpoint")?.obj("browseId")?.str()
+
+private fun twoRowThumbnail(item: JsonValue?): String? {
+    val thumbs = item?.obj("musicTwoRowItemRenderer")?.obj("thumbnailRenderer")
+        ?.obj("musicThumbnailRenderer")?.obj("thumbnail")?.obj("thumbnails")?.arr() ?: return null
+    return thumbs.lastOrNull()?.obj("url")?.str()
+}
+
+private fun artistThumbnail(renderer: JsonValue?): String? {
+    val thumbs = renderer?.obj("thumbnail")?.obj("musicThumbnailRenderer")
+        ?.obj("thumbnail")?.obj("thumbnails")?.arr() ?: return null
+    return thumbs.lastOrNull()?.obj("url")?.str()
+}
+
+/**
+ * Parsea los charts de YouTube Music (browseId FEmusic_charts, forma
+ * documentada por ytmusicapi): contents → singleColumnBrowseResultsRenderer
+ * → tabs[0] → sectionListRenderer → carruseles. La primera sección es el
+ * selector de país y se salta. Un carrusel es de listas cuando su primer
+ * ítem enlaza a una browseId que empieza por VL; es de artistas cuando su
+ * primer ítem es un musicResponsiveListItemRenderer. Lo demás se ignora.
+ * Sin login no hay puesto ni tendencia: quedan en null.
+ */
+fun parseCharts(json: String): ChartsResult {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return ChartsResult(emptyList(), emptyList())
+    }
+    val sections = root.obj("contents")?.obj("singleColumnBrowseResultsRenderer")
+        ?.obj("tabs")?.arr()?.firstOrNull()
+        ?.obj("tabRenderer")?.obj("content")?.obj("sectionListRenderer")
+        ?.obj("contents")?.arr() ?: return ChartsResult(emptyList(), emptyList())
+    val videoPlaylists = mutableListOf<ChartPlaylist>()
+    val artists = mutableListOf<ChartArtist>()
+    for (section in sections.drop(1)) {
+        val contents = section.obj("musicCarouselShelfRenderer")?.obj("contents")?.arr()
+            ?: continue
+        if (contents.isEmpty()) continue
+        val first = contents[0]
+        val browseId = twoRowBrowseId(first)
+        if (browseId != null && browseId.startsWith("VL")) {
+            for (item in contents) {
+                val title = twoRowTitle(item) ?: continue
+                val id = twoRowBrowseId(item)?.removePrefix("VL") ?: continue
+                videoPlaylists += ChartPlaylist(title, id, twoRowThumbnail(item))
+            }
+        } else if (first.obj("musicResponsiveListItemRenderer") != null) {
+            for (item in contents) {
+                val renderer = item.obj("musicResponsiveListItemRenderer") ?: continue
+                val title = flexColumnTexts(renderer, 0).firstOrNull() ?: continue
+                val browse = renderer.obj("navigationEndpoint")?.obj("browseEndpoint")
+                    ?.obj("browseId")?.str()
+                val subscribers = flexColumnTexts(renderer, 1).firstOrNull()
+                    ?.split(" ")?.firstOrNull()
+                val rank = renderer.obj("customIndexColumn")
+                    ?.obj("musicCustomIndexColumnRenderer")
+                    ?.obj("text")?.obj("runs")?.arr()?.firstOrNull()?.obj("text")?.str()
+                val iconType = renderer.obj("customIndexColumn")
+                    ?.obj("musicCustomIndexColumnRenderer")
+                    ?.obj("icon")?.obj("iconType")?.str()
+                val trend = when (iconType) {
+                    "ARROW_DROP_UP" -> "sube"
+                    "ARROW_DROP_DOWN" -> "baja"
+                    "ARROW_CHART_NEUTRAL" -> "igual"
+                    else -> null
+                }
+                artists += ChartArtist(title, browse, subscribers, rank, trend, artistThumbnail(renderer))
+            }
+        }
+    }
+    return ChartsResult(videoPlaylists, artists)
+}
+
 /** Elige el formato de audio segun la calidad pedida: se
  * recorre su escalera de itags; si ninguno esta, cae al de
  * mayor bitrate. Sin formatos no hay audio (null). */
@@ -283,6 +386,16 @@ class InnerTubeClient(private val authCookies: String? = null) {
             "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
         val body = postJson(url, buildSearchBody(query), SEARCH_CLIENT) ?: return@withContext emptyList()
         parseSearchResults(body)
+    }
+
+    /** Charts de YouTube Music (Para ti): listas de vídeos top y artistas top, globales. */
+    suspend fun getCharts(): ChartsResult = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_charts\"}"
+        val response = postJson(url, body, SEARCH_CLIENT)
+            ?: return@withContext ChartsResult(emptyList(), emptyList())
+        parseCharts(response)
     }
 
     /** Resuelve el audio probando la escalera de clientes; en cada
