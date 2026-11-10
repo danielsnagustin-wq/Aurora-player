@@ -341,7 +341,7 @@ class MainActivity : ComponentActivity() {
                                 wizardScope.launch { introStore.markShown() }
                             },
                         )
-                    } else if (!setupDone) {
+                    } else if (setupDone == false) {
                         SetupWizardScreen(
                             onFinish = { wizardScope.launch { introStore.markSetupDone() } },
                             onRequestPermission = { requestAudioPermission() },
