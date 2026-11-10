@@ -21,7 +21,7 @@ class StreamCacheStore(context: Context) {
     /** Archivo en caché para este video con la calidad pedida, o null. */
     fun cachedFile(videoId: String, quality: StreamQuality): File? {
         for (itag in quality.preferredItags) {
-            val file = File(dir, streamCacheFileName(videoId, itag))
+            val file = File(dir, streamCacheFileName(videoId, itag.toInt()))
             if (file.exists() && file.length() > 0L) {
                 runCatching { file.setLastModified(System.currentTimeMillis()) }
                 return file
@@ -38,7 +38,7 @@ class StreamCacheStore(context: Context) {
             val m = namePattern.matchEntire(file.name) ?: return@mapNotNull null
             val itag = m.groupValues[2].toIntOrNull() ?: return@mapNotNull null
             val quality = StreamQuality.entries
-                .find { it.preferredItags.firstOrNull() == itag } ?: StreamQuality.HIGH
+                .find { it.preferredItags.firstOrNull()?.toInt() == itag } ?: StreamQuality.HIGH
             CachedStream(
                 videoId = m.groupValues[1],
                 itag = itag,
