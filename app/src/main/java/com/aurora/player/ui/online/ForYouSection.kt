@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.online.ChartArtist
 import com.aurora.player.online.ChartPlaylist
 import com.aurora.player.online.ChartsResult
+import com.aurora.player.online.QuickPick
 import com.aurora.player.util.rememberRemoteBitmap
 
 /**
@@ -42,6 +43,8 @@ fun ForYouSection(
     loading: Boolean,
     error: String?,
     onSearchQuery: (String) -> Unit,
+    quickPicks: List<QuickPick> = emptyList(),
+    onPlayQuickPick: (QuickPick) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -65,8 +68,19 @@ fun ForYouSection(
             )
             return
         }
+        // Selección rápida: suena al tocarla, sin pasar por la búsqueda.
+        if (quickPicks.isNotEmpty()) {
+            Text(
+                "Selección rápida",
+                style = MaterialTheme.typography.titleSmall,
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp),
+            )
+            for (pick in quickPicks) {
+                QuickPickRow(pick, onClick = { onPlayQuickPick(pick) })
+            }
+        }
         val result = charts ?: return
-        if (result.videoPlaylists.isEmpty() && result.artists.isEmpty()) {
+        if (result.videoPlaylists.isEmpty() && result.artists.isEmpty() && quickPicks.isEmpty()) {
             Text(
                 "YouTube Music no devolvió los charts ahora mismo. Prueba más tarde.",
                 modifier = Modifier.padding(bottom = 8.dp),
@@ -126,6 +140,43 @@ private fun ChartPlaylistRow(
             Text(playlist.title, style = MaterialTheme.typography.titleMedium)
             Text(
                 "Lista de YouTube Music",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun QuickPickRow(
+    pick: QuickPick,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val bitmap = rememberRemoteBitmap(pick.thumbnailUrl)
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null)
+            }
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(pick.title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                pick.artist.ifBlank { "YouTube Music" },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
