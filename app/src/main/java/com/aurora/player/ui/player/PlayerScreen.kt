@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -258,11 +259,15 @@ fun PlayerScreen(
                 )
             }
             PlayerBackground.GRADIENT -> if (dynamicAccent != null) {
+                // REDISEÑO (2026-11-10): el degradado era tan suave
+                // (0.38) que no se veía y el reproductor parecía plano
+                // y negro. Ahora baja del color vivo de la portada.
                 Box(
                     modifier = Modifier.fillMaxSize().background(
                         Brush.verticalGradient(
                             listOf(
-                                dynamicAccent.copy(alpha = 0.38f),
+                                dynamicAccent.copy(alpha = 0.72f),
+                                dynamicAccent.copy(alpha = 0.22f),
                                 MaterialTheme.colorScheme.background,
                             ),
                         ),
@@ -338,7 +343,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 // Resplandor con el color de la portada (spec 003).
-                .shadow(24.dp, coverCorner, ambientColor = accent.copy(alpha = 0.45f), spotColor = accent.copy(alpha = 0.45f))
+                .shadow(32.dp, coverCorner, ambientColor = accent.copy(alpha = 0.7f), spotColor = accent.copy(alpha = 0.7f))
                 .pointerInput(swipeEnabled) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -404,7 +409,10 @@ fun PlayerScreen(
         Spacer(Modifier.height(24.dp))
         Text(
             title,
-            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontSize = 26.sp,
+                fontWeight = FontWeight.ExtraBold,
+            ),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -412,7 +420,10 @@ fun PlayerScreen(
         if (artist != null) {
             Text(
                 artist,
-                style = MaterialTheme.typography.bodyLarge,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
@@ -525,33 +536,61 @@ fun PlayerScreen(
                 )
             }
         }
-        // RONDA PULIDO (2026-11-09): fila de acciones estilo
-        // Musicolet: favorito, letras, ecualizador y temporizador
-        // con iconos, en vez de amontonados arriba con la X.
+        // REDISEÑO (2026-11-10): cada acción lleva su nombre
+        // debajo del icono. Antes había dos filas separadas (iconos
+        // arriba, textos abajo) y los nombres no caían bajo su icono:
+        // el temporizador parecía llamarse "Cola".
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
         ) {
-            IconButton(onClick = onToggleFavorite) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onToggleFavorite() },
+            ) {
                 Icon(
                     if (isFavorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
                     contentDescription = if (isFavorite) "Quitar de favoritos" else "Añadir a favoritos",
                     tint = if (isFavorite) accent else MaterialTheme.colorScheme.onSurface,
                 )
+                Text(
+                    "Favorito",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
-            IconButton(onClick = { showLyrics = !showLyrics }) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { showLyrics = !showLyrics },
+            ) {
                 Icon(
                     Icons.Filled.MusicNote,
                     contentDescription = "Letras",
                     tint = if (showLyrics) accent else MaterialTheme.colorScheme.onSurface,
                 )
+                Text(
+                    "Letras",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
-            IconButton(onClick = onOpenEq) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable { onOpenEq() },
+            ) {
                 Icon(Icons.Filled.Equalizer, contentDescription = "Ecualizador")
+                Text(
+                    "Ecualizador",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
             Box {
-                IconButton(onClick = { sleepMenuOpen = true }) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { sleepMenuOpen = true },
+                ) {
                     Icon(
                         Icons.Filled.Timer,
                         contentDescription = "Temporizador de apagado",
@@ -560,6 +599,11 @@ fun PlayerScreen(
                         } else {
                             accent
                         },
+                    )
+                    Text(
+                        "Dormir",
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(top = 2.dp),
                     )
                 }
                 DropdownMenu(
