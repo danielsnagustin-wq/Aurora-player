@@ -151,10 +151,17 @@ data class PlayerSettings(
     // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
     // Solo salta si está sonando; en pausa no hace nada.
     val shakeToNext: Boolean = false,
+    // Fase 2 — gestos configurables (GoneMAD): qué hace agitar el
+    // teléfono. NEXT por defecto, como hasta ahora. Guardado como
+    // texto, validado al leer (un valor desconocido usa NEXT).
+    val shakeAction: String = "next",
     // Fase 1b: gesto de volumen — deslizar vertical sobre la
     // portada sube/baja el volumen (como los otros gestos, activo).
     val volumeGesture: Boolean = true,
     val doubleTapToFavorite: Boolean = true,
+    // Fase 2 — gestos configurables: qué hace el doble toque en la
+    // portada. FAVORITE por defecto, como hasta ahora.
+    val doubleTapAction: String = "favorite",
 ) {
     companion object {
         val DEFAULT = PlayerSettings()
