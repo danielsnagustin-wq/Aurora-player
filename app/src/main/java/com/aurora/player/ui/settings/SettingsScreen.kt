@@ -68,9 +68,6 @@ import com.aurora.player.data.BackupData
 import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.FolderStore
 import com.aurora.player.data.LibraryPrefsStore
-import com.aurora.player.data.LyricsProviderStore
-import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
-import com.aurora.player.lyrics.moveProvider
 import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.SpotifyStore
@@ -78,9 +75,6 @@ import com.aurora.player.online.SpotifyClient
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.data.validateBackup
 import com.aurora.player.model.CardStyle
-import com.aurora.player.model.MAX_THEMES
-import com.aurora.player.model.ThemePreset
-import com.aurora.player.model.themePresetFromJsonValue
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
@@ -139,11 +133,9 @@ fun SettingsScreen(
     var section by remember { mutableStateOf<SettingsSection?>(null) }
     // SPEC 007 (2026-11-09): editor de color + Mis temas.
     val presetStore = remember { ThemePresetStore(context) }
-    val savedThemes by presetStore.themesFlow.collectAsState(initial = emptyList())
     val recentColors by presetStore.recentColorsFlow.collectAsState(initial = emptyList())
     var editingColor by remember { mutableStateOf<String?>(null) }
     var previewMode by remember { mutableStateOf(0) } // 0 biblioteca, 1 reproductor
-    var themeImportMessage by remember { mutableStateOf<String?>(null) }
     // RONDA 2: inicio personalizable (pestañas visibles + portada en fila).
     val libraryPrefs = remember { LibraryPrefsStore(context) }
     val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
@@ -152,14 +144,6 @@ fun SettingsScreen(
     val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
         initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
     )
-
-    // Fase 2 — orden de los proveedores de letras (hoja "Elegir
-    // proveedor" como BitChord).
-    val lyricsProviderStore = remember { LyricsProviderStore(context) }
-    val providerOrder by lyricsProviderStore.orderFlow.collectAsState(
-        initial = DEFAULT_PROVIDER_ORDER,
-    )
-    var showProviders by remember { mutableStateOf(false) }
 
     // Fase 2 — Spotify como BitChord (cookie sp_dc, solo en el teléfono).
     val spotifyStore = remember { SpotifyStore(context) }
@@ -183,17 +167,6 @@ fun SettingsScreen(
         if (showAlarm) {
             AlarmScreen(onClose = { showAlarm = false })
             return@Column
-        }
-        if (showProviders) {
-            ProvidersDialog(
-                order = providerOrder,
-                onMove = { name, up ->
-                    scope.launch {
-                        lyricsProviderStore.setOrder(moveProvider(providerOrder, name, up))
-                    }
-                },
-                onClose = { showProviders = false },
-            )
         }
         if (section == null) {
             Text("Ajustes", style = MaterialTheme.typography.titleLarge)
@@ -283,8 +256,6 @@ fun SettingsScreen(
             SettingsNetworkSection(
                 player = player,
                 onSavePlayer = { savePlayer(it) },
-                providerOrder = providerOrder,
-                onShowProviders = { showProviders = true },
                 spotifyConnected = spotifyConnected,
                 spotifyCookieText = spotifyCookieText,
                 onSpotifyCookieTextChange = { spotifyCookieText = it },
@@ -319,17 +290,6 @@ fun SettingsScreen(
 
         if (section == SettingsSection.BACKUP) {
             SettingsBackupSection()
-        }
-
-        if (section == SettingsSection.THEMES) {
-            SettingsThemesSection(
-                applied = applied,
-                savedThemes = savedThemes,
-                onApplyTheme = { save(it) },
-                themeImportMessage = themeImportMessage,
-                onThemeImportMessageChange = { themeImportMessage = it },
-                presetStore = presetStore,
-            )
         }
 
 
@@ -386,68 +346,11 @@ enum class SettingsSection(
         "Copia de seguridad y restauración",
         Icons.Filled.Backup,
     ),
-    THEMES(
-        "Mis temas",
-        "Guarda, aplica y comparte tus temas",
-        Icons.Filled.Style,
-    ),
     ADVANCED(
         "Avanzadas",
-        "Diagnóstico y restablecer por defecto",
+        "Restablecer por defecto",
         Icons.Filled.Settings,
     ),
-}
-
-/**
- * Fase 2 — hoja "Elegir proveedor" (como BitChord). Reordena con
- * las flechas: el primero que encuentre la letra gana.
- */
-@Composable
-private fun ProvidersDialog(
-    order: List<String>,
-    onMove: (String, Boolean) -> Unit,
-    onClose: () -> Unit,
-) {
-    val descriptions = mapOf(
-        "LRCLIB" to "Gratis, sin clave. Letras sincronizadas y texto plano.",
-        "BetterLyrics" to "Letras con sílabas (TTML). Sin clave.",
-        "BiniLyrics" to "Letras palabra a palabra vía lrc.red. Sin clave.",
-    )
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("Elegir proveedor de letras") },
-        text = {
-            Column {
-                Text("El primero que encuentre la letra gana. Sube o baja cada proveedor con las flechas.")
-                order.forEachIndexed { index, name ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(name)
-                            Text(descriptions[name].orEmpty())
-                        }
-                        IconButton(
-                            onClick = { onMove(name, true) },
-                            enabled = index > 0,
-                        ) {
-                            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Subir $name")
-                        }
-                        IconButton(
-                            onClick = { onMove(name, false) },
-                            enabled = index < order.size - 1,
-                        ) {
-                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Bajar $name")
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onClose) { Text("Cerrar") }
-        },
-    )
 }
 
 @Composable
