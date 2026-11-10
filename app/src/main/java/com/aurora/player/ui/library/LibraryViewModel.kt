@@ -8,6 +8,7 @@ import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.FolderStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.SongStatsRow
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.SearchCategory
@@ -103,6 +104,37 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     private val _duplicateGroups = MutableStateFlow<List<DuplicateGroup>>(emptyList())
     val duplicateGroups: StateFlow<List<DuplicateGroup>> = _duplicateGroups
+
+    // Fase 2 — Listas inteligentes: estadísticas por canción
+    // (reproducciones y última escucha, de Room). Se cargan con la
+    // biblioteca y se releen al abrir la pestaña Listas.
+    private val _stats = MutableStateFlow<Map<Long, SongStatsRow>>(emptyMap())
+
+    /**
+     * Canciones con sus datos reales de uso: favorito, nº de
+     * reproducciones y última escucha. Es lo que alimentan las
+     * listas inteligentes (sin esto, "Más escuchadas" no sabría
+     * nada). Sin estadísticas, la canción cuenta como 0 escuchas.
+     */
+    val enrichedSongs: StateFlow<List<Song>> =
+        combine(_uiState, _favoriteIds, _stats) { state, favs, stats ->
+            val songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
+            songs.map { song ->
+                val row = stats[song.id]
+                song.copy(
+                    isFavorite = song.id in favs,
+                    playCount = row?.plays ?: 0,
+                    lastPlayedAt = row?.lastPlayed,
+                )
+            }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Relee las estadísticas de Room (al abrir la pestaña Listas). */
+    fun refreshStats() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _stats.value = db.libraryDao().statsPerSong().associateBy { it.songId }
+        }
+    }
 
     init {
         // Favoritos en vivo: el flujo de Room avisa de cualquier
@@ -232,6 +264,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             _uiState.value =
                 if (songs.isEmpty()) LibraryUiState.Empty
                 else LibraryUiState.Loaded(songs, albums, artists)
+            _stats.value = withContext(Dispatchers.IO) {
+                db.libraryDao().statsPerSong().associateBy { it.songId }
+            }
         }
     }
 

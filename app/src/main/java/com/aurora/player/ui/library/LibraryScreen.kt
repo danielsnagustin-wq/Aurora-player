@@ -147,7 +147,7 @@ import java.util.Locale
  * guardan en LibraryPrefsStore (visibles + última abierta).
  */
 private val LIBRARY_TABS = listOf(
-    "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online",
+    "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online", "Listas",
 )
 
 @Composable
@@ -180,6 +180,9 @@ fun LibraryScreen(
     val filtered by viewModel.filteredSongs.collectAsState()
     val favorites by viewModel.favoriteSongs.collectAsState()
     val favoriteIds by viewModel.favoriteIds.collectAsState()
+    // Fase 2 — Listas inteligentes: canciones con sus datos reales
+    // de uso (favorito, reproducciones, última escucha).
+    val enrichedSongs by viewModel.enrichedSongs.collectAsState()
     val sortOrder by viewModel.sortOrder.collectAsState()
     val artistFilter by viewModel.artistFilter.collectAsState()
     val albumFilter by viewModel.albumFilter.collectAsState()
@@ -202,7 +205,13 @@ fun LibraryScreen(
     var tab by remember(lastTab) {
         mutableStateOf(lastTab.takeIf { it in visibleTabs } ?: visibleTabs.firstOrNull() ?: 0)
     }
-    LaunchedEffect(tab) { libraryPrefs.saveLastTab(tab) }
+    LaunchedEffect(tab) {
+        libraryPrefs.saveLastTab(tab)
+        // Fase 2 — Listas inteligentes: las estadísticas se releen
+        // al abrir la pestaña, para que los conteos estén al día
+        // después de escuchar.
+        if (tab == 7) viewModel.refreshStats()
+    }
     LaunchedEffect(visibleTabs) {
         if (tab !in visibleTabs) tab = visibleTabs.firstOrNull() ?: 0
     }
@@ -397,6 +406,13 @@ fun LibraryScreen(
                         onExcludeFolder = { viewModel.excludeFolder(it) },
                         coverSizeDp = rowCoverDp,
                         imageCacheEnabled = imageCacheEnabled,
+                    )
+                    // Fase 2 — Listas inteligentes: se calculan solas
+                    // desde los datos reales de uso.
+                    7 -> SmartPlaylistsTab(
+                        songs = enrichedSongs,
+                        onSongClick = onSongClick,
+                        onShuffleAll = onShuffleAll,
                     )
                 }
             }
