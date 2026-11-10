@@ -545,9 +545,11 @@ private fun AuroraApp(
     val spotifyStore = remember { SpotifyStore(context) }
     val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
     val spotifyCookie by spotifyStore.cookieFlow.collectAsState(initial = "")
-    // Sesión de YouTube Music (2026-11-10): solo cookies, en el teléfono.
+    // Sesión de YouTube Music (2026-11-10): cookies del WebView o
+    // token OAuth de la cuenta de Google del teléfono, en el teléfono.
     val ytMusicStore = remember { YouTubeMusicStore(context) }
     val ytMusicCookies by ytMusicStore.cookiesFlow.collectAsState(initial = "")
+    val ytMusicToken by ytMusicStore.tokenFlow.collectAsState(initial = "")
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -1636,6 +1638,7 @@ private fun AuroraApp(
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
                 ytMusicCookies = ytMusicCookies,
+                ytMusicToken = ytMusicToken,
                 streamQuality = playerSettings.streamQuality,
                 modifier = Modifier.padding(padding),
             )
@@ -1655,9 +1658,12 @@ private fun AuroraApp(
                 onOpenEq = { showEq = true },
                 onImportTracks = { tracks -> playOnlineTracks(tracks) },
                 onShareErrorLog = { shareErrorLog() },
-                ytMusicConnected = ytMusicCookies.isNotBlank(),
+                ytMusicConnected = ytMusicCookies.isNotBlank() || ytMusicToken.isNotBlank(),
                 onConnectYouTubeMusic = { cookies ->
                     scope.launch { ytMusicStore.setCookies(cookies) }
+                },
+                onConnectYouTubeMusicToken = { token ->
+                    scope.launch { ytMusicStore.setToken(token) }
                 },
                 onDisconnectYouTubeMusic = {
                     scope.launch { ytMusicStore.clear() }
