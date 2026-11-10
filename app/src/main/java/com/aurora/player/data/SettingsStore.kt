@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.player.model.CardStyle
+import com.aurora.player.model.GestureAction
+import com.aurora.player.model.parseGestureAction
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
@@ -155,7 +157,9 @@ class PlayerSettingsStore(private val context: Context) {
         val STREAM_QUALITY = stringPreferencesKey("stream_quality")
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
+        val DOUBLE_TAP_ACTION = stringPreferencesKey("double_tap_action")
         val SHAKE_TO_NEXT = booleanPreferencesKey("shake_to_next")
+        val SHAKE_ACTION = stringPreferencesKey("shake_action")
         val VOLUME_GESTURE = booleanPreferencesKey("volume_gesture")
     }
 
@@ -184,7 +188,9 @@ class PlayerSettingsStore(private val context: Context) {
             streamQuality = StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] } ?: d.streamQuality,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
+            doubleTapAction = parseGestureAction(prefs[Keys.DOUBLE_TAP_ACTION], GestureAction.FAVORITE).name,
             shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
+            shakeAction = parseGestureAction(prefs[Keys.SHAKE_ACTION], GestureAction.NEXT).name,
             volumeGesture = prefs[Keys.VOLUME_GESTURE] ?: d.volumeGesture,
         )
     }
@@ -209,7 +215,9 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.STREAM_QUALITY] = settings.streamQuality.name
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
+            prefs[Keys.DOUBLE_TAP_ACTION] = settings.doubleTapAction
             prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
+            prefs[Keys.SHAKE_ACTION] = settings.shakeAction
             prefs[Keys.VOLUME_GESTURE] = settings.volumeGesture
         }
     }

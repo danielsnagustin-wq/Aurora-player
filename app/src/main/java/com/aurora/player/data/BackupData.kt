@@ -1,6 +1,8 @@
 package com.aurora.player.data
 
 import com.aurora.player.model.CardStyle
+import com.aurora.player.model.GestureAction
+import com.aurora.player.model.parseGestureAction
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
@@ -131,7 +133,9 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "streamQuality" to JsonValue.Str(p.streamQuality.name),
         "swipeToChangeTrack" to JsonValue.Bool(p.swipeToChangeTrack),
         "doubleTapToFavorite" to JsonValue.Bool(p.doubleTapToFavorite),
+        "doubleTapAction" to JsonValue.Str(p.doubleTapAction),
         "shakeToNext" to JsonValue.Bool(p.shakeToNext),
+        "shakeAction" to JsonValue.Str(p.shakeAction),
         "volumeGesture" to JsonValue.Bool(p.volumeGesture),
     ),
 )
@@ -248,7 +252,9 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         streamQuality = enumFrom(v.obj("streamQuality").str(), StreamQuality.entries.toTypedArray(), d.streamQuality),
         swipeToChangeTrack = v.obj("swipeToChangeTrack").bool() ?: d.swipeToChangeTrack,
         doubleTapToFavorite = v.obj("doubleTapToFavorite").bool() ?: d.doubleTapToFavorite,
+        doubleTapAction = parseGestureAction(v.obj("doubleTapAction").str(), GestureAction.FAVORITE).name,
         shakeToNext = v.obj("shakeToNext").bool() ?: d.shakeToNext,
+        shakeAction = parseGestureAction(v.obj("shakeAction").str(), GestureAction.NEXT).name,
         volumeGesture = v.obj("volumeGesture").bool() ?: d.volumeGesture,
     )
 }
