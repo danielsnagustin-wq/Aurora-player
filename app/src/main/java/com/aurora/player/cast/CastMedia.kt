@@ -29,4 +29,19 @@ object CastMedia {
             251L -> "audio/webm"
             else -> "audio/mp4"
         }
+
+    /**
+     * Tipo de contenido de una URL de stream de YouTube Music, sin
+     * resolver nada más: las URLs de googlevideo llevan el itag como
+     * parámetro (`itag=251` / `itag=140`); si falta, se mira el
+     * `mime=` (audio%2Fwebm / audio%2Fmp4); si no hay ninguno, MP4.
+     */
+    fun contentTypeForStreamUrl(streamUrl: String): String {
+        val itag = streamUrl.substringAfter("itag=", "")
+            .substringBefore("&").toLongOrNull()
+        if (itag != null) return contentTypeForItag(itag)
+        val mime = streamUrl.substringAfter("mime=", "")
+            .substringBefore("&")
+        return if (mime.contains("webm", ignoreCase = true)) "audio/webm" else "audio/mp4"
+    }
 }
