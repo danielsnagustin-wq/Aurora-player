@@ -22,6 +22,9 @@ import kotlin.math.pow
  *
  * - Modo "track": ganancia de la pista; "album": la del álbum;
  *   "smart": la de la pista si existe, si no la del álbum.
+ * - Modo "lufs" (Fase 2): sonoridad medida del archivo (BS.1770)
+ *   hacia el objetivo -14 LUFS: ganancia = -14 - medido. Sin
+ *   medición todavía, no cambia el volumen.
  * - Preamp del usuario (-12..+12 dB) se suma a la ganancia de la
  *   etiqueta. La suma se recorta a [-30, +12] dB para no distorsionar.
  * - PCM 16/24/32 bits y float. Otros formatos pasan sin tocarse
@@ -41,9 +44,14 @@ fun parseReplayGainDb(text: String): Float? {
     return match.value.toFloatOrNull()
 }
 
+/** Objetivo de sonoridad del modo LUFS (estándar de streaming). */
+const val LUFS_TARGET_DB = -14f
+
 /**
  * Ganancia final en dB según el modo y las etiquetas leídas.
  * "off" o sin etiqueta aplicable -> 0 (sin cambio de volumen).
+ * Modo "lufs": objetivo -14 LUFS menos lo medido; sin medición,
+ * 0 hasta que llegue (nunca se inventa).
  * Función pura, testeable.
  */
 fun selectReplayGainDb(
@@ -51,11 +59,13 @@ fun selectReplayGainDb(
     trackDb: Float?,
     albumDb: Float?,
     preAmpDb: Float,
+    lufsDb: Float? = null,
 ): Float {
     val base = when (mode) {
         "track" -> trackDb
         "album" -> albumDb
         "smart" -> trackDb ?: albumDb
+        "lufs" -> lufsDb?.let { LUFS_TARGET_DB - it }
         else -> null
     } ?: return 0f
     return clampGainDb(base + preAmpDb)
