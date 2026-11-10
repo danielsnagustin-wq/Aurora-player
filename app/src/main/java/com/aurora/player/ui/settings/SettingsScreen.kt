@@ -779,127 +779,17 @@ fun SettingsScreen(
         }
         }
         if (section == SettingsSection.PLAYBACK) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Pausar al quitar los auriculares", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.autoPauseOnDisconnect,
-                onCheckedChange = { savePlayer(player.copy(autoPauseOnDisconnect = it)) },
+            SettingsPlaybackSection(
+                player = player,
+                onSavePlayer = { savePlayer(it) },
             )
-        }
-        // Fase 1b: reproducir al conectar auriculares/BT (OFF por
-        // defecto). Reanuda si hay una canción cargada en pausa; sin
-        // canción no hace nada y si la app se cerró del todo, tampoco.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Reproducir al conectar auriculares o Bluetooth", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.autoplayOnConnect,
-                onCheckedChange = { savePlayer(player.copy(autoplayOnConnect = it)) },
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Reanudar la cola al abrir la app", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.resumeWhereLeft,
-                onCheckedChange = { savePlayer(player.copy(resumeWhereLeft = it)) },
-            )
-        }
-        // RONDA 6: saltar silencio (idea de Metrolist) y radio local.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Saltar silencios largos", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.skipSilence,
-                onCheckedChange = { savePlayer(player.copy(skipSilence = it)) },
-            )
-        }
-        SettingsGroupDescription(
-            "Salta los silencios de más de 2 segundos: al final de la pista pasa a la siguiente; en mitad, avanza 3 s.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Radio local al acabar la cola", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.localRadio,
-                onCheckedChange = { savePlayer(player.copy(localRadio = it)) },
-            )
-        }
-        SettingsGroupDescription(
-            "Cuando se acaba la cola y la repetición está apagada, sigue con canciones parecidas de tu biblioteca.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
         }
 
         if (section == SettingsSection.CONTROL) {
-        // AUDITORÍA (2026-11-09): los gestos del reproductor existían
-        // pero no se podían apagar; sus ajustes vivían muertos en el
-        // modelo. Ahora cada gesto tiene su interruptor real.
-        SettingsGroupTitle("Gestos")
-        SettingsGroupDescription("Lo que hace la portada del reproductor al tocarla.")
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Deslizar la portada cambia de pista", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.swipeToChangeTrack,
-                onCheckedChange = { savePlayer(player.copy(swipeToChangeTrack = it)) },
+            SettingsControlSection(
+                player = player,
+                onSavePlayer = { savePlayer(it) },
             )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Doble toque en la portada marca favorito", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.doubleTapToFavorite,
-                onCheckedChange = { savePlayer(player.copy(doubleTapToFavorite = it)) },
-            )
-        }
-        // Fase 1b: agitar para pasar a la siguiente (OFF por defecto)
-        // y deslizar vertical sobre la portada para el volumen.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Agitar el teléfono pasa a la siguiente", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.shakeToNext,
-                onCheckedChange = { savePlayer(player.copy(shakeToNext = it)) },
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Deslizar vertical sobre la portada cambia el volumen", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.volumeGesture,
-                onCheckedChange = { savePlayer(player.copy(volumeGesture = it)) },
-            )
-        }
         }
 
         if (section == SettingsSection.LIBRARY) {
