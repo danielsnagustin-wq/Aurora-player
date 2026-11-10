@@ -48,6 +48,21 @@ fun parseSpotifyAccessToken(json: String): String? {
 }
 
 /** GET /v1/me/playlists -> tus listas. */
+/**
+ * Enlace publico de una lista de Spotify -> su id. Acepta la URL
+ * (con o sin ?si=...) y la URI spotify:playlist:<id>. Cualquier
+ * otra cosa devuelve null (nunca se inventa un id).
+ */
+fun parseSpotifyPlaylistId(text: String): String? {
+    val t = text.trim()
+    if (t.isEmpty()) return null
+    if (t.startsWith("spotify:playlist:")) {
+        return t.removePrefix("spotify:playlist:").trim().takeIf { it.isNotEmpty() }
+    }
+    val m = Regex("open\\.spotify\\.com/playlist/([A-Za-z0-9]+)").find(t)
+    return m?.groupValues?.getOrNull(1)
+}
+
 fun parseSpotifyPlaylists(json: String): List<SpotifyPlaylist> {
     val root = try {
         JsonParser.parse(json)
