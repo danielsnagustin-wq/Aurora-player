@@ -18,6 +18,13 @@ import com.aurora.player.util.ErrorLog
  * - Sin escanear a mano con File.listFiles como fuente principal.
  * - Sin permiso de internet: todo local.
  */
+/** URI de la portada de un álbum en MediaStore (pura, sin repositorio). */
+fun albumArtUri(albumId: Long): Uri =
+    ContentUris.withAppendedId(
+        Uri.parse("content://media/external/audio/albumart"),
+        albumId,
+    )
+
 class MusicRepository(private val context: Context) {
 
     /**
@@ -148,11 +155,10 @@ class MusicRepository(private val context: Context) {
         }.sortedBy { it.name.lowercase() }
 
     /** Portada del álbum vía MediaStore; null = sin portada (se muestra inicial, nunca una ajena). */
-    fun albumArtUri(albumId: Long): Uri =
-        ContentUris.withAppendedId(
-            Uri.parse("content://media/external/audio/albumart"),
-            albumId,
-        )
+    // La URI es pura (solo depende del id): existe también como
+    // función de nivel superior para no instanciar el repositorio
+    // por cada fila de la biblioteca (2026-11-10, rendimiento).
+    fun albumArtUri(albumId: Long): Uri = albumArtUri(albumId)
 }
 
 /**
