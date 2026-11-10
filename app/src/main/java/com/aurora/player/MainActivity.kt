@@ -100,7 +100,9 @@ import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
+import com.aurora.player.model.GestureAction
 import com.aurora.player.model.MAX_NAMED_QUEUES
+import com.aurora.player.model.parseGestureAction
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.Song
 import com.aurora.player.model.ThemeSettings
@@ -865,13 +867,23 @@ private fun AuroraApp(
     // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
     // Solo salta si está sonando. El sensor se registra solo
     // mientras la app está en primer plano (DisposableEffect).
-    DisposableEffect(playerSettings.shakeToNext, controller) {
+    // Fase 2 — gestos configurables: agitar hace lo que el usuario
+    // eligió (siguiente, anterior, pausar/reanudar o favorito).
+    DisposableEffect(playerSettings.shakeToNext, playerSettings.shakeAction, controller) {
         val c = controller
         val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
         val accelerometer = sensorManager?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         var listener: SensorEventListener? = null
         if (playerSettings.shakeToNext && c != null && sensorManager != null && accelerometer != null) {
-            val detector = ShakeDetector { if (c.isPlaying) c.seekToNext() }
+            val shakeAction = parseGestureAction(playerSettings.shakeAction, GestureAction.NEXT)
+            val detector = ShakeDetector {
+                when (shakeAction) {
+                    GestureAction.NEXT -> if (c.isPlaying) c.seekToNext()
+                    GestureAction.PREVIOUS -> if (c.isPlaying) c.seekToPrevious()
+                    GestureAction.PLAY_PAUSE -> if (c.isPlaying) c.pause() else c.play()
+                    GestureAction.FAVORITE -> toggleFavorite()
+                }
+            }
             listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
                     detector.onSensorChanged(
@@ -1372,6 +1384,7 @@ private fun AuroraApp(
             },
             swipeEnabled = playerSettings.swipeToChangeTrack,
             doubleTapEnabled = playerSettings.doubleTapToFavorite,
+            doubleTapAction = parseGestureAction(playerSettings.doubleTapAction, GestureAction.FAVORITE),
             volumeGestureEnabled = playerSettings.volumeGesture,
             onSaveLyrics = { edited ->
                 // Fase 1b: editor de letras. Guarda el .lrc junto a
