@@ -40,10 +40,14 @@ fun SettingsPlaybackSection(
         onCheckedChange = { onSavePlayer(player.copy(skipSilence = it)) },
         description = "Salta los silencios de más de 2 segundos: al final de la pista pasa a la siguiente; en mitad, avanza 3 s.",
     )
+    // Fase 2 — Auto-DJ: la "Radio local" de la RONDA 6, con su
+    // nombre de siempre en las apps de referencia. El ajuste es el
+    // mismo (localRadio): sigue sonando al acabar la cola, ahora
+    // eligiendo con el Auto-DJ (parecidas, sin repetir).
     AuroraSwitchRow(
-        title = "Radio local al acabar la cola",
+        title = "Auto-DJ",
         checked = player.localRadio,
         onCheckedChange = { onSavePlayer(player.copy(localRadio = it)) },
-        description = "Cuando se acaba la cola y la repetición está apagada, sigue con canciones parecidas de tu biblioteca.",
+        description = "Cuando se acaba la cola y la repetición está apagada, sigue sonando con canciones parecidas de tu biblioteca: mismo artista, género o álbum; nunca repite.",
     )
 }
