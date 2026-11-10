@@ -19,7 +19,8 @@ import com.aurora.player.model.ThemeSettings
  * - Perfil EQUILIBRADO: si el sistema está en ahorro de energía o en
  *   temperatura severa/crítica, aplica valores de ahorro.
  * - Perfil ALTO RENDIMIENTO: nunca se baja automáticamente. El usuario
- *   lo eligió sabiendo que gasta más.
+ *   lo eligió sabiendo que gasta más. Sus valores guardados son los
+ *   máximos visuales (degradado, esquinas 28, color dinámico).
  * - Perfil PERSONALIZADO: mandan los valores manuales del usuario.
  * - App no visible: las animaciones se suspenden en todos los
  *   perfiles (no hay nada que animar fuera de pantalla).
