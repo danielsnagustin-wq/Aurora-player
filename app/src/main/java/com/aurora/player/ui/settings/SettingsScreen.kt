@@ -121,6 +121,10 @@ fun SettingsScreen(
     onOpenEq: () -> Unit = {},
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     onShareErrorLog: () -> Unit = {},
+    ytMusicConnected: Boolean = false,
+    onConnectYouTubeMusic: (String) -> Unit = {},
+    onDisconnectYouTubeMusic: () -> Unit = {},
+    ytMusicCookies: String? = null,
 ) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
@@ -288,6 +292,10 @@ fun SettingsScreen(
                 onConnectSpotify = connectSpotify,
                 onDisconnectSpotify = disconnectSpotify,
                 onImportTracks = onImportTracks,
+                ytMusicConnected = ytMusicConnected,
+                onConnectYouTubeMusic = onConnectYouTubeMusic,
+                onDisconnectYouTubeMusic = onDisconnectYouTubeMusic,
+                ytMusicCookies = ytMusicCookies,
             )
         }
 

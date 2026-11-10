@@ -4,9 +4,12 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
 import android.webkit.CookieManager
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -16,10 +19,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -53,6 +58,8 @@ fun SpotifyLoginDialog(
 ) {
     var triedCookie by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var loadFailed by remember { mutableStateOf(false) }
+    var webView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var manualCookie by remember { mutableStateOf("") }
@@ -88,6 +95,10 @@ fun SpotifyLoginDialog(
     ) {
         Column(
             modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.88f)
+                .background(
+                    MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(16.dp),
+                )
                 .padding(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,6 +119,7 @@ fun SpotifyLoginDialog(
                 AndroidView(
                     factory = { context ->
                         WebView(context).apply {
+                            webView = this
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             CookieManager.getInstance().setAcceptCookie(true)
@@ -144,8 +156,37 @@ fun SpotifyLoginDialog(
                                     return true
                                 }
 
+                                override fun onReceivedError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    error: WebResourceError?,
+                                ) {
+                                    // Sin esto, una carga fallida se
+                                    // quedaba en una caja negra muda.
+                                    if (request?.isForMainFrame == true) {
+                                        loading = false
+                                        loadFailed = true
+                                        hint = "No se pudo cargar Spotify. Revisa la conexión y pulsa Reintentar."
+                                    }
+                                }
+
+                                override fun onReceivedHttpError(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                    errorResponse: WebResourceResponse?,
+                                ) {
+                                    if (request?.isForMainFrame == true &&
+                                        (errorResponse?.statusCode ?: 200) !in 200..299
+                                    ) {
+                                        loading = false
+                                        loadFailed = true
+                                        hint = "Spotify devolvió un error (${errorResponse?.statusCode}). Pulsa Reintentar."
+                                    }
+                                }
+
                                 override fun onPageFinished(view: WebView?, url: String?) {
                                     loading = false
+                                    loadFailed = false
                                     // Al terminar de cargar cada página se
                                     // mira si la sesión ya está puesta.
                                     val cookie = readCookie()
@@ -161,9 +202,36 @@ fun SpotifyLoginDialog(
                     modifier = Modifier.fillMaxSize(),
                 )
                 if (loading) {
-                    CircularProgressIndicator(
+                    Column(
                         modifier = Modifier.align(Alignment.Center),
-                    )
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        CircularProgressIndicator()
+                        Text(
+                            "Cargando Spotify…",
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+                }
+                if (loadFailed) {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center)
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text("No se pudo cargar la página de Spotify.")
+                        Button(
+                            onClick = {
+                                loadFailed = false
+                                loading = true
+                                webView?.reload()
+                            },
+                            colors = auroraButtonColors(),
+                            modifier = Modifier.padding(top = 12.dp),
+                        ) {
+                            Text("Reintentar")
+                        }
+                    }
                 }
             }
             Spacer(Modifier.height(12.dp))

@@ -42,9 +42,10 @@ import com.aurora.player.util.rememberRemoteBitmap
 /**
  * Cuenta e integraciones (2026-11-10, como BitChord): la cuenta de
  * YouTube Music arriba y Spotify abajo, con tus listas y sus
- * portadas. YouTube Music aún no tiene inicio de sesión (llega en
- * Fase 2, con tu cuenta de Google); Spotify se conecta con la
- * cookie sp_dc, como BitChord, y la reproducción es por YouTube.
+ * portadas. YouTube Music se conecta con tu cuenta de Google en un
+ * WebView (las cookies solo quedan en tu teléfono); Spotify se
+ * conecta con la cookie sp_dc, como BitChord, y la reproducción es
+ * por YouTube.
  */
 @Composable
 fun IntegrationsScreen(
@@ -52,6 +53,10 @@ fun IntegrationsScreen(
     onConnectSpotify: (String) -> Unit,
     onDisconnectSpotify: () -> Unit,
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
+    ytMusicConnected: Boolean = false,
+    onConnectYouTubeMusic: (String) -> Unit = {},
+    onDisconnectYouTubeMusic: () -> Unit = {},
+    ytMusicCookies: String? = null,
 ) {
     val context = LocalContext.current
     val spotifyStore = remember { SpotifyStore(context) }
@@ -59,6 +64,7 @@ fun IntegrationsScreen(
     val spotify = remember { SpotifyClient() }
     var profile by remember { mutableStateOf<SpotifyProfile?>(null) }
     var showSpotifyLogin by remember { mutableStateOf(false) }
+    var showYouTubeLogin by remember { mutableStateOf(false) }
 
     // Nombre e imagen de la cuenta cuando hay sesión.
     LaunchedEffect(spotifyConnected, cookie) {
@@ -76,13 +82,19 @@ fun IntegrationsScreen(
             onDismiss = { showSpotifyLogin = false },
         )
     }
+    if (showYouTubeLogin) {
+        YouTubeMusicLoginDialog(
+            onConnect = { onConnectYouTubeMusic(it) },
+            onDismiss = { showYouTubeLogin = false },
+        )
+    }
 
     AuroraSectionHeader(
         title = "Cuenta e integraciones",
         description = "Tus cuentas conectadas. Todo queda solo en tu teléfono.",
     )
-    // YouTube Music arriba (BitChord): el inicio de sesión llega
-    // en Fase 2; de momento se muestra tal cual, sin botón falso.
+    // YouTube Music arriba (BitChord): inicio de sesión real con
+    // tu cuenta de Google; la búsqueda pasa a ser la de tu cuenta.
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -98,10 +110,16 @@ fun IntegrationsScreen(
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
             Text("YouTube Music", style = MaterialTheme.typography.titleMedium)
             Text(
-                "Iniciar sesión próximamente",
+                if (ytMusicConnected) "Conectado"
+                else "Inicia sesión para buscar con tu cuenta",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        if (ytMusicConnected) {
+            TextButton(onClick = onDisconnectYouTubeMusic) { Text("Desconectar") }
+        } else {
+            Button(onClick = { showYouTubeLogin = true }) { Text("Conectar") }
         }
     }
     // Spotify abajo: tu cuenta con su foto, y tus listas con portadas.
@@ -146,6 +164,7 @@ fun IntegrationsScreen(
         SpotifyPlaylistsSection(
             spotifyConnected = true,
             onImportTracks = onImportTracks,
+            ytMusicCookies = ytMusicCookies,
         )
     }
 }
