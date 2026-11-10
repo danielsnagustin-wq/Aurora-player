@@ -222,7 +222,7 @@ fun SettingsInterfaceSection(
     }
     AuroraSectionHeader(
         title = "Estilo del widget",
-        description = "Cómo se ve el widget en la pantalla de inicio. "Con portada" muestra la portada del álbum que suena.",
+        description = "Cómo se ve el widget en la pantalla de inicio. «Con portada» muestra la portada del álbum que suena.",
     )
     AuroraOptionChips(
         options = WidgetStyle.entries.map { it.name to it.label },
