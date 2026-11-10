@@ -196,7 +196,12 @@ fun SpotifyLoginDialog(
                                     }
                                 }
                             }
-                            loadUrl("https://open.spotify.com")
+                            // Entrar directo al formulario de login:
+                            // open.spotify.com en móvil solo enseña
+                            // "Abrir aplicación" + la oferta Premium
+                            // tapando el formulario (2026-11-10). La
+                            // cookie sp_dc se pone igual en .spotify.com.
+                            loadUrl("https://accounts.spotify.com/login")
                         }
                     },
                     modifier = Modifier.fillMaxSize(),

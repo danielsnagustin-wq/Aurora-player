@@ -36,6 +36,9 @@ import kotlin.math.sqrt
 import kotlin.random.Random
 
 /**
+ * RETIRADA (2026-11-10 13:24, orden del usuario): la animación de
+ * inicio con brillo/polvo se quitó; la app entra directo a la
+ * biblioteca. Este archivo ya no se usa desde ningún sitio.
  * Aurora Player — inicio propio con animación (3 s, corta).
  * SIN NOMBRE: solo la figura, EN POLVO SUAVE (sin bloques).
  * ANIMACIÓN DE MOVIMIENTO de verdad, no balanceo en el sitio:

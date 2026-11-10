@@ -117,6 +117,15 @@ fun YouTubeMusicLoginDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             CookieManager.getInstance().setAcceptCookie(true)
+                            // Agente de Chrome de escritorio (2026-11-10):
+                            // con el UA de WebView móvil Google rechaza
+                            // el inicio ("navegador no seguro") y la web
+                            // empuja su app. Con este, el login de Google
+                            // funciona como en un navegador normal.
+                            settings.userAgentString =
+                                "Mozilla/5.0 (X11; Linux x86_64) " +
+                                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                                "Chrome/126.0.0.0 Safari/537.36"
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(
                                     view: WebView?,

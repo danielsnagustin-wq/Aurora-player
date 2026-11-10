@@ -125,7 +125,6 @@ import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.setup.SetupWizardScreen
-import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
 import com.aurora.player.ui.theme.LocalCardStyle
@@ -274,13 +273,11 @@ class MainActivity : ComponentActivity() {
                 // biblioteca. Solo se marca hecho con "Empezar"/"Saltar".
                 val introStore = remember { IntroStore(applicationContext) }
                 val setupDone by introStore.setupDoneFlow.collectAsState(initial = null)
-                // Animación de inicio SIEMPRE al entrar (2026-11-10,
-                // orden del usuario): sale cada vez que se abre la app,
-                // no solo la primera vez. initial=null en setupDone:
-                // mientras DataStore no responde no se dibuja nada
-                // (negro), para que nunca parpadee la pantalla
-                // equivocada al entrar.
-                var showStart by remember { mutableStateOf(true) }
+                // Sin animación de inicio (2026-11-10 13:24, orden del
+                // usuario: quitar el brillo/polvo del inicio, entrar
+                // directo). initial=null en setupDone: mientras
+                // DataStore no responde no se dibuja nada (negro),
+                // para que nunca parpadee la pantalla equivocada.
                 val wizardScope = rememberCoroutineScope()
                 // RENDIMIENTO (spec 004): valores visuales EFECTIVOS.
                 // La bajada automática (ahorro de energía del sistema,
@@ -349,10 +346,6 @@ class MainActivity : ComponentActivity() {
                     if (setupDone == null) {
                         // Cargando los ajustes del disco: negro, sin parpadeo.
                         Box(Modifier.fillMaxSize().background(PureBlack))
-                    } else if (showStart) {
-                        StartScreen(
-                            onFinished = { showStart = false },
-                        )
                     } else if (setupDone == false) {
                         SetupWizardScreen(
                             onFinish = { wizardScope.launch { introStore.markSetupDone() } },
