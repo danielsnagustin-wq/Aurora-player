@@ -78,4 +78,7 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
+    // Mockito 5 (mock maker en línea por defecto): para mockear
+    // clases de Android (Uri) en los tests JVM, donde son stubs.
+    testImplementation("org.mockito:mockito-core:5.11.0")
 }
