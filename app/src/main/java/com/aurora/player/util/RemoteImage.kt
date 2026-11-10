@@ -32,7 +32,16 @@ object RemoteImageCache {
     }
 }
 
-/** Descarga un bitmap de una URL (10 s de límite); null si falla. */
+private const val MAX_PX = 512
+private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024
+
+/** Descarga un bitmap de una URL (10 s de límite); null si falla.
+ * Muestreado a 512 px como máximo y con tope de 4 MB descargados:
+ * un decode sin muestrear de una imagen remota grande (una de
+ * 3000x3000 son 36 MB) puede tumbar la app por memoria, igual que
+ * la portada de la notificación (2026-11-10, caza del crash).
+ * El catch no caza OutOfMemoryError, así que el tope va ANTES del
+ * decode, no después. */
 suspend fun loadRemoteBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
     try {
         val connection = URL(url).openConnection() as HttpURLConnection
@@ -40,7 +49,27 @@ suspend fun loadRemoteBitmap(url: String): Bitmap? = withContext(Dispatchers.IO)
         connection.readTimeout = 10_000
         connection.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
         if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-        connection.inputStream.use { BitmapFactory.decodeStream(it) }
+        val bytes = connection.inputStream.use { stream ->
+            val out = java.io.ByteArrayOutputStream()
+            val buf = ByteArray(8192)
+            var total = 0
+            while (true) {
+                val n = stream.read(buf)
+                if (n <= 0) break
+                total += n
+                if (total > MAX_DOWNLOAD_BYTES) return@withContext null
+                out.write(buf, 0, n)
+            }
+            out.toByteArray()
+        }
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        if (longest <= 0) return@withContext null
+        var sample = 1
+        while (longest / sample > MAX_PX) sample *= 2
+        val options = BitmapFactory.Options().apply { inSampleSize = sample }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     } catch (_: Exception) {
         null
     }
