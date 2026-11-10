@@ -73,6 +73,8 @@ import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.moveProvider
 import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.SpotifyStore
+import com.aurora.player.online.SpotifyClient
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.data.validateBackup
 import com.aurora.player.model.CardStyle
@@ -160,6 +162,12 @@ fun SettingsScreen(
         initial = DEFAULT_PROVIDER_ORDER,
     )
     var showProviders by remember { mutableStateOf(false) }
+
+    // Fase 2 — Spotify como BitChord (cookie sp_dc, solo en el teléfono).
+    val spotifyStore = remember { SpotifyStore(context) }
+    val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
+    var spotifyCookieText by remember { mutableStateOf("") }
+    var spotifyStatus by remember { mutableStateOf<String?>(null) }
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
@@ -1031,6 +1039,63 @@ fun SettingsScreen(
             "Orden actual: ${providerOrder.joinToString(" → ")}",
             modifier = Modifier.padding(top = 4.dp),
         )
+        // Fase 2 — Spotify como BitChord: conexión por cookie sp_dc
+        // (sin app registrada ni client_id). Con ella se cargan TUS
+        // listas; la música suena por YouTube Music, como BitChord.
+        Text("Spotify", modifier = Modifier.padding(top = 16.dp))
+        if (spotifyConnected) {
+            Text(
+                "Conectado con tu cookie sp_dc. Tus listas se cargan de Spotify y suenan por YouTube Music.",
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        spotifyStore.clear()
+                        spotifyStatus = null
+                        spotifyCookieText = ""
+                    }
+                },
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text("Desconectar Spotify")
+            }
+        } else {
+            Text(
+                "1. Entra a open.spotify.com en el navegador e inicia sesión.\n2. Abre las herramientas de desarrollador, Aplicación y Cookies.\n3. Copia el valor de la cookie sp_dc.\n4. Pégala aquí.",
+                modifier = Modifier.padding(top = 4.dp),
+            )
+            OutlinedTextField(
+                value = spotifyCookieText,
+                onValueChange = { spotifyCookieText = it },
+                label = { Text("Cookie sp_dc") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
+            Button(
+                onClick = {
+                    scope.launch {
+                        spotifyStatus = "Comprobando la cookie…"
+                        val token = SpotifyClient().fetchAccessToken(spotifyCookieText.trim())
+                        if (token != null) {
+                            spotifyStore.setCookie(spotifyCookieText.trim())
+                            spotifyCookieText = ""
+                            spotifyStatus = "Conectado."
+                        } else {
+                            spotifyStatus = "Esa cookie no funcionó. Revisa que la copiaste entera de open.spotify.com."
+                        }
+                    }
+                },
+                colors = auroraButtonColors(),
+                modifier = Modifier.padding(top = 8.dp),
+                enabled = spotifyCookieText.isNotBlank(),
+            ) {
+                Text("Conectar Spotify")
+            }
+        }
+        spotifyStatus?.let {
+            Text(it, modifier = Modifier.padding(top = 4.dp))
+        }
         }
 
         if (section == SettingsSection.NOTIFICATIONS) {
