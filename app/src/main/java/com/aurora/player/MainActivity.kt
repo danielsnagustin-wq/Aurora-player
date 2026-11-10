@@ -109,6 +109,10 @@ import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService
 import com.aurora.player.playback.PlayerControls
 import com.aurora.player.online.OnlineTrack
+import com.aurora.player.online.ResolvedVideo
+import com.aurora.player.online.fetchCaptions
+import com.aurora.player.online.selectCaptionTrack
+import com.aurora.player.ui.online.VideoPlayerDialog
 import com.aurora.player.playback.songToMediaItem
 import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.ArtworkImage
@@ -510,6 +514,10 @@ private fun AuroraApp(
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
     var showPlayer by remember { mutableStateOf(false) }
     var showEq by remember { mutableStateOf(false) }
+    // Fase 2 app — YouTube con vídeo: el vídeo que se está viendo
+    // (null = no hay vídeo en pantalla) y sus subtítulos.
+    var videoTrack by remember { mutableStateOf<OnlineTrack?>(null) }
+    var videoCaptions by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
     var controller by remember { mutableStateOf<MediaController?>(null) }
     var isPlaying by remember { mutableStateOf(false) }
@@ -1301,6 +1309,19 @@ private fun AuroraApp(
             )
             .build()
 
+    // Fase 2 app — YouTube con vídeo: baja los subtítulos (es a
+    // mano, si los hay), abre el diálogo y suena el vídeo por el
+    // reproductor de siempre. Sin subtítulos, el vídeo se ve igual.
+    fun playVideo(track: OnlineTrack, video: ResolvedVideo) {
+        scope.launch {
+            val captions = selectCaptionTrack(video.captions)
+                ?.let { fetchCaptions(it.baseUrl) } ?: emptyList()
+            videoTrack = track
+            videoCaptions = captions
+            playOnlineTrack(track, video.url)
+        }
+    }
+
     fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
         val c = controller ?: return
         c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
@@ -1316,6 +1337,17 @@ private fun AuroraApp(
         c.setMediaItems(tracks.map { (track, url) -> onlineMediaItem(track, url) })
         c.prepare()
         c.play()
+    }
+
+    // Fase 2 app — YouTube con vídeo: el diálogo va por encima de
+    // todo (también del reproductor); al cerrarlo el audio sigue.
+    videoTrack?.let { track ->
+        VideoPlayerDialog(
+            track = track,
+            captions = videoCaptions,
+            controller = controller,
+            onDismiss = { videoTrack = null },
+        )
     }
 
     if (showEq) {
@@ -1541,6 +1573,7 @@ private fun AuroraApp(
                 },
                 onlineMode = playerSettings.onlineMode,
                 onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
+                onPlayVideo = { track, video -> playVideo(track, video) },
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
                 ytMusicCookies = ytMusicCookies,
