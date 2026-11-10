@@ -38,6 +38,9 @@ fun loadEmbeddedCoverSync(context: Context, songUri: Uri, maxPx: Int = 512): Bit
         while (longest / sample > maxPx) sample *= 2
         val options = BitmapFactory.Options().apply { inSampleSize = sample }
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    } catch (_: OutOfMemoryError) {
+        // Sin memoria para la portada: null, la UI pone la inicial.
+        null
     } catch (_: Exception) {
         null
     } finally {
