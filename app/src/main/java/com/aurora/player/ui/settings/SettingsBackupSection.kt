@@ -1,7 +1,9 @@
 package com.aurora.player.ui.settings
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.aurora.player.util.backupFolderDisplayName
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -50,9 +52,33 @@ fun SettingsBackupSection() {
     var restoreReport by remember { mutableStateOf<RestoreReport?>(null) }
     var autoBackup by remember { mutableStateOf(false) }
     var lastBackup by remember { mutableStateOf("") }
+    // Fase 2 — respaldo a carpeta: la carpeta elegida (o null).
+    var backupFolder by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
         autoBackup = BackupManager.isAutoBackupEnabled(context)
         lastBackup = BackupManager.lastBackupName(context)
+        backupFolder = BackupManager.getBackupFolderUri(context)?.toString()
+    }
+    // Elegir carpeta (SAF): se pide permiso persistente para poder
+    // escribir en ella también en los respaldos automáticos.
+    val pickFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                )
+            } catch (_: Exception) {
+                backupMessage = "No se pudo guardar el permiso de esa carpeta."
+                return@launch
+            }
+            BackupManager.setBackupFolderUri(context, uri)
+            backupFolder = uri.toString()
+            backupMessage = "Respaldo a carpeta activado."
+        }
     }
     val pickBackup = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
@@ -72,10 +98,37 @@ fun SettingsBackupSection() {
     }
     AuroraSectionHeader(
         title = "Respaldo",
-        description = "Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo en Descargas. Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.",
+        description = "Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo (en Descargas o en la carpeta que elijas). Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.",
     )
     if (lastBackup.isNotEmpty()) {
         SettingsGroupDescription("Último respaldo: $lastBackup", modifier = Modifier.padding(top = 8.dp))
+    }
+    // Fase 2 — respaldo a carpeta: dónde se guardan los respaldos.
+    val folderName = backupFolder?.let { backupFolderDisplayName(it) }.orEmpty()
+    SettingsGroupDescription(
+        if (backupFolder != null && folderName.isNotEmpty()) "Carpeta de respaldo: $folderName"
+        else if (backupFolder != null) "Carpeta de respaldo: elegida"
+        else "Carpeta de respaldo: Descargas/AuroraPlayer",
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(onClick = { pickFolder.launch(null) }) {
+            Text("Elegir carpeta…")
+        }
+        if (backupFolder != null) {
+            OutlinedButton(onClick = {
+                scope.launch {
+                    BackupManager.setBackupFolderUri(context, null)
+                    backupFolder = null
+                    backupMessage = "Respaldo a carpeta desactivado: vuelve a Descargas."
+                }
+            }) {
+                Text("Quitar carpeta")
+            }
+        }
     }
     Row(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -85,7 +138,9 @@ fun SettingsBackupSection() {
             onClick = {
                 scope.launch {
                     val data = BackupManager.collectBackup(context)
-                    val result = BackupManager.exportBackup(context, data)
+                    // Fase 2 — respaldo a carpeta: si hay carpeta
+                    // elegida, el respaldo va allí; si no, a Descargas.
+                    val result = BackupManager.exportBackupSmart(context, data)
                     if (result.isSuccess) {
                         lastBackup = result.getOrThrow().fileName
                         backupMessage = "Respaldo guardado en ${result.getOrThrow().location}."
