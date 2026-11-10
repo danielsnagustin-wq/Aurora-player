@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,6 +43,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aurora.player.ui.theme.auroraButtonColors
+import kotlinx.coroutines.delay
 
 /**
  * Inicio de sesión con Spotify dentro de la app (como BitChord,
@@ -63,6 +65,17 @@ fun SpotifyLoginDialog(
     var hint by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var manualCookie by remember { mutableStateOf("") }
+
+    // Si la página no termina de cargar (redirecciones de Spotify
+    // que nunca disparan onPageFinished), el spinner tapaba el
+    // formulario para siempre. A los 12 s se quita igual: la página
+    // que haya cargado queda usable y el usuario puede reintentar.
+    LaunchedEffect(loading) {
+        if (loading) {
+            delay(12_000)
+            loading = false
+        }
+    }
 
     fun readCookie(): String? {
         val cookies = CookieManager.getInstance()
@@ -123,6 +136,14 @@ fun SpotifyLoginDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             CookieManager.getInstance().setAcceptCookie(true)
+                            // Agente de Chrome de escritorio (2026-11-10):
+                            // igual que YouTube Music, Spotify sirve otro
+                            // flujo (o rechaza) al WebView móvil y el
+                            // formulario no aparece nunca.
+                            settings.userAgentString =
+                                "Mozilla/5.0 (X11; Linux x86_64) " +
+                                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                                "Chrome/126.0.0.0 Safari/537.36"
                             webViewClient = object : WebViewClient() {
                                 override fun onPageStarted(
                                     view: WebView?,

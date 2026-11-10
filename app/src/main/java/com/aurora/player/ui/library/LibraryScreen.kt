@@ -1504,7 +1504,7 @@ fun AlbumCover(
                         null
                     }
                 }
-            } ?: loadEmbeddedCover(context, song.uri)
+            } ?: loadEmbeddedCover(context, song.uri, maxPx = 144)
             if (loaded != null) {
                 if (useCache) AlbumArtCache.put(song.albumId, loaded)
                 bitmap = loaded
