@@ -700,77 +700,23 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.NETWORK) {
-        // RONDA 7 P2 + 002-online-youtube: modo online. Apagado por
-        // defecto: con el interruptor apagado la app no toca la red
-        // jamás. Con él encendido: letras online (LRCLIB, solo si no
-        // hay .lrc local) y la pestaña Online para escuchar de YouTube.
-        SettingsGroupTitle("Modo online")
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Modo online (letras y YouTube)", modifier = Modifier.weight(1f))
-            Switch(
-                checked = player.onlineMode,
-                onCheckedChange = { savePlayer(player.copy(onlineMode = it)) },
-            )
-        }
-        SettingsGroupDescription(
-            "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        // Fase 2 — proveedores de letras (como BitChord): el primero
-        // que encuentre la letra gana; se reordena con las flechas.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Proveedores de letras", modifier = Modifier.weight(1f))
-            OutlinedButton(onClick = { showProviders = true }) {
-                Text("Elegir proveedor")
-            }
-        }
-        SettingsGroupDescription(
-            "Orden actual: ${providerOrder.joinToString(" → ")}",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        // Fase 2 — Spotify como BitChord: conexión por cookie sp_dc
-        // (sin app registrada ni client_id). Con ella se cargan TUS
-        // listas; la música suena por YouTube Music, como BitChord.
-        SettingsGroupTitle("Spotify")
-        if (spotifyConnected) {
-            SettingsGroupDescription(
-                "Conectado con tu cookie sp_dc. Tus listas se cargan de Spotify y suenan por YouTube Music.",
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            OutlinedButton(
-                onClick = {
+            SettingsNetworkSection(
+                player = player,
+                onSavePlayer = { savePlayer(it) },
+                providerOrder = providerOrder,
+                onShowProviders = { showProviders = true },
+                spotifyConnected = spotifyConnected,
+                spotifyCookieText = spotifyCookieText,
+                onSpotifyCookieTextChange = { spotifyCookieText = it },
+                spotifyStatus = spotifyStatus,
+                onDisconnectSpotify = {
                     scope.launch {
                         spotifyStore.clear()
                         spotifyStatus = null
                         spotifyCookieText = ""
                     }
                 },
-                modifier = Modifier.padding(top = 8.dp),
-            ) {
-                Text("Desconectar Spotify")
-            }
-        } else {
-            SettingsGroupDescription(
-                "1. Entra a open.spotify.com en el navegador e inicia sesión.\n2. Abre las herramientas de desarrollador, Aplicación y Cookies.\n3. Copia el valor de la cookie sp_dc.\n4. Pégala aquí.",
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            OutlinedTextField(
-                value = spotifyCookieText,
-                onValueChange = { spotifyCookieText = it },
-                label = { Text("Cookie sp_dc") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            )
-            Button(
-                onClick = {
+                onConnectSpotify = {
                     scope.launch {
                         spotifyStatus = "Comprobando la cookie…"
                         val token = SpotifyClient().fetchAccessToken(spotifyCookieText.trim())
@@ -783,16 +729,7 @@ fun SettingsScreen(
                         }
                     }
                 },
-                colors = auroraButtonColors(),
-                modifier = Modifier.padding(top = 8.dp),
-                enabled = spotifyCookieText.isNotBlank(),
-            ) {
-                Text("Conectar Spotify")
-            }
-        }
-        spotifyStatus?.let {
-            SettingsGroupDescription(it, modifier = Modifier.padding(top = 4.dp))
-        }
+            )
         }
 
         if (section == SettingsSection.NOTIFICATIONS) {
