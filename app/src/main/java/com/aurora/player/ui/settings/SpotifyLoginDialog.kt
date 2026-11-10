@@ -1,23 +1,35 @@
 package com.aurora.player.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.graphics.Bitmap
 import android.webkit.CookieManager
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -39,6 +51,7 @@ fun SpotifyLoginDialog(
     onDismiss: () -> Unit,
 ) {
     var triedCookie by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
     var hint by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var manualCookie by remember { mutableStateOf("") }
@@ -76,33 +89,82 @@ fun SpotifyLoginDialog(
             modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.88f)
                 .padding(16.dp),
         ) {
-            Text("Iniciar sesión con Spotify")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Iniciar sesión con Spotify",
+                    modifier = Modifier.weight(1f),
+                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Filled.Close, contentDescription = "Cerrar")
+                }
+            }
             Text(
                 "Entra con tu cuenta de Spotify. Aurora solo guarda la sesión en tu teléfono, no sube nada.",
                 modifier = Modifier.padding(top = 4.dp),
             )
-            AndroidView(
-                factory = { context ->
-                    WebView(context).apply {
-                        settings.javaScriptEnabled = true
-                        settings.domStorageEnabled = true
-                        CookieManager.getInstance().setAcceptCookie(true)
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                // Al terminar de cargar cada página se
-                                // mira si la sesión ya está puesta.
-                                val cookie = readCookie()
-                                if (cookie != null && cookie != triedCookie) {
-                                    triedCookie = cookie
-                                    onConnect(cookie)
+            Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
+                AndroidView(
+                    factory = { context ->
+                        WebView(context).apply {
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            CookieManager.getInstance().setAcceptCookie(true)
+                            webViewClient = object : WebViewClient() {
+                                override fun onPageStarted(
+                                    view: WebView?,
+                                    url: String?,
+                                    favicon: Bitmap?,
+                                ) {
+                                    loading = true
+                                }
+
+                                override fun shouldOverrideUrlLoading(
+                                    view: WebView?,
+                                    request: WebResourceRequest?,
+                                ): Boolean {
+                                    // Spotify redirige a spotify:// para
+                                    // abrir su app (2026-11-10: sin esto
+                                    // el WebView moría con
+                                    // ERR_UNKNOWN_URL_SCHEME). Los enlaces
+                                    // que no son web se abren fuera y no
+                                    // se cargan dentro.
+                                    val uri = request?.url ?: return false
+                                    if (uri.scheme == "http" || uri.scheme == "https") {
+                                        return false
+                                    }
+                                    try {
+                                        view?.context?.startActivity(
+                                            Intent(Intent.ACTION_VIEW, uri),
+                                        )
+                                    } catch (_: ActivityNotFoundException) {
+                                        hint = "Spotify quiere abrir su app, que no está instalada. Sigue iniciando sesión aquí."
+                                    }
+                                    return true
+                                }
+
+                                override fun onPageFinished(view: WebView?, url: String?) {
+                                    loading = false
+                                    // Al terminar de cargar cada página se
+                                    // mira si la sesión ya está puesta.
+                                    val cookie = readCookie()
+                                    if (cookie != null && cookie != triedCookie) {
+                                        triedCookie = cookie
+                                        onConnect(cookie)
+                                    }
                                 }
                             }
+                            loadUrl("https://open.spotify.com")
                         }
-                        loadUrl("https://open.spotify.com")
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp),
-            )
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Button(
                 onClick = { tryConnect() },
