@@ -20,10 +20,11 @@ class SpotifyCanvasTest {
 
     @Test
     fun `peticion protobuf con bytes exactos`() {
-        // entity_uri = "spotify:track:abc" (16 bytes):
-        // interior [0x0A, 16, uri...], exterior [0x0A, 18, interior...]
+        // entity_uri = "spotify:track:abc" (17 bytes: 7 "spotify"
+        // + 1 ":" + 5 "track" + 1 ":" + 3 "abc"):
+        // interior [0x0A, 17, uri...], exterior [0x0A, 19, interior...]
         val uri = "spotify:track:abc".toByteArray(Charsets.UTF_8)
-        val expected = byteArrayOf(0x0A, 0x12, 0x0A, 0x10) + uri
+        val expected = byteArrayOf(0x0A, 0x13, 0x0A, 0x11) + uri
         assertArrayEquals(expected, buildCanvasRequestBytes("abc"))
     }
 
