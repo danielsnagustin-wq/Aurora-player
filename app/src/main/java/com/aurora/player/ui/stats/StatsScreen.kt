@@ -22,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,6 +40,8 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Song
 import com.aurora.player.util.ErrorLog
+import com.aurora.player.util.StatsCsvRow
+import com.aurora.player.util.exportStatsCsv
 import com.aurora.player.util.TimeFormat
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -126,6 +129,25 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
     }
     /** Vuelve a cargar al entrar a la pantalla: las cifras se quedan
      * viejas si solo se cargan una vez por arranque. */
+    /** Fase 1b: exportar estadísticas a CSV (Descargas/AuroraPlayer). */
+    suspend fun exportCsv(hasAudioPermission: Boolean): Result<String> {
+        val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+        val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
+        val byId = songs.associateBy { it.id }
+        val rows = db.libraryDao().statsPerSong().map { r ->
+            val song = byId[r.songId]
+            StatsCsvRow(
+                title = song?.title ?: "Canción eliminada",
+                artist = song?.artist ?: "",
+                album = song?.album ?: "",
+                plays = r.plays,
+                listenedMinutes = r.listenedMs / 60_000,
+                lastPlayedAtMs = r.lastPlayed,
+            )
+        }
+        return exportStatsCsv(application, rows)
+    }
+
     fun refresh(hasAudioPermission: Boolean) {
         loaded = false
         load(hasAudioPermission)
@@ -139,6 +161,9 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     LaunchedEffect(Unit) { viewModel.refresh(hasAudioPermission) }
     // RONDA 7 P3: Tu año.
     var showYear by remember { mutableStateOf(false) }
+    // Fase 1b: exportar estadísticas a CSV.
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
     val data = stats
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Text("Estadísticas", style = MaterialTheme.typography.titleLarge)
@@ -151,6 +176,28 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         ) {
             Text("Tu año")
+        }
+        OutlinedButton(
+            onClick = {
+                scope.launch {
+                    val result = viewModel.exportCsv(hasAudioPermission)
+                    exportMessage = result.fold(
+                        onSuccess = { "Guardado en $it" },
+                        onFailure = { "No se pudo exportar: ${it.message}" },
+                    )
+                }
+            },
+            enabled = data != null && data.totalPlays > 0,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        ) {
+            Text("Exportar estadísticas (CSV)")
+        }
+        exportMessage?.let {
+            Text(
+                it,
+                modifier = Modifier.padding(top = 8.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         if (data == null) {
             Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
