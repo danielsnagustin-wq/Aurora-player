@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -65,7 +66,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import android.content.Context
+import android.media.AudioManager
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -131,6 +135,14 @@ fun swipeDirection(totalPx: Float, threshold: Float = 100f): Int = when {
 }
 
 /**
+ * Gesto de volumen: deslizamiento vertical sobre la portada.
+ * Cada umbral recorrido es un paso de volumen (negativo = subir,
+ * el dedo sube; positivo = bajar, el dedo baja). 0 = sin paso.
+ */
+fun volumeStepsForDrag(totalPx: Float, threshold: Float): Int =
+    (totalPx / threshold).toInt()
+
+/**
  * AUDITORÍA (2026-11-09): la velocidad se mostraba con "%.2g", que
  * recorta a 2 cifras significativas: 1.25x se leía "1.2x". Con 2
  * decimales y ceros recortados, cada velocidad se lee como es.
@@ -190,9 +202,11 @@ fun PlayerScreen(
     onToggleFavorite: () -> Unit = {},
     lyricsOffsetMs: Int = 0,
     onLyricsOffsetChange: (Int) -> Unit = {},
+    onSaveLyrics: (List<LrcLine>) -> Unit = {},
     // Gestos con interruptor real en Ajustes (AUDITORÍA 2026-11-09).
     swipeEnabled: Boolean = true,
     doubleTapEnabled: Boolean = true,
+    volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var showQueue by remember { mutableStateOf(false) }
@@ -200,11 +214,13 @@ fun PlayerScreen(
     var showLyrics by remember { mutableStateOf(false) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
+    var dragTotalY by remember { mutableStateOf(0f) }
     // Posición mientras se arrastra la barra: se busca UNA sola vez al
     // soltar, no en cada paso del arrastre (antes se pedían decenas de
     // seeks por segundo y el sonido se entrecortaba).
     var sliderPosition by remember { mutableStateOf<Float?>(null) }
     val lyricsListState = rememberLazyListState()
+    var showLyricsEditor by remember { mutableStateOf(false) }
     val currentLine = LrcParser.currentLineIndex(lyrics, positionMs + lyricsOffsetMs)
     // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
     // al instante en vez de desplazarse animada.
@@ -330,6 +346,33 @@ fun PlayerScreen(
                 .pointerInput(doubleTapEnabled) {
                     detectTapGestures(
                         onDoubleTap = { if (doubleTapEnabled) onToggleFavorite() },
+                    )
+                },
+                .pointerInput(volumeGestureEnabled) {
+                    // Fase 1b: deslizar vertical sobre la portada
+                    // sube/baja el volumen; la barra del sistema
+                    // (FLAG_SHOW_UI) es la que da la respuesta visual.
+                    val audioManager = LocalContext.current
+                        .getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                    detectVerticalDragGestures(
+                        onDragEnd = { dragTotalY = 0f },
+                        onVerticalDrag = { _, dragAmount ->
+                            if (!volumeGestureEnabled) return@detectVerticalDragGestures
+                            dragTotalY += dragAmount
+                            val steps = volumeStepsForDrag(dragTotalY, swipeThresholdPx)
+                            if (steps != 0) {
+                                val direction = if (steps > 0) AudioManager.ADJUST_LOWER
+                                else AudioManager.ADJUST_RAISE
+                                repeat(kotlin.math.abs(steps)) {
+                                    audioManager.adjustStreamVolume(
+                                        AudioManager.STREAM_MUSIC,
+                                        direction,
+                                        AudioManager.FLAG_SHOW_UI,
+                                    )
+                                }
+                                dragTotalY -= steps * swipeThresholdPx
+                            }
+                        },
                     )
                 },
         )
@@ -614,6 +657,9 @@ fun PlayerScreen(
                     TextButton(
                         onClick = { onLyricsOffsetChange((lyricsOffsetMs + 100).coerceIn(-5000, 5000)) },
                     ) { Text("+100 ms") }
+                    TextButton(
+                        onClick = { showLyricsEditor = true },
+                    ) { Text("Editar") }
                 }
                 LazyColumn(
                     state = lyricsListState,
@@ -662,6 +708,18 @@ fun PlayerScreen(
             }
         }
     }
+    }
+    // Fase 1b: editor de letras (.lrc).
+    if (showLyricsEditor) {
+        LyricsEditorDialog(
+            lyrics = lyrics,
+            positionMs = positionMs,
+            onDismiss = { showLyricsEditor = false },
+            onSave = { edited ->
+                onSaveLyrics(edited)
+                showLyricsEditor = false
+            },
+        )
     }
     // SPEC 005 FR-007: diálogo de colas guardadas.
     if (showSavedQueues) {
