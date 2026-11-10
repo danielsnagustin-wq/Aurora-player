@@ -116,6 +116,8 @@ class PlaybackService : MediaLibraryService() {
 
     private var mediaSession: MediaLibraryService.MediaLibrarySession? = null
     private var player: ExoPlayer? = null
+    /** Cargador de portadas de la notificación (su hilo se libera en onDestroy). */
+    private var bitmapLoader: AuroraBitmapLoader? = null
     private var equalizer: EqualizerManager? = null
     private var audioOutputDirect: Boolean = false
     // Ronda USB Serie A: los sumideros de audio (principal + solape)
@@ -244,7 +246,7 @@ class PlaybackService : MediaLibraryService() {
         )
             // Portadas de la notificación: MediaStore, incrustada en el
             // archivo o inicial de Aurora; nunca sin carátula.
-            .setBitmapLoader(AuroraBitmapLoader(this))
+            .setBitmapLoader(AuroraBitmapLoader(this).also { bitmapLoader = it })
             // Sin esto, tocar la notificación no abre la app
             // (2026-11-10): Media3 usa la actividad de la sesión
             // como destino del toque.
@@ -482,17 +484,23 @@ class PlaybackService : MediaLibraryService() {
      * seguros desde cualquier hilo.
      */
     private fun onLongSilenceDetected() {
-        val p = player ?: return
-        if (!skipSilenceEnabled) return
-        val duration = p.duration
-        if (duration <= 0) return
-        val remaining = duration - p.currentPosition
-        if (remaining <= 30_000L) {
-            if (p.currentMediaItemIndex < p.mediaItemCount - 1) {
-                p.seekToNextMediaItem()
+        try {
+            val p = player ?: return
+            if (!skipSilenceEnabled) return
+            val duration = p.duration
+            if (duration <= 0) return
+            val remaining = duration - p.currentPosition
+            if (remaining <= 30_000L) {
+                if (p.currentMediaItemIndex < p.mediaItemCount - 1) {
+                    p.seekToNextMediaItem()
+                }
+            } else {
+                p.seekTo((p.currentPosition + 3000).coerceAtMost(duration))
             }
-        } else {
-            p.seekTo((p.currentPosition + 3000).coerceAtMost(duration))
+        } catch (e: Exception) {
+            // Se llama desde el hilo de audio: un fallo aquí no puede
+            // tumbar el proceso (auditoría Codex, 2026-11-10).
+            ErrorLog.log(this, "Silencio", e)
         }
     }
 
@@ -1008,6 +1016,8 @@ class PlaybackService : MediaLibraryService() {
         overlapJob?.cancel()
         releaseOverlapPlayer()
         mediaSession?.release()
+        bitmapLoader?.shutdown()
+        bitmapLoader = null
         player?.release()
         equalizer?.release()
         visualizerCapture?.release()

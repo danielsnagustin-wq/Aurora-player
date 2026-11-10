@@ -32,6 +32,16 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
 
     private val executor = Executors.newSingleThreadExecutor()
 
+    /** Libera el hilo del cargador (lo llama PlaybackService.onDestroy). */
+    fun shutdown() {
+        executor.shutdown()
+    }
+
+    companion object {
+        /** Tope de lectura de una portada de MediaStore (8 MB). */
+        private const val MAX_ART_BYTES = 8 * 1024 * 1024
+    }
+
     override fun supportsMimeType(mimeType: String): Boolean =
         mimeType.startsWith("image/")
 
@@ -48,7 +58,8 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
                 while (longest / sample > 512) sample *= 2
                 val options = BitmapFactory.Options().apply { inSampleSize = sample }
                 future.set(BitmapFactory.decodeByteArray(data, 0, data.size, options))
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
+                // OutOfMemoryError también: sin portada, no un cierre.
                 future.set(null)
             }
         }
@@ -62,7 +73,7 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
                 // SettableFuture.set acepta null (contrato de Media3:
                 // null = no se pudo cargar la portada).
                 future.set(loadSync(uri))
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 future.set(null)
             }
         }
@@ -75,9 +86,11 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
         // arrancar la reproducción eso puede tumbar la app por
         // memoria (2026-11-10, caza del crash al reproducir: era el
         // único decode sin muestrear del camino de reproducir).
+        // La lectura también lleva tope (8 MB): readBytes() sin tope
+        // cargaba el archivo entero en memoria antes de muestrear.
         try {
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                val bytes = stream.readBytes()
+                val bytes = readCapped(stream, MAX_ART_BYTES) ?: return@use
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
                 var sample = 1
@@ -86,6 +99,8 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
                 val options = BitmapFactory.Options().apply { inSampleSize = sample }
                 BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.let { return it }
             }
+        } catch (_: OutOfMemoryError) {
+            // Siguiente intento (la incrustada se muestrea igual).
         } catch (_: Exception) {
             // Siguiente intento.
         }
@@ -96,9 +111,28 @@ class AuroraBitmapLoader(private val context: Context) : BitmapLoader {
             return null
         }
         val song = findAlbumSong(albumId) ?: return null
-        loadEmbeddedCoverSync(context, song.uri)?.let { return it }
+        try {
+            loadEmbeddedCoverSync(context, song.uri)?.let { return it }
+        } catch (_: Throwable) {
+            // Sin portada incrustada: cae a la inicial.
+        }
         // 3) Inicial grande con los colores de Aurora.
         return letterTile(song.title)
+    }
+
+    /** Lee hasta [maxBytes] del stream; null si el archivo es mayor. */
+    private fun readCapped(stream: java.io.InputStream, maxBytes: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0
+        while (true) {
+            val n = stream.read(buf)
+            if (n <= 0) break
+            total += n
+            if (total > maxBytes) return null
+            out.write(buf, 0, n)
+        }
+        return out.toByteArray()
     }
 
     private data class AlbumSong(val uri: Uri, val title: String)
