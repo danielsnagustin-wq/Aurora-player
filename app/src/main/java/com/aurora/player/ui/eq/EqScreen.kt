@@ -38,12 +38,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.audio.AUTO_EQ_MODELS
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.routeLabel
 import com.aurora.player.data.CustomPresetStore
 import com.aurora.player.data.EqState
 import com.aurora.player.data.EqStateStore
+import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.model.PlayerSettings
 import com.aurora.player.playback.AudioEffects
 import com.aurora.player.ui.theme.auroraButtonColors
 import kotlinx.coroutines.flow.first
@@ -142,6 +145,31 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Cerrar")
             }
+        }
+
+        // Salida Directa: el EQ está apagado mientras dure; aquí se
+        // puede volver a Estándar sin salir de la pantalla.
+        val playerSettingsStore = remember { PlayerSettingsStore(context) }
+        val playerSettings by playerSettingsStore.settingsFlow.collectAsState(
+            initial = PlayerSettings.DEFAULT,
+        )
+        if (isDirectMode(playerSettings.audioOutputMode)) {
+            Text(
+                "Salida Directa activa: el ecualizador está apagado mientras dure.",
+                modifier = Modifier.padding(top = 16.dp),
+            )
+            Button(
+                onClick = {
+                    scope.launch {
+                        playerSettingsStore.save(playerSettings.copy(audioOutputMode = "standard"))
+                    }
+                },
+                colors = auroraButtonColors(),
+                modifier = Modifier.padding(top = 8.dp),
+            ) {
+                Text("Volver a Estándar")
+            }
+            return@Column
         }
 
         if (manager == null && AudioEffects.equalizerUnsupported) {
