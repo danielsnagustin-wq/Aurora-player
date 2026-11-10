@@ -46,6 +46,10 @@ class CastManager(context: Context) {
     private var onSessionEnded: (() -> Unit)? = null
 
     private val listener = object : SessionManagerListener<CastSession> {
+        override fun onSessionStarting(session: CastSession) {}
+        override fun onSessionStartFailed(session: CastSession, error: Int) {}
+        override fun onSessionEnding(session: CastSession) {}
+
         override fun onSessionStarted(session: CastSession, sessionId: String) {
             val name = try {
                 session.castDevice?.friendlyName
@@ -70,6 +74,10 @@ class CastManager(context: Context) {
             _state.value = CastState.Connected(name)
             onSessionStarted?.invoke()
         }
+
+        override fun onSessionResuming(session: CastSession, sessionId: String) {}
+        override fun onSessionResumeFailed(session: CastSession, error: Int) {}
+        override fun onSessionSuspended(session: CastSession, reason: Int) {}
     }
 
     fun start(onSessionStarted: () -> Unit, onSessionEnded: () -> Unit = {}) {
