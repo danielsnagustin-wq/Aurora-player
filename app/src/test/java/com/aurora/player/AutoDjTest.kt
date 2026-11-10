@@ -1,6 +1,7 @@
 package com.aurora.player
 
 import com.aurora.player.library.autoDjNext
+import com.aurora.player.library.autoDjQueue
 import com.aurora.player.model.Song
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -59,5 +60,33 @@ class AutoDjTest {
     fun sinActual_usaMasEscuchadas() {
         val pool = listOf(song(1, plays = 2), song(2, plays = 9), song(3, plays = 5))
         assertEquals(2L, autoDjNext(null, pool, random = Random(1))?.id)
+    }
+
+    @Test
+    fun tanda_sinRepetidos_yMaximo10() {
+        val current = song(1, artist = "X")
+        val pool = (2L..13L).map { song(it, artist = "X") }
+        val queue = autoDjQueue(current, pool, random = Random(1))
+        assertEquals(10, queue.size)
+        assertEquals(10, queue.map { it.id }.toSet().size)
+        assertTrue(1L !in queue.map { it.id })
+    }
+
+    @Test
+    fun tanda_seAgotaSinInventar() {
+        val current = song(1, artist = "X")
+        val pool = listOf(song(2, artist = "X"), song(3, artist = "X"))
+        val queue = autoDjQueue(current, pool, random = Random(1))
+        assertEquals(listOf(2L, 3L), queue.map { it.id }.sorted())
+    }
+
+    @Test
+    fun tanda_encadenaMismoArtista() {
+        // Todas del mismo artista: la tanda entera es de ese artista.
+        val current = song(1, artist = "X")
+        val pool = listOf(song(2, artist = "X"), song(3, artist = "X"), song(4, artist = "Y"))
+        val queue = autoDjQueue(current, pool, count = 2, random = Random(1))
+        assertEquals(2, queue.size)
+        assertTrue(queue.all { it.artist == "X" })
     }
 }
