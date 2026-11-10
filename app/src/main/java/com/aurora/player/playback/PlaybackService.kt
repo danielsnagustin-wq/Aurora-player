@@ -24,9 +24,8 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
-import androidx.media3.session.MediaLibrarySession
+import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import com.aurora.player.MainActivity
 import com.aurora.player.alarm.AlarmScheduler
 import com.aurora.player.alarm.AlarmSettings
@@ -112,9 +111,9 @@ object AudioEffects {
     }
 }
 
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
-    private var mediaSession: MediaLibrarySession? = null
+    private var mediaSession: MediaLibraryService.MediaLibrarySession? = null
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
     private var audioOutputDirect: Boolean = false
@@ -222,7 +221,7 @@ class PlaybackService : MediaSessionService() {
         // Android Auto (Fase 2 app): MediaLibrarySession con el
         // árbol de AutoBrowse; el coche navega por carpetas y toca
         // canciones reales de MediaStore.
-        mediaSession = MediaLibrarySession.Builder(
+        mediaSession = MediaLibraryService.MediaLibrarySession.Builder(
             this,
             exoPlayer,
             AuroraLibraryCallback(
@@ -937,8 +936,10 @@ class PlaybackService : MediaSessionService() {
             .build()
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
-        mediaSession
+    // MediaLibraryService la declara sin null: la sesión ya existe
+    // cuando un controlador (el coche) la pide.
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibraryService.MediaLibrarySession =
+        mediaSession ?: throw IllegalStateException("La sesión aún no está creada")
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         val p = player
