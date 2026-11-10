@@ -43,6 +43,8 @@ import kotlinx.coroutines.launch
 fun OnlineScreen(
     onlineMode: Boolean,
     onPlayTrack: (OnlineTrack, String) -> Unit,
+    spotifyConnected: Boolean = false,
+    onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!onlineMode) {
@@ -118,6 +120,12 @@ fun OnlineScreen(
             enabled = query.isNotBlank() && !searching,
             modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         ) { Text("Buscar") }
+        // Fase 2 — Spotify como BitChord: tus listas, importadas por
+        // YouTube Music. Solo con la cookie conectada.
+        SpotifyPlaylistsSection(
+            spotifyConnected = spotifyConnected,
+            onImportTracks = onImportOnlineTracks,
+        )
         if (searching) {
             Box(
                 modifier = Modifier.fillMaxSize(),

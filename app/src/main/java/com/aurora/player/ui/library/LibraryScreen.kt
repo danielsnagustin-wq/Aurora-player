@@ -158,6 +158,9 @@ fun LibraryScreen(
     // pestaña solo explica dónde se enciende el modo online.
     onlineMode: Boolean = false,
     onPlayOnlineTrack: (OnlineTrack, String) -> Unit = { _, _ -> },
+    // Fase 2 — Spotify como BitChord: tus listas en la pestaña Online.
+    spotifyConnected: Boolean = false,
+    onImportOnlineTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -284,6 +287,8 @@ fun LibraryScreen(
             OnlineScreen(
                 onlineMode = onlineMode,
                 onPlayTrack = onPlayOnlineTrack,
+                spotifyConnected = spotifyConnected,
+                onImportOnlineTracks = onImportOnlineTracks,
                 modifier = Modifier.fillMaxSize(),
             )
         } else when (val state = uiState) {
