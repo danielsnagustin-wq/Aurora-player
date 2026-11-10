@@ -145,7 +145,8 @@ fun parseDsfHeader(bytes: ByteArray): DsdInfo? {
 fun parseDffHeader(bytes: ByteArray): DsdInfo? {
     if (bytes.size < 16) return null
     if (fourCc(bytes, 0) != "FRM8") return null
-    if (fourCc(bytes, 8) != "DSD ") return null
+    // "FRM8"(4) + size(8): el tipo "DSD " está en 12, no en 8.
+    if (fourCc(bytes, 12) != "DSD ") return null
     var sampleRate = 0
     var channels = 0
     // Cabecera FRM8: "FRM8"(4) + size(8) + tipo "DSD "(4) = 16;
