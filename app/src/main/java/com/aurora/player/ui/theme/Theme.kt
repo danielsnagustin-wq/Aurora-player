@@ -181,6 +181,7 @@ val LocalCardStyle = staticCompositionLocalOf { CardStyle.SOLID }
 val LocalDynamicColor = staticCompositionLocalOf { true }
 val LocalPlayerBackground = staticCompositionLocalOf { PlayerBackground.COVER }
 val LocalAlbumGrid = staticCompositionLocalOf { false }
+val LocalAlbumGridColumns = staticCompositionLocalOf { 2 }
 
 /** Rendimiento (spec 004): animaciones activas o no (efectivas). */
 val LocalAnimationsEnabled = staticCompositionLocalOf { true }
@@ -330,6 +331,7 @@ fun AuroraPlayerTheme(
         LocalDynamicColor provides settings.dynamicColor,
         LocalPlayerBackground provides settings.playerBackground,
         LocalAlbumGrid provides settings.albumGrid,
+        LocalAlbumGridColumns provides settings.albumGridColumns.coerceIn(1, 4),
         LocalAnimationsEnabled provides settings.animationsEnabled,
     ) {
         MaterialTheme(colorScheme = colors, typography = scaledTypography(textScale), content = content)
