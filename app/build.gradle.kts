@@ -79,6 +79,7 @@ dependencies {
     // el proyecto compila contra SDK 34 con AGP 8.5.2. La 21.4.0 trae
     // mediarouter 1.6.0-beta01 + core 1.10.1, compatibles, y tiene
     // las mismas APIs que usa la Serie B (verificado con javap).
+    implementation("com.google.android.gms:play-services-cast-framework:21.4.0")
 
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).
