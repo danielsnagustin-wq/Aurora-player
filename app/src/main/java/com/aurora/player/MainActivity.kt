@@ -128,6 +128,7 @@ import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.ShakeDetector
 import com.aurora.player.util.LyricsOffsetStore
 import com.aurora.player.util.resolveEffective
+import com.aurora.player.lyrics.LyricsTranslator
 import com.aurora.player.lyrics.loadOnlineLyrics
 import com.aurora.player.lyrics.nextIndexToPrefetch
 import com.aurora.player.util.codecDisplayName
@@ -571,6 +572,7 @@ private fun AuroraApp(
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
     var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var translatedLyrics by remember { mutableStateOf<List<String>>(emptyList()) }
     // Fase 2 — Spotify Canvas: URL del vídeo en bucle de la canción
     // que suena (null = sin Canvas, se ve la portada de siempre).
     var canvasUrl by remember { mutableStateOf<String?>(null) }
@@ -936,6 +938,7 @@ private fun AuroraApp(
     LaunchedEffect(currentMediaId) {
         val mediaId = currentMediaId
         lyrics = emptyList()
+        translatedLyrics = emptyList()
         qualityText = null
         canvasUrl = null
         if (mediaId == null) return@LaunchedEffect
@@ -952,6 +955,12 @@ private fun AuroraApp(
                 if (track.isNotBlank() && artist.isNotBlank()) {
                     lyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec, lyricsProviders)
                 }
+            }
+            // Traducción automática (2026-11-10, como BitChord).
+            if (playerSettings.onlineMode && lyrics.isNotEmpty()) {
+                translatedLyrics = LyricsTranslator.translateLines(
+                    context, mediaId, lyrics.map { it.text },
+                ) ?: emptyList()
             }
             return@LaunchedEffect
         }
@@ -1056,6 +1065,12 @@ private fun AuroraApp(
                     if (canvas?.isVideo == true) canvasUrl = canvas.url
                 }
             }
+        }
+        // Traducción automática (2026-11-10, como BitChord).
+        if (playerSettings.onlineMode && lyrics.isNotEmpty()) {
+            translatedLyrics = LyricsTranslator.translateLines(
+                context, id.toString(), lyrics.map { it.text },
+            ) ?: emptyList()
         }
     }
 
@@ -1289,6 +1304,7 @@ private fun AuroraApp(
             onDeleteSavedQueue = { deleteSavedQueue(it) },
             onSavedQueueMessageConsumed = { savedQueueMessage = null },
             lyrics = lyrics,
+            translatedLyrics = translatedLyrics,
             qualityText = qualityText,
             onlineMode = playerSettings.onlineMode,
             sleepTimer = sleepTimer,
