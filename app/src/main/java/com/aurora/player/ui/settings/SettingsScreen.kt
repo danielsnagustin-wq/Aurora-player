@@ -684,6 +684,19 @@ fun SettingsScreen(
             steps = 11,
             modifier = Modifier.fillMaxWidth(),
         )
+        // Fase 1b: no solapar dentro del mismo álbum (los discos
+        // continuos se rompen si se solapan dos pistas pegadas).
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("No solapar dentro del mismo álbum", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.crossfadeGaplessAlbumException,
+                onCheckedChange = { savePlayer(player.copy(crossfadeGaplessAlbumException = it)) },
+            )
+        }
         // SPEC 005 FR-001: balance izquierda/derecha. Se guarda al
         // soltar la barra, como el crossfade.
         var balance by remember(player.channelBalance) {

@@ -19,6 +19,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Metadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.Timeline
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
@@ -123,6 +124,21 @@ class PlaybackService : MediaSessionService() {
     private var skipSilenceEnabled = false
     /** Balance L/R (SPEC 005 FR-001): procesador en la cadena. */
     private var balanceProcessor: ChannelBalanceAudioProcessor? = null
+    /** Balance L/R vivo (para que B nazca con el mismo). */
+    private var channelBalance: Float = 0f
+    /** Fase 1b — crossfade de 2 reproductores: B solo vive durante
+     * la ventana de solape; fuera de ella está liberado. */
+    private var overlapPlayer: ExoPlayer? = null
+    private var overlapJob: Job? = null
+    private var overlapping: Boolean = false
+    private var overlapHandoff: Boolean = false
+    private var crossfadeGaplessAlbum: Boolean = true
+    private var overlapGainProcessor: ReplayGainProcessor? = null
+    private var overlapBalanceProcessor: ChannelBalanceAudioProcessor? = null
+    private var overlapEqualizer: EqualizerManager? = null
+    private var overlapEqualizerSessionId: Int = 0
+    private var overlapTrackGainDb: Float? = null
+    private var overlapAlbumGainDb: Float? = null
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -216,11 +232,13 @@ class PlaybackService : MediaSessionService() {
         serviceScope.launch {
             PlayerSettingsStore(this@PlaybackService).settingsFlow.collect { settings ->
                 crossfadeSeconds = settings.crossfadeSeconds
+                crossfadeGaplessAlbum = settings.crossfadeGaplessAlbumException
                 exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
                 autoplayOnConnect = settings.autoplayOnConnect
                 if (crossfadeSeconds == 0) {
                     fadeJob?.cancel()
                     fadingIn = false
+                    cancelOverlap()
                     exoPlayer.volume = 1f
                 }
                 // RONDA 6: el modo/preamp de ReplayGain se aplica al
@@ -229,25 +247,62 @@ class PlaybackService : MediaSessionService() {
                 replayGainMode = settings.replayGainMode
                 replayGainPreAmpDb = settings.replayGainPreAmpDb
                 applyReplayGain()
+                applyOverlapReplayGain()
                 // RONDA 6: saltar silencio se enciende/apaga en vivo.
                 skipSilenceEnabled = settings.skipSilence
                 silenceProcessor?.enabled = settings.skipSilence
                 // SPEC 005 FR-001: balance L/R en vivo; en 0 el
                 // procesador pasa el audio sin tocarlo.
+                channelBalance = settings.channelBalance
                 balanceProcessor?.setBalance(settings.channelBalance)
                 balanceProcessor?.enabled = settings.channelBalance != 0f
+                overlapBalanceProcessor?.setBalance(settings.channelBalance)
+                overlapBalanceProcessor?.enabled = settings.channelBalance != 0f
             }
         }
         // Crossfade real (ETAPA 4): fade-in al cambiar de pista y
         // fade-out vigilado por posición al final de la pista.
         exoPlayer.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                if (overlapHandoff) {
+                    // Traspaso del solape: A ya está en la pista
+                    // siguiente; el volumen lo pone el traspaso, no
+                    // el fade-in. La ganancia se resetea igual.
+                    trackGainDb = null
+                    albumGainDb = null
+                    applyReplayGain()
+                    return
+                }
+                // El usuario cambió de pista a mano durante un
+                // solape: el solape ya no vale.
+                if (overlapping) cancelOverlap()
                 if (crossfadeSeconds > 0) startFadeIn() else exoPlayer.volume = 1f
                 // RONDA 6: pista nueva, etiquetas nuevas: se resetea
                 // la ganancia a 0 hasta que llegue su metadata.
                 trackGainDb = null
                 albumGainDb = null
                 applyReplayGain()
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                // Pausa/reanudación durante el solape: B sigue a A.
+                if (overlapping) overlapPlayer?.playWhenReady = isPlaying
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo,
+                newPosition: Player.PositionInfo,
+                reason: Int,
+            ) {
+                // Buscar a mano durante un solape: las posiciones
+                // divergen y el solape ya no vale. El traspaso hace
+                // sus propios seeks con overlapHandoff activo.
+                if (overlapping && !overlapHandoff &&
+                    (reason == Player.DISCONTINUITY_REASON_SEEK ||
+                        reason == Player.DISCONTINUITY_REASON_SEEK_ADJUSTMENT)
+                ) {
+                    cancelOverlap()
+                }
             }
 
             override fun onMetadata(metadata: Metadata) {
@@ -272,7 +327,13 @@ class PlaybackService : MediaSessionService() {
                     val remaining = duration - p.currentPosition
                     val windowMs = crossfadeSeconds * 1000L
                     if (duration > 0 && p.currentPosition > 5000 && remaining in 0..windowMs) {
-                        p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
+                        if (!overlapping) {
+                            // Fase 1b: solape real si aplica; si no,
+                            // el fade-out de siempre.
+                            if (!tryStartOverlap(p)) {
+                                p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
+                            }
+                        }
                     } else if (duration > 0 && remaining > windowMs && p.volume < 1f) {
                         p.volume = 1f
                     }
@@ -369,6 +430,174 @@ class PlaybackService : MediaSessionService() {
             }
             fadingIn = false
         }
+    }
+
+    /**
+     * Fase 1b — crossfade de 2 reproductores: arranca el solape si
+     * aplica (decisión pura en CrossfadeOverlap.kt). B prepara la
+     * pista siguiente y los dos funden a la vez. Devuelve si arrancó.
+     */
+    private fun tryStartOverlap(p: ExoPlayer): Boolean {
+        if (overlapping) return true
+        val count = p.mediaItemCount
+        if (count == 0) return false
+        val index = p.currentMediaItemIndex
+        val repeatOne = p.repeatMode == Player.REPEAT_MODE_ONE
+        val nextIndex = when {
+            index < count - 1 -> index + 1
+            p.repeatMode == Player.REPEAT_MODE_ALL -> 0
+            else -> return false
+        }
+        val nextItem = p.getMediaItemAt(nextIndex)
+        val currentAlbum = p.currentMediaItem?.mediaMetadata?.albumTitle?.toString()
+        val nextAlbum = nextItem.mediaMetadata.albumTitle?.toString()
+        if (!shouldOverlapCrossfade(
+                crossfadeSeconds, true, repeatOne,
+                currentAlbum, nextAlbum, crossfadeGaplessAlbum,
+            )
+        ) return false
+        // Duración de la pista siguiente (Timeline; TIME_UNSET si
+        // aún no se conoce): la ventana se recorta a ella.
+        var nextDurationMs = 0L
+        val timeline = p.currentTimeline
+        if (timeline.windowCount > nextIndex) {
+            val w = Timeline.Window()
+            timeline.getWindow(nextIndex, w)
+            if (w.durationMs != C.TIME_UNSET) nextDurationMs = w.durationMs
+        }
+        val window = overlapWindowMs(crossfadeSeconds, nextDurationMs)
+        // B lleva su propia cadena: ReplayGain (ganancia de la pista
+        // siguiente, por sus metadatos) + Balance. Sin detector de
+        // silencio: el silencio al empezar la pista entrante es
+        // normal y su callback actúa sobre A, no sobre B.
+        val gainB = ReplayGainProcessor().also { overlapGainProcessor = it }
+        val balanceB = ChannelBalanceAudioProcessor().also { overlapBalanceProcessor = it }
+        balanceB.setBalance(channelBalance)
+        balanceB.enabled = channelBalance != 0f
+        val factoryB = object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink? {
+                return DefaultAudioSink.Builder(context)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .setAudioProcessors(arrayOf(gainB, balanceB))
+                    .build()
+            }
+        }
+        val audioAttributesB = AudioAttributes.Builder()
+            .setUsage(C.USAGE_MEDIA)
+            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+            .build()
+        val b = ExoPlayer.Builder(this, factoryB)
+            .setAudioAttributes(audioAttributesB, true)
+            .build()
+        b.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                setupOverlapEqualizer(audioSessionId)
+            }
+
+            override fun onMetadata(metadata: Metadata) {
+                val (track, album) = replayGainFromMetadata(metadata)
+                overlapTrackGainDb = track
+                overlapAlbumGainDb = album
+                applyOverlapReplayGain()
+            }
+        })
+        b.setMediaItem(nextItem)
+        b.prepare()
+        b.volume = 0f
+        b.play()
+        overlapPlayer = b
+        overlapping = true
+        // Rampa: A baja 1→0 y B sube 0→1 en la misma ventana.
+        overlapJob = serviceScope.launch {
+            val steps = 20
+            val stepMs = window / steps
+            for (i in 1..steps) {
+                delay(stepMs)
+                val f = i / steps.toFloat()
+                p.volume = (1f - f).coerceIn(0f, 1f)
+                b.volume = f
+            }
+            finishOverlapHandoff(p)
+        }
+        return true
+    }
+
+    /**
+     * Traspaso: A salta a la pista siguiente en la posición por la
+     * que va B (misma pista, mismo punto) y recupera el volumen; B
+     * cubre el audio durante el salto porque sigue sonando hasta
+     * que A vuelve a 1. A está a volumen 0 durante el salto: no se
+     * escucha el principio de la pista.
+     */
+    private fun finishOverlapHandoff(p: ExoPlayer) {
+        val b = overlapPlayer ?: return
+        overlapHandoff = true
+        p.volume = 0f
+        p.seekToNextMediaItem()
+        p.seekTo(b.currentPosition)
+        p.volume = 1f
+        overlapHandoff = false
+        releaseOverlapPlayer()
+        overlapping = false
+    }
+
+    private fun cancelOverlap() {
+        overlapJob?.cancel()
+        overlapJob = null
+        releaseOverlapPlayer()
+        overlapping = false
+        val p = player
+        if (p != null && p.isPlaying) p.volume = 1f
+    }
+
+    private fun releaseOverlapPlayer() {
+        overlapPlayer?.release()
+        overlapPlayer = null
+        overlapEqualizer?.release()
+        overlapEqualizer = null
+        overlapEqualizerSessionId = 0
+        overlapGainProcessor = null
+        overlapBalanceProcessor = null
+        overlapTrackGainDb = null
+        overlapAlbumGainDb = null
+    }
+
+    /** EQ del solape: segundo manager sobre la sesión de B con el
+     * MISMO estado guardado que A (si no, el tono cambiaría a mitad
+     * del fundido). No se publica en AudioEffects: la UI edita el
+     * estado guardado, que B lee al crearse. */
+    private fun setupOverlapEqualizer(sessionId: Int) {
+        if (sessionId == 0 || sessionId == overlapEqualizerSessionId) return
+        overlapEqualizer?.release()
+        overlapEqualizerSessionId = sessionId
+        val manager = try {
+            EqualizerManager(sessionId)
+        } catch (e: Exception) {
+            ErrorLog.log(this, "EQ solape no disponible", e)
+            null
+        }
+        overlapEqualizer = manager
+        manager?.let { eq ->
+            serviceScope.launch {
+                val saved = EqStateStore(this@PlaybackService).stateFlow.first()
+                eq.setEnabled(saved.enabled)
+                eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
+                eq.setBassBoost(saved.bassBoost.toShort())
+                eq.setVirtualizer(saved.virtualizer.toShort())
+            }
+        }
+    }
+
+    private fun applyOverlapReplayGain() {
+        val processor = overlapGainProcessor ?: return
+        val gainDb = selectReplayGainDb(replayGainMode, overlapTrackGainDb, overlapAlbumGainDb, replayGainPreAmpDb)
+        processor.enabled = replayGainMode != "off" && gainDb != 0f
+        processor.setTargetGainDb(gainDb)
     }
 
     private fun createNotificationChannel() {
@@ -543,6 +772,8 @@ class PlaybackService : MediaSessionService() {
         try { headphoneReceiver?.let { unregisterReceiver(it) } } catch (_: IllegalArgumentException) { }
         headphoneReceiver = null
         fadeJob?.cancel()
+        overlapJob?.cancel()
+        releaseOverlapPlayer()
         mediaSession?.release()
         player?.release()
         equalizer?.release()
