@@ -23,6 +23,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.GraphicEq
@@ -85,6 +86,7 @@ import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.online.JsonParser
+import com.aurora.player.online.OnlineTrack
 import com.aurora.player.ui.theme.PureBlack
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.ui.theme.brightnessOf
@@ -117,6 +119,7 @@ import kotlinx.coroutines.withContext
 fun SettingsScreen(
     modifier: Modifier = Modifier,
     onOpenEq: () -> Unit = {},
+    onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit = {},
 ) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
@@ -252,6 +255,37 @@ fun SettingsScreen(
             )
         }
 
+        // Spotify: conectar/desconectar vive aquí porque lo usan
+        // la sección Red y la pantalla Cuenta e integraciones.
+        val disconnectSpotify = {
+            scope.launch {
+                spotifyStore.clear()
+                spotifyStatus = null
+                spotifyCookieText = ""
+            }
+        }
+        val connectSpotify: (String) -> Unit = { cookie ->
+            scope.launch {
+                spotifyStatus = "Comprobando la sesión…"
+                val token = SpotifyClient().fetchAccessToken(cookie.trim())
+                if (token != null) {
+                    spotifyStore.setCookie(cookie.trim())
+                    spotifyCookieText = ""
+                    spotifyStatus = "Conectado."
+                } else {
+                    spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
+                }
+            }
+        }
+        if (section == SettingsSection.INTEGRATIONS) {
+            IntegrationsScreen(
+                spotifyConnected = spotifyConnected,
+                onConnectSpotify = connectSpotify,
+                onDisconnectSpotify = disconnectSpotify,
+                onImportTracks = onImportTracks,
+            )
+        }
+
         if (section == SettingsSection.NETWORK) {
             SettingsNetworkSection(
                 player = player,
@@ -260,26 +294,8 @@ fun SettingsScreen(
                 spotifyCookieText = spotifyCookieText,
                 onSpotifyCookieTextChange = { spotifyCookieText = it },
                 spotifyStatus = spotifyStatus,
-                onDisconnectSpotify = {
-                    scope.launch {
-                        spotifyStore.clear()
-                        spotifyStatus = null
-                        spotifyCookieText = ""
-                    }
-                },
-                onConnectSpotify = { cookie ->
-                    scope.launch {
-                        spotifyStatus = "Comprobando la sesión…"
-                        val token = SpotifyClient().fetchAccessToken(cookie.trim())
-                        if (token != null) {
-                            spotifyStore.setCookie(cookie.trim())
-                            spotifyCookieText = ""
-                            spotifyStatus = "Conectado."
-                        } else {
-                            spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
-                        }
-                    }
-                },
+                onDisconnectSpotify = disconnectSpotify,
+                onConnectSpotify = connectSpotify,
             )
         }
 
@@ -306,6 +322,11 @@ enum class SettingsSection(
     val subtitle: String,
     val icon: ImageVector,
 ) {
+    INTEGRATIONS(
+        "Cuenta e integraciones",
+        "YouTube Music y Spotify: tus cuentas y tus listas",
+        Icons.Filled.AccountCircle,
+    ),
     INTERFACE(
         "Interfaz",
         "Tema, colores, texto, portadas, diseño y rendimiento",
