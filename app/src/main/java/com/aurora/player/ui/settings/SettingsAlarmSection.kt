@@ -6,6 +6,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.ui.theme.auroraButtonColors
 
 /**
@@ -16,10 +17,9 @@ import com.aurora.player.ui.theme.auroraButtonColors
  */
 @Composable
 fun SettingsAlarmSection(onShowAlarm: () -> Unit) {
-    SettingsGroupTitle("Alarma")
-    SettingsGroupDescription(
-        "Despiértate con tu música: elige una hora y qué suena. Suena aunque la app esté cerrada y sobrevive a un reinicio.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSectionHeader(
+        title = "Alarma",
+        description = "Despiértate con tu música: elige una hora y qué suena. Suena aunque la app esté cerrada y sobrevive a un reinicio.",
     )
     Button(
         onClick = onShowAlarm,

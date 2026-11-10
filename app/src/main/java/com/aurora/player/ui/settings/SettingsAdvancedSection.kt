@@ -16,6 +16,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.util.DiagnosticsSnapshot
 import com.aurora.player.util.FrameRateMeter
 import com.aurora.player.util.collectSnapshot
@@ -37,8 +38,10 @@ fun SettingsAdvancedSection(onResetDefaults: () -> Unit) {
     // RENDIMIENTO (spec 004) — DIAGNÓSTICO: mediciones reales de
     // este teléfono. El medidor de FPS solo mide mientras Ajustes
     // está abierto; al salir se para.
-    SettingsGroupTitle("Diagnóstico")
-    SettingsGroupDescription("Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.")
+    AuroraSectionHeader(
+        title = "Diagnóstico",
+        description = "Mediciones reales de este teléfono, ahora mismo. Lo que no se puede medir sale como —, no como un número inventado.",
+    )
     val meter = remember { FrameRateMeter() }
     val fps by meter.fps.collectAsState()
     val dropped by meter.dropped.collectAsState()

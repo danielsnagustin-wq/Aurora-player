@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +23,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.BackupData
+import com.aurora.player.ui.design.AuroraSectionHeader
+import com.aurora.player.ui.design.AuroraSwitchRow
 import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.validateBackup
 import com.aurora.player.ui.theme.auroraButtonColors
@@ -69,8 +70,10 @@ fun SettingsBackupSection() {
             }
         }
     }
-    SettingsGroupTitle("Respaldo")
-    SettingsGroupDescription("Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo en Descargas. Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.")
+    AuroraSectionHeader(
+        title = "Respaldo",
+        description = "Guarda tus listas, favoritos, historial, ajustes, cola y presets de EQ en un archivo en Descargas. Restaurar reemplaza lo que tienes ahora; lo que no se encuentre en tu biblioteca se lista, nunca se inventa.",
+    )
     if (lastBackup.isNotEmpty()) {
         SettingsGroupDescription("Último respaldo: $lastBackup", modifier = Modifier.padding(top = 8.dp))
     }
@@ -97,22 +100,16 @@ fun SettingsBackupSection() {
             Text("Restaurar…")
         }
     }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Respaldo automático diario", modifier = Modifier.weight(1f))
-        Switch(
-            checked = autoBackup,
-            onCheckedChange = {
-                scope.launch {
-                    BackupManager.setAutoBackupEnabled(context, it)
-                    autoBackup = it
-                }
-            },
-        )
-    }
+    AuroraSwitchRow(
+        title = "Respaldo automático diario",
+        checked = autoBackup,
+        onCheckedChange = {
+            scope.launch {
+                BackupManager.setAutoBackupEnabled(context, it)
+                autoBackup = it
+            }
+        },
+    )
     backupMessage?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
     restoreReport?.let { report ->
         Text(

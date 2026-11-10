@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import com.aurora.player.data.ThemePresetStore
+import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.model.MAX_THEMES
 import com.aurora.player.model.ThemePreset
 import com.aurora.player.model.ThemeSettings
@@ -30,8 +31,10 @@ fun SettingsThemesSection(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    SettingsGroupTitle("Mis temas")
-    SettingsGroupDescription("Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.")
+    AuroraSectionHeader(
+        title = "Mis temas",
+        description = "Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.",
+    )
     val pickTheme = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->

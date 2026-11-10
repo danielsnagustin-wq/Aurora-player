@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,6 +18,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aurora.player.model.PlayerSettings
+import com.aurora.player.ui.design.AuroraSectionHeader
+import com.aurora.player.ui.design.AuroraSwitchRow
 import com.aurora.player.ui.theme.auroraButtonColors
 
 /**
@@ -57,21 +58,12 @@ fun SettingsNetworkSection(
     // defecto: con el interruptor apagado la app no toca la red
     // jamás. Con él encendido: letras online (LRCLIB, solo si no
     // hay .lrc local) y la pestaña Online para escuchar de YouTube.
-    SettingsGroupTitle("Modo online")
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text("Modo online (letras y YouTube)", modifier = Modifier.weight(1f))
-        Switch(
-            checked = player.onlineMode,
-            onCheckedChange = { onSavePlayer(player.copy(onlineMode = it)) },
-        )
-    }
-    SettingsGroupDescription(
-        "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
-        modifier = Modifier.padding(top = 4.dp),
+    AuroraSectionHeader(title = "Modo online")
+    AuroraSwitchRow(
+        title = "Modo online (letras y YouTube)",
+        checked = player.onlineMode,
+        onCheckedChange = { onSavePlayer(player.copy(onlineMode = it)) },
+        description = "Usa internet solo para buscar letras cuando no hay .lrc y para escuchar de YouTube. El .lrc local siempre manda. Sin este interruptor, nada sale a la red.",
     )
     // Fase 2 — proveedores de letras (como BitChord): el primero
     // que encuentre la letra gana; se reordena con las flechas.
@@ -92,7 +84,7 @@ fun SettingsNetworkSection(
     // Fase 2 — Spotify como BitChord: se inicia sesión con la
     // cuenta dentro de la app y Aurora guarda la sesión sola. Con
     // ella se cargan TUS listas; la música suena por YouTube Music.
-    SettingsGroupTitle("Spotify")
+    AuroraSectionHeader(title = "Spotify")
     if (spotifyConnected) {
         SettingsGroupDescription(
             "Conectado con tu cuenta de Spotify. Tus listas se cargan de Spotify y suenan por YouTube Music.",
