@@ -15,11 +15,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -41,6 +43,7 @@ import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.parseSpotifyPlaylistId
 import com.aurora.player.online.SpotifyPlaylist
 import com.aurora.player.online.SpotifyTrack
 import kotlinx.coroutines.Job
@@ -85,6 +88,7 @@ fun SpotifyPlaylistsSection(
     var importProgress by remember { mutableStateOf("") }
     var importJob by remember { mutableStateOf<Job?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+    var linkText by remember { mutableStateOf("") }
 
     fun loadPlaylists() {
         if (loadingPlaylists) return
@@ -130,6 +134,19 @@ fun SpotifyPlaylistsSection(
                 loadingTracks = false
             }
         }
+    }
+
+    // Importar por enlace publico (Fase 2, 2026-11-10): la
+    // lista que no es tuya no sale en tus listas; con su
+    // enlace se trae igual y se importa por YouTube Music.
+    fun importByLink() {
+        val id = parseSpotifyPlaylistId(linkText)
+        if (id == null) {
+            message = "Ese enlace no es una lista de Spotify."
+            return
+        }
+        linkText = ""
+        loadTracks(SpotifyPlaylist(id, "Lista por enlace", 0, null))
     }
 
     fun importTracks() {
@@ -249,6 +266,29 @@ fun SpotifyPlaylistsSection(
                         )
                     }
                 }
+            }
+        }
+        if (selected == null) {
+            Text(
+                "O pega el enlace de una lista publica",
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = linkText,
+                    onValueChange = { linkText = it },
+                    label = { Text("Enlace de Spotify") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = { importByLink() },
+                    enabled = linkText.isNotBlank() && !loadingTracks,
+                    modifier = Modifier.padding(start = 8.dp),
+                ) { Text("Importar") }
             }
         }
         message?.let {
