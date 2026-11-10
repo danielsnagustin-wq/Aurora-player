@@ -1375,18 +1375,24 @@ private fun AuroraApp(
 
     fun playOnlineTrack(track: OnlineTrack, streamUrl: String) {
         val c = controller ?: return
-        c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
-        c.prepare()
-        if (castManager.isConnected) {
-            castManager.loadOnlineTrack(
-                streamUrl = streamUrl,
-                title = track.title,
-                artist = track.artist,
-                durationMs = (track.durationSec ?: 0L) * 1000L,
-                coverUrl = track.thumbnailUrl,
-            )
-        } else {
-            c.play()
+        // Como playSongs: si el controlador muere entre medias, la app
+        // no se cierra (auditoría Codex, 2026-11-10).
+        try {
+            c.setMediaItems(listOf(onlineMediaItem(track, streamUrl)))
+            c.prepare()
+            if (castManager.isConnected) {
+                castManager.loadOnlineTrack(
+                    streamUrl = streamUrl,
+                    title = track.title,
+                    artist = track.artist,
+                    durationMs = (track.durationSec ?: 0L) * 1000L,
+                    coverUrl = track.thumbnailUrl,
+                )
+            } else {
+                c.play()
+            }
+        } catch (e: Exception) {
+            ErrorLog.log(context, "PLAY-ONLINE", e)
         }
     }
 
@@ -1410,9 +1416,15 @@ private fun AuroraApp(
     fun playOnlineTracks(tracks: List<Pair<OnlineTrack, String>>) {
         val c = controller ?: return
         if (tracks.isEmpty()) return
-        c.setMediaItems(tracks.map { (track, url) -> onlineMediaItem(track, url) })
-        c.prepare()
-        c.play()
+        // Como playSongs: si el controlador muere entre medias, la app
+        // no se cierra (auditoría Codex, 2026-11-10).
+        try {
+            c.setMediaItems(tracks.map { (track, url) -> onlineMediaItem(track, url) })
+            c.prepare()
+            c.play()
+        } catch (e: Exception) {
+            ErrorLog.log(context, "PLAY-ONLINE", e)
+        }
     }
 
     // Fase 2 app — YouTube con vídeo: el diálogo va por encima de
