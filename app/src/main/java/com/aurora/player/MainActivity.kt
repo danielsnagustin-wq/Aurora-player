@@ -1391,6 +1391,7 @@ private fun AuroraApp(
             swipeEnabled = playerSettings.swipeToChangeTrack,
             doubleTapEnabled = playerSettings.doubleTapToFavorite,
             doubleTapAction = parseGestureAction(playerSettings.doubleTapAction, GestureAction.FAVORITE),
+            karaokeMode = playerSettings.karaokeMode,
             volumeGestureEnabled = playerSettings.volumeGesture,
             onSaveLyrics = { edited ->
                 // Fase 1b: editor de letras. Guarda el .lrc junto a
