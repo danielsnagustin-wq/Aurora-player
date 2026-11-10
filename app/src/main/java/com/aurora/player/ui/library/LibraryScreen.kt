@@ -104,6 +104,7 @@ import com.aurora.player.online.OnlineTrack
 import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.start.StartScreen
 import com.aurora.player.ui.theme.LocalAlbumGrid
+import com.aurora.player.ui.theme.LocalAlbumGridColumns
 import com.aurora.player.ui.theme.LocalCardStyle
 import com.aurora.player.ui.theme.LocalCornerRadiusDp
 import com.aurora.player.ui.theme.LocalCoverShape
@@ -604,11 +605,12 @@ private fun AlbumsTab(
         Text("No hay álbumes.", modifier = Modifier.padding(16.dp))
         return
     }
-    // DISEÑO PREMIUM (spec 003): cuadrícula de 2 columnas cuando el
-    // interruptor está encendido; lista cuando está apagado.
+    // DISEÑO PREMIUM (spec 003): cuadrícula cuando el interruptor
+    // está encendido (1..4 columnas, a elegir en Ajustes); lista
+    // cuando está apagado.
     if (LocalAlbumGrid.current) {
         LazyVerticalGrid(
-            columns = GridCells.Fixed(2),
+            columns = GridCells.Fixed(LocalAlbumGridColumns.current),
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
