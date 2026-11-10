@@ -122,6 +122,9 @@ import com.aurora.player.util.buildMetadataUpdate
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.loadEmbeddedCover
 import com.aurora.player.util.TimeFormat
+import com.aurora.player.audio.DsdInfo
+import com.aurora.player.util.dsdQualityLine
+import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1046,6 +1049,9 @@ private fun SongDetailsDialog(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var details by remember(song) { mutableStateOf<SongDetails?>(null) }
+    // Ronda USB Serie B: cabecera DSD real (tasa, canales) si el
+    // archivo es .dsf/.dff; null si no es DSD o no se pudo leer.
+    var dsdInfo by remember(song) { mutableStateOf<DsdInfo?>(null) }
     var playCount by remember(song) { mutableStateOf<Int?>(null) }
     var lastPlayed by remember(song) { mutableStateOf<Long?>(null) }
     var editing by remember(song) { mutableStateOf(false) }
@@ -1071,6 +1077,7 @@ private fun SongDetailsDialog(
 
     LaunchedEffect(song) {
         details = loadSongDetails(context, song)
+        dsdInfo = loadDsdInfo(context, song)
         val (count, last) = viewModel.songStats(song.id)
         playCount = count
         lastPlayed = last
@@ -1216,7 +1223,11 @@ private fun SongDetailsDialog(
                     DetailRow("Compositor", details?.composer ?: song.composer)
                     DetailRow("Pista", if (song.trackNumber > 0) song.trackNumber.toString() else null)
                     DetailRow("Disco", if (song.discNumber > 1) song.discNumber.toString() else null)
-                    DetailRow("Formato", codecDisplayName(details?.mimeType ?: song.mimeType, song.path))
+                    DetailRow(
+                        "Formato",
+                        dsdInfo?.let { dsdQualityLine(it) }
+                            ?: codecDisplayName(details?.mimeType ?: song.mimeType, song.path),
+                    )
                     DetailRow("Bitrate", details?.bitrateKbps?.let { "$it kbps" })
                     DetailRow("Sample rate", details?.sampleRateHz?.let { "$it Hz" })
                     DetailRow(
