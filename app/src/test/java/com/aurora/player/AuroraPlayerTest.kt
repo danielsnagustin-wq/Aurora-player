@@ -231,6 +231,11 @@ class AuroraPlayerTest {
         assertEquals(-8f, selectReplayGainDb("smart", null, -8f, 0f), 0.001f)
         assertEquals(0f, selectReplayGainDb("smart", null, null, 0f), 0.001f)
         assertEquals(-4f, selectReplayGainDb("track", -6f, null, 2f), 0.001f)
+        // Modo LUFS: objetivo -14 menos lo medido; sin medición, 0.
+        assertEquals(-6f, selectReplayGainDb("lufs", null, null, 0f, -8f), 0.001f)
+        assertEquals(0f, selectReplayGainDb("lufs", null, null, 0f, null), 0.001f)
+        assertEquals(-4f, selectReplayGainDb("lufs", null, null, 2f, -8f), 0.001f)
+        assertEquals(12f, selectReplayGainDb("lufs", null, null, 0f, -30f), 0.001f)
     }
 
     @Test
