@@ -750,87 +750,14 @@ fun SettingsScreen(
         }
 
         if (section == SettingsSection.THEMES) {
-        SettingsGroupTitle("Mis temas")
-        SettingsGroupDescription("Tus temas guardados usan los mismos colores de Interfaz. Aplicar uno cambia todo el aspecto al instante.")
-        val pickTheme = rememberLauncherForActivityResult(
-            ActivityResultContracts.OpenDocument(),
-        ) { uri ->
-            if (uri == null) return@rememberLauncherForActivityResult
-            scope.launch {
-                val text = try {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                } catch (_: Exception) {
-                    null
-                }
-                if (text == null) {
-                    themeImportMessage = "No se pudo leer ese archivo."
-                    return@launch
-                }
-                val preset = try {
-                    themePresetFromJsonValue(JsonParser.parse(text))
-                } catch (_: Exception) {
-                    null
-                }
-                if (preset == null) {
-                    themeImportMessage = "Ese archivo no es un tema de Aurora Player."
-                    return@launch
-                }
-                val name = if (savedThemes.any { it.name == preset.name }) {
-                    "${preset.name} (2)"
-                } else {
-                    preset.name
-                }
-                presetStore.saveThemes((savedThemes + preset.copy(name = name)).takeLast(MAX_THEMES))
-                themeImportMessage = "Tema \"$name\" importado."
-            }
-        }
-        ThemePresetsSection(
-            presets = savedThemes,
-            onApply = { save(it.settings) },
-            onSave = { name ->
-                scope.launch {
-                    val updated = (savedThemes.filter { it.name != name } + ThemePreset(name, applied))
-                        .takeLast(MAX_THEMES)
-                    presetStore.saveThemes(updated)
-                }
-            },
-            onRename = { preset, name ->
-                scope.launch {
-                    presetStore.saveThemes(
-                        savedThemes.map { if (it.name == preset.name) it.copy(name = name) else it },
-                    )
-                }
-            },
-            onDelete = { preset ->
-                scope.launch {
-                    presetStore.saveThemes(savedThemes.filter { it.name != preset.name })
-                }
-            },
-            onDuplicate = { preset ->
-                scope.launch {
-                    var name = "${preset.name} (copia)"
-                    var n = 2
-                    while (savedThemes.any { it.name == name }) {
-                        name = "${preset.name} (copia $n)"
-                        n++
-                    }
-                    presetStore.saveThemes(
-                        (savedThemes + preset.copy(name = name)).takeLast(MAX_THEMES),
-                    )
-                }
-            },
-            onExport = { preset ->
-                scope.launch {
-                    val result = exportThemeFile(context, preset)
-                    themeImportMessage = result.fold(
-                        onSuccess = { "Tema exportado en $it." },
-                        onFailure = { "No se pudo exportar el tema." },
-                    )
-                }
-            },
-            onImportClick = { pickTheme.launch(arrayOf("application/json")) },
-            importMessage = themeImportMessage,
-        )
+            SettingsThemesSection(
+                applied = applied,
+                savedThemes = savedThemes,
+                onApplyTheme = { save(it) },
+                themeImportMessage = themeImportMessage,
+                onThemeImportMessageChange = { themeImportMessage = it },
+                presetStore = presetStore,
+            )
         }
 
 
