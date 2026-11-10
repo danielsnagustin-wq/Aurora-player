@@ -91,6 +91,7 @@ import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.IntroStore
 import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.online.GoogleAccountAuth
 import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.cast.CastManager
@@ -550,6 +551,21 @@ private fun AuroraApp(
     val ytMusicStore = remember { YouTubeMusicStore(context) }
     val ytMusicCookies by ytMusicStore.cookiesFlow.collectAsState(initial = "")
     val ytMusicToken by ytMusicStore.tokenFlow.collectAsState(initial = "")
+    // Token OAuth caducado (2026-11-10): Google lo rechaza con 401
+    // al cabo de ~1 h. Al rechazarlo, se invalida el viejo y se pide
+    // uno nuevo con la misma cuenta; si no se puede, se borra y la
+    // búsqueda cae a cookies/anónimo. Sin esto, la búsqueda de
+    // YouTube se queda muda para siempre tras la primera hora.
+    val onYtTokenRejected: (String) -> Unit = { rejected ->
+        if (rejected.isNotBlank() && rejected == ytMusicToken) {
+            scope.launch {
+                when (val refreshed = GoogleAccountAuth.refreshToken(context, rejected)) {
+                    is GoogleAccountAuth.TokenResult.Ok -> ytMusicStore.setToken(refreshed.token)
+                    else -> ytMusicStore.setToken("")
+                }
+            }
+        }
+    }
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -1639,6 +1655,7 @@ private fun AuroraApp(
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
                 ytMusicCookies = ytMusicCookies,
                 ytMusicToken = ytMusicToken,
+                onYtTokenRejected = onYtTokenRejected,
                 streamQuality = playerSettings.streamQuality,
                 modifier = Modifier.padding(padding),
             )
