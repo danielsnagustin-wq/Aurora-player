@@ -965,7 +965,11 @@ private fun AuroraApp(
             return@LaunchedEffect
         }
         val id = mediaId.toLongOrNull() ?: return@LaunchedEffect
-        lyricsOffsetMs = offsetStore.offsetFor(id)
+        lyricsOffsetMs = try {
+            offsetStore.offsetFor(id)
+        } catch (_: Exception) {
+            0L
+        }
         lyrics = loadLyricsForPath(context, currentSongPath ?: "")
         // RONDA 2: línea de calidad real (códec/bitrate/muestreo);
         // solo se muestra si hay al menos un dato real.
@@ -1028,7 +1032,13 @@ private fun AuroraApp(
                 )
                 if (next != null) {
                     launch {
-                        val item = c.getMediaItemAt(next)
+                        val item = try {
+                            c.getMediaItemAt(next)
+                        } catch (_: Exception) {
+                            // La cola cambió antes de leerla: no hay
+                            // nada que precargar.
+                            return@launch
+                        }
                         val meta = item.mediaMetadata
                         val track = meta.title?.toString().orEmpty()
                         val artist = meta.artist?.toString().orEmpty()
@@ -1053,18 +1063,24 @@ private fun AuroraApp(
         // y pide su Canvas; solo vídeo (la imagen no aporta nada
         // sobre la portada). Si cambia la canción, el efecto se
         // reinicia y la búsqueda vieja se cancela.
-        if (playerSettings.onlineMode && spotifyConnected) {
-            val meta = controller?.currentMediaItem?.mediaMetadata
-            val track = meta?.title?.toString().orEmpty()
-            val artist = meta?.artist?.toString().orEmpty()
-            if (track.isNotBlank() && artist.isNotBlank()) {
-                val token = SpotifyClient().fetchAccessToken(spotifyCookie)
-                if (token != null) {
-                    val trackId = SpotifyCanvasClient().searchTrackId(token, track, artist)
-                    val canvas = trackId?.let { SpotifyCanvasClient().fetchCanvas(token, it) }
-                    if (canvas?.isVideo == true) canvasUrl = canvas.url
+        try {
+            if (playerSettings.onlineMode && spotifyConnected) {
+                val meta = controller?.currentMediaItem?.mediaMetadata
+                val track = meta?.title?.toString().orEmpty()
+                val artist = meta?.artist?.toString().orEmpty()
+                if (track.isNotBlank() && artist.isNotBlank()) {
+                    val token = SpotifyClient().fetchAccessToken(spotifyCookie)
+                    if (token != null) {
+                        val trackId = SpotifyCanvasClient().searchTrackId(token, track, artist)
+                        val canvas = trackId?.let { SpotifyCanvasClient().fetchCanvas(token, it) }
+                        if (canvas?.isVideo == true) canvasUrl = canvas.url
+                    }
                 }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ErrorLog.log(context, "CANVAS", e)
         }
         // Traducción automática (2026-11-10, como BitChord).
         if (playerSettings.onlineMode && lyrics.isNotEmpty()) {
@@ -1127,12 +1143,33 @@ private fun AuroraApp(
         }
         val ordered = saved.songIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
         if (ordered.isEmpty()) return@LaunchedEffect
-        c.setMediaItems(
-            ordered.map { songToMediaItem(context, it) },
-            saved.index.coerceIn(0, ordered.size - 1),
-            saved.positionMs,
-        )
-        c.prepare()
+        try {
+            c.setMediaItems(
+                ordered.map { songToMediaItem(context, it) },
+                saved.index.coerceIn(0, ordered.size - 1),
+                saved.positionMs,
+            )
+            c.prepare()
+        } catch (e: Exception) {
+            ErrorLog.log(context, "RESTORE-QUEUE", e)
+        }
+    }
+
+    // Comparte el registro de errores sanitizado (Ajustes > Avanzadas):
+    // sin él, un crash en el teléfono es invisible desde aquí. El
+    // registro nunca lleva rutas, títulos ni datos personales.
+    fun shareErrorLog() {
+        try {
+            val text = ErrorLog.buildReportText(context)
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_SUBJECT, "Aurora Player — registro de errores")
+                putExtra(Intent.EXTRA_TEXT, text)
+            }
+            context.startActivity(Intent.createChooser(send, "Compartir registro de errores"))
+        } catch (_: Exception) {
+            // Sin app para compartir no pasa nada.
+        }
     }
 
     fun playSongs(songs: List<Song>, startIndex: Int) {
@@ -1142,9 +1179,16 @@ private fun AuroraApp(
         // (duplicados exactos): nunca se pasa un índice inválido al
         // reproductor.
         val safeIndex = startIndex.coerceIn(0, songs.size - 1)
-        c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
-        c.prepare()
-        c.play()
+        // RONDA 2026-11-10 (crash al tocar una canción): si el
+        // controlador muere entre medias, la app no se cierra: se
+        // registra y se queda en la biblioteca.
+        try {
+            c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
+            c.prepare()
+            c.play()
+        } catch (e: Exception) {
+            ErrorLog.log(context, "PLAY", e)
+        }
     }
 
     // SPEC 005 FR-007: colas guardadas con nombre (hasta 20). La
@@ -1487,6 +1531,7 @@ private fun AuroraApp(
                 modifier = Modifier.padding(padding),
                 onOpenEq = { showEq = true },
                 onImportTracks = { tracks -> playOnlineTracks(tracks) },
+                onShareErrorLog = { shareErrorLog() },
             )
         }
     }
