@@ -284,14 +284,16 @@ class MainActivity : ComponentActivity() {
                 // La bajada automática (ahorro de energía del sistema,
                 // temperatura severa, app no visible) solo cambia lo que
                 // se ve; lo guardado en DataStore no se toca nunca.
+                // as? y no as (auditoría Gemini, ronda 2): si el servicio
+                // no existiera, el cast directo tumbaría la app al abrir.
                 val powerManager = remember {
-                    applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
+                    applicationContext.getSystemService(Context.POWER_SERVICE) as? PowerManager
                 }
-                var batterySaver by remember { mutableStateOf(powerManager.isPowerSaveMode) }
+                var batterySaver by remember { mutableStateOf(powerManager?.isPowerSaveMode == true) }
                 var thermalSevere by remember {
                     mutableStateOf(
                         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                            powerManager.currentThermalStatus.let {
+                            powerManager?.currentThermalStatus.let {
                                 it == PowerManager.THERMAL_STATUS_SEVERE ||
                                     it == PowerManager.THERMAL_STATUS_CRITICAL
                             },
@@ -301,7 +303,7 @@ class MainActivity : ComponentActivity() {
                 DisposableEffect(Unit) {
                     val receiver = object : BroadcastReceiver() {
                         override fun onReceive(context: Context?, intent: Intent?) {
-                            batterySaver = powerManager.isPowerSaveMode
+                            batterySaver = powerManager?.isPowerSaveMode == true
                         }
                     }
                     val filter = IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
@@ -319,8 +321,8 @@ class MainActivity : ComponentActivity() {
                             thermalSevere = status == PowerManager.THERMAL_STATUS_SEVERE ||
                                 status == PowerManager.THERMAL_STATUS_CRITICAL
                         }
-                        powerManager.addThermalStatusListener(listener)
-                        onDispose { powerManager.removeThermalStatusListener(listener) }
+                        powerManager?.addThermalStatusListener(listener)
+                        onDispose { powerManager?.removeThermalStatusListener(listener) }
                     } else {
                         onDispose { }
                     }
@@ -637,14 +639,31 @@ private fun AuroraApp(
         db.libraryDao().favoriteIdsFlow().collect { favoriteIds = it.toSet() }
     }
 
+    /** Llamadas al controlador protegidas (auditoría Gemini, ronda 2):
+     * si el servicio muere entre medias, el MediaController lanza
+     * IllegalStateException; sin esto, un toque en ese momento tumba
+     * la app. Como playSongs/playOnlineTrack, que ya lo hacen. */
+    fun controllerCall(tag: String, block: MediaController.() -> Unit) {
+        val c = controller ?: return
+        try {
+            c.block()
+        } catch (e: Exception) {
+            ErrorLog.log(context, tag, e)
+        }
+    }
+
     fun toggleFavorite() {
         val id = currentSongId ?: return
         scope.launch(Dispatchers.IO) {
-            val dao = db.libraryDao()
-            if (id in favoriteIds) {
-                dao.removeFavorite(id)
-            } else {
-                dao.addFavorite(FavoriteEntity(id))
+            try {
+                val dao = db.libraryDao()
+                if (id in favoriteIds) {
+                    dao.removeFavorite(id)
+                } else {
+                    dao.addFavorite(FavoriteEntity(id))
+                }
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Favorito", e)
             }
         }
     }
@@ -654,39 +673,41 @@ private fun AuroraApp(
      * define Media3); como Spotify y YouTube Music, aquí avanza a
      * la siguiente de la cola. En la última, no hace nada. */
     fun skipToNext() {
-        val c = controller ?: return
-        if (c.repeatMode == Player.REPEAT_MODE_ONE) {
-            val next = c.currentMediaItemIndex + 1
-            if (next < c.mediaItemCount) {
-                c.seekTo(next, 0)
-                c.play()
+        controllerCall("Siguiente") {
+            if (repeatMode == Player.REPEAT_MODE_ONE) {
+                val next = currentMediaItemIndex + 1
+                if (next < mediaItemCount) {
+                    seekTo(next, 0)
+                    play()
+                }
+            } else {
+                seekToNextMediaItem()
             }
-        } else {
-            c.seekToNextMediaItem()
         }
     }
 
     /** Cola flexible (ideas de Namida/Auxio): suena justo después. */
     fun playNext(song: Song) {
-        val c = controller ?: return
-        val at = (c.currentMediaItemIndex + 1).coerceIn(0, c.mediaItemCount)
-        c.addMediaItem(at, songToMediaItem(context, song))
+        controllerCall("Cola") {
+            val at = (currentMediaItemIndex + 1).coerceIn(0, mediaItemCount)
+            addMediaItem(at, songToMediaItem(context, song))
+        }
     }
 
     /** Cola flexible: se añade al final de la cola actual. */
     fun addToQueue(song: Song) {
-        controller?.addMediaItem(songToMediaItem(context, song))
+        controllerCall("Cola") { addMediaItem(songToMediaItem(context, song)) }
     }
 
     // Acción del widget (play/pausa/siguiente/anterior): se aplica en
     // cuanto el reproductor está listo.
     LaunchedEffect(widgetAction, controller) {
         val action = widgetAction ?: return@LaunchedEffect
-        val c = controller ?: return@LaunchedEffect
+        if (controller == null) return@LaunchedEffect
         when (action) {
-            MainActivity.ACTION_WIDGET_TOGGLE -> if (c.isPlaying) c.pause() else c.play()
+            MainActivity.ACTION_WIDGET_TOGGLE -> controllerCall("Widget") { if (isPlaying) pause() else play() }
             MainActivity.ACTION_WIDGET_NEXT -> skipToNext()
-            MainActivity.ACTION_WIDGET_PREV -> c.seekToPreviousMediaItem()
+            MainActivity.ACTION_WIDGET_PREV -> controllerCall("Widget") { seekToPreviousMediaItem() }
         }
         onWidgetActionHandled()
     }
@@ -708,7 +729,11 @@ private fun AuroraApp(
         if (ms < 30_000L || id in historyDone) return
         historyDone = historyDone + id
         scope.launch(Dispatchers.IO) {
-            db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
+            try {
+                db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Historial", e)
+            }
         }
     }
 
@@ -751,10 +776,14 @@ private fun AuroraApp(
             }
             if (picked.isNotEmpty()) {
                 radioRecentIds = (radioRecentIds + picked.map { it.id }).takeLast(50)
-                val startIndex = c.mediaItemCount
-                c.addMediaItems(picked.map { songToMediaItem(context, it) })
-                c.seekTo(startIndex, 0)
-                c.play()
+                try {
+                    val startIndex = c.mediaItemCount
+                    c.addMediaItems(picked.map { songToMediaItem(context, it) })
+                    c.seekTo(startIndex, 0)
+                    c.play()
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Radio local", e)
+                }
             }
             radioBusy = false
         }
@@ -857,13 +886,17 @@ private fun AuroraApp(
             /** Guarda la cola actual (ids + índice + posición). */
             private fun saveQueue(c: MediaController) {
                 scope.launch {
-                    queueStore.save(
-                        (0 until c.mediaItemCount).mapNotNull {
-                            c.getMediaItemAt(it).mediaId.toLongOrNull()
-                        },
-                        c.currentMediaItemIndex,
-                        c.currentPosition,
-                    )
+                    try {
+                        queueStore.save(
+                            (0 until c.mediaItemCount).mapNotNull {
+                                c.getMediaItemAt(it).mediaId.toLongOrNull()
+                            },
+                            c.currentMediaItemIndex,
+                            c.currentPosition,
+                        )
+                    } catch (e: Exception) {
+                        ErrorLog.log(context, "Guardar cola", e)
+                    }
                 }
             }
 
@@ -974,8 +1007,9 @@ private fun AuroraApp(
     LaunchedEffect(controller, isPlaying) {
         val c = controller ?: return@LaunchedEffect
         while (true) {
-            if (c.isPlaying || showPlayer) {
-                positionMs = c.currentPosition
+            try {
+                if (c.isPlaying || showPlayer) {
+                    positionMs = c.currentPosition
                 durationMs = c.duration
                 if (c.isPlaying) {
                     val id = c.currentMediaItem?.mediaId?.toLongOrNull()
@@ -1007,6 +1041,12 @@ private fun AuroraApp(
                     sleepAtSongEnd = false
                     sleepTimer = SleepTimerOption.OFF
                 }
+            }
+            } catch (e: Exception) {
+                // El controlador murió entre medias: se sale del bucle;
+                // el efecto se reinicia cuando cambia el controlador.
+                ErrorLog.log(context, "Progreso", e)
+                break
             }
             delay(500)
         }
@@ -1458,14 +1498,14 @@ private fun AuroraApp(
             repeatMode = repeatMode,
             onClose = { showPlayer = false },
             castDeviceName = (castState as? CastState.Connected)?.deviceName,
-            onPlayPause = { controller?.let { if (it.isPlaying) it.pause() else it.play() } },
-            onPrevious = { controller?.seekToPreviousMediaItem() },
+            onPlayPause = { controllerCall("Reproductor") { if (isPlaying) pause() else play() } },
+            onPrevious = { controllerCall("Reproductor") { seekToPreviousMediaItem() } },
             onNext = { skipToNext() },
-            onSeek = { controller?.seekTo(it) },
-            onToggleShuffle = { controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled } },
+            onSeek = { controllerCall("Reproductor") { seekTo(it) } },
+            onToggleShuffle = { controllerCall("Reproductor") { shuffleModeEnabled = !shuffleModeEnabled } },
             onCycleRepeat = {
-                controller?.let {
-                    it.repeatMode = when (it.repeatMode) {
+                controllerCall("Reproductor") {
+                    repeatMode = when (repeatMode) {
                         Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
                         Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
                         else -> Player.REPEAT_MODE_OFF
@@ -1480,14 +1520,15 @@ private fun AuroraApp(
             queueTitles = queueTitles,
             queueIndex = queueIndex,
             onQueueClick = { index ->
-                controller?.let { it.seekTo(index, 0); it.play() }
+                controllerCall("Cola") { seekTo(index, 0); play() }
             },
             onQueueRemove = { index ->
-                controller?.removeMediaItem(index)
+                controllerCall("Cola") { removeMediaItem(index) }
             },
             onQueueMove = { from, to ->
-                val c = controller ?: return@PlayerScreen
-                if (to in 0 until c.mediaItemCount) c.moveMediaItem(from, to)
+                controllerCall("Cola") {
+                    if (to in 0 until mediaItemCount) moveMediaItem(from, to)
+                }
             },
             savedQueues = savedQueues,
             savedQueueMessage = savedQueueMessage,
@@ -1599,7 +1640,7 @@ private fun AuroraApp(
                         }
                         IconButton(
                             onClick = {
-                                controller?.let { if (it.isPlaying) it.pause() else it.play() }
+                                controllerCall("Reproductor") { if (isPlaying) pause() else play() }
                             },
                         ) {
                             Icon(
