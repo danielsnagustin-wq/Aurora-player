@@ -82,6 +82,29 @@ fun contrastOn(color: Color): Color =
     if (brightnessOf(color) > 0.5f) PureBlack else Color.White
 
 /**
+ * Texto que se lee sobre un color (2026-11-10): el del usuario si
+ * contrasta con el fondo, si no el que toca. Así el color elegido
+ * SIEMPRE se aplica y lo que se adapta es el texto, en vez de
+ * descartar el color en silencio (eso hacía creer que "ningún
+ * color funciona").
+ */
+fun readableTextOn(
+    color: Color,
+    userHex: String,
+    darkDefault: Color,
+    lightDefault: Color,
+): Color {
+    val user = parseHexOrNull(userHex)
+    return if (brightnessOf(color) > 0.5f) {
+        // Fondo claro: texto oscuro (el del usuario si es oscuro).
+        if (user != null && brightnessOf(user) < 0.5f) user else darkDefault
+    } else {
+        // Fondo oscuro: texto claro (el del usuario si es claro).
+        if (user != null && brightnessOf(user) > 0.5f) user else lightDefault
+    }
+}
+
+/**
  * RONDA PULIDO (2026-11-09): en modo claro el acento se usa como
  * color de TEXTO sobre blanco (chips sin elegir, iconos, enlaces).
  * El azul hielo #8CCBEB sobre blanco casi no se lee. Se oscurece
@@ -160,63 +183,34 @@ fun AuroraPlayerTheme(
         (settings.themeMode == ThemeMode.SYSTEM && darkTheme && settings.amoledWhenSystemDark)
 
     val accent = parseHexOrNull(settings.accentHex) ?: IceBlue
-    // AUDITORÍA (2026-11-09): en modo claro el fondo, las tarjetas,
-    // la barra y el visualizador IGNORABAN el color elegido por el
-    // usuario (blanco y grises fijos): esos ajustes no hacían nada en
-    // claro. Ahora se aplica el color del usuario cuando es claro
-    // (brillo > 0,5, para que el texto oscuro se siga leyendo); si es
-    // oscuro, se usa el valor claro por defecto, nunca se rompe la
-    // lectura.
-    fun lightOrDefault(hex: String, default: Color): Color {
-        val custom = parseHexOrNull(hex)
-        return if (custom != null && brightnessOf(custom) > 0.5f) custom else default
-    }
-    // RONDA 3 (2026-11-09): en modo oscuro el fondo IGNORABA el
-    // color elegido (fijo #121212) y en AMOLED se aceptaba hasta un
-    // fondo claro con texto claro encima, ilegible. Ahora el fondo
-    // elegido vale cuando es oscuro; si es claro, cae al oscuro por
-    // defecto para que el texto se siga leyendo.
-    fun darkOrDefault(hex: String, default: Color): Color {
-        val custom = parseHexOrNull(hex)
-        return if (custom != null && brightnessOf(custom) < 0.5f) custom else default
-    }
+    // COLORES (2026-11-10): el color elegido SIEMPRE se aplica; lo que
+    // se adapta es el texto, para que se siga leyendo. Antes, un fondo
+    // claro en modo oscuro (o uno oscuro en modo claro) se descartaba
+    // en silencio y el usuario veía que "ningún color funciona".
     val background = when {
-        !useDark -> lightOrDefault(settings.backgroundHex, Color.White)
-        isAmoled -> darkOrDefault(settings.backgroundHex, PureBlack)
-        else -> darkOrDefault(settings.backgroundHex, Color(0xFF121212))
+        !useDark -> parseHexOrNull(settings.backgroundHex) ?: Color.White
+        isAmoled -> parseHexOrNull(settings.backgroundHex) ?: PureBlack
+        // OSCURO ≠ AMOLED: el fondo por defecto es #000000, y sin esta
+        // rama Oscuro se vería negro puro como AMOLED.
+        settings.backgroundHex.equals(ThemeSettings.DEFAULT.backgroundHex, ignoreCase = true) ->
+            Color(0xFF1E1E26)
+        else -> parseHexOrNull(settings.backgroundHex) ?: Color(0xFF1E1E26)
     }
-    val surface = when {
-        !useDark -> lightOrDefault(settings.cardHex, Color(0xFFF2F2F2))
-        else -> parseHexOrNull(settings.cardHex) ?: CardBlack
-    }
-    // BUG REAL (prueba en teléfono 2026-11-08): el color de texto
-    // guardado (#DCE8F5, claro) se usaba también en modo claro, así que
-    // el texto quedaba claro sobre fondo blanco, ilegible. En modo
-    // claro el texto es oscuro siempre, salvo que el usuario haya
-    // elegido un color oscuro que sí se lea; en oscuro/AMOLED manda el
-    // color elegido por el usuario.
-    val onBackground = if (useDark) {
-        parseHexOrNull(settings.textHex) ?: Silver
-    } else {
-        val custom = parseHexOrNull(settings.textHex)
-        if (custom != null && brightnessOf(custom) < 0.6f) custom else Color(0xFF1A1C1E)
-    }
-    val onSurface = onBackground
-    // ETAPA 2 (renovación): colores guardados que el tema no usaba y
-    // ahora tienen efecto real: texto secundario -> onSurfaceVariant,
-    // barra del reproductor -> surfaceVariant (oscuro/AMOLED). El color
-    // de botones se cablea en ETAPA 6 (necesita su propio canal).
-    val secondaryText = if (useDark) {
-        parseHexOrNull(settings.secondaryTextHex) ?: Color(0xFF9AA7B8)
-    } else {
-        val custom = parseHexOrNull(settings.secondaryTextHex)
-        if (custom != null && brightnessOf(custom) < 0.6f) custom else Color(0xFF5A6470)
-    }
-    val playerBar = if (useDark) {
-        parseHexOrNull(settings.playerBarHex) ?: surface
-    } else {
-        lightOrDefault(settings.playerBarHex, surface)
-    }
+    val surface = parseHexOrNull(settings.cardHex)
+        ?: if (useDark) CardBlack else Color(0xFFF2F2F2)
+    // El texto se adapta al fondo que haya quedado (ver readableTextOn):
+    // fondo claro -> texto oscuro; fondo oscuro -> texto claro (el del
+    // usuario cuando contrasta).
+    val onBackground = readableTextOn(
+        background, settings.textHex, Color(0xFF1A1C1E), Silver,
+    )
+    val onSurface = readableTextOn(
+        surface, settings.textHex, Color(0xFF1A1C1E), Silver,
+    )
+    val secondaryText = readableTextOn(
+        surface, settings.secondaryTextHex, Color(0xFF5A6470), Color(0xFF9AA7B8),
+    )
+    val playerBar = parseHexOrNull(settings.playerBarHex) ?: surface
     // Contraste real del texto sobre el color principal: acento claro
     // -> texto negro; acento oscuro -> texto blanco (antes negro fijo).
     // La luminancia se calcula a mano (Color.luminance() no existe en
