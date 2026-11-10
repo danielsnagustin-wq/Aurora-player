@@ -2,7 +2,7 @@ package com.aurora.player
 
 import com.aurora.player.online.CachedStream
 import com.aurora.player.online.DEFAULT_STREAM_CACHE_MAX_BYTES
-import com.aurora.player.online.StreamQuality
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.filesToEvict
 import com.aurora.player.online.streamCacheFileName
 import com.aurora.player.online.streamCachePartFileName
