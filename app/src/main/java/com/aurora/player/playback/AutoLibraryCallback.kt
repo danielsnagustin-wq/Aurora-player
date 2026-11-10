@@ -30,7 +30,7 @@ class AuroraLibraryCallback(
     private val scope: CoroutineScope,
     private val loadSongs: suspend () -> List<Song>,
     private val loadFavoriteIds: suspend () -> Set<Long>,
-) : MediaLibraryService.Callback {
+) : MediaLibraryService.MediaLibrarySession.Callback {
 
     private fun rootItem(): MediaItem =
         MediaItem.Builder()
@@ -47,7 +47,7 @@ class AuroraLibraryCallback(
     override fun onGetLibraryRoot(
         session: MediaLibraryService.MediaLibrarySession,
         browser: MediaSession.ControllerInfo,
-        params: MediaLibraryService.MediaLibrarySession.LibraryParams?,
+        params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> =
         SettableFuture.create<LibraryResult<MediaItem>>()
             .apply { set(LibraryResult.ofItem(rootItem(), params)) }
@@ -58,7 +58,7 @@ class AuroraLibraryCallback(
         parentId: String,
         page: Int,
         pageSize: Int,
-        params: MediaLibraryService.MediaLibrarySession.LibraryParams?,
+        params: MediaLibraryService.LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
         val future = SettableFuture.create<LibraryResult<ImmutableList<MediaItem>>>()
         scope.launch {
