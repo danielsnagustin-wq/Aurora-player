@@ -3,6 +3,7 @@ package com.aurora.player.data
 import android.content.Context
 import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -28,6 +29,9 @@ data class EqState(
     val levelsDb: List<Float> = List(10) { 0f },
     val bassBoost: Int = 0,
     val virtualizer: Int = 0,
+    /** Tone 2D (Fase 2): graves y agudos en dB, capa sobre los 10 niveles. */
+    val toneBassDb: Float = 0f,
+    val toneTrebleDb: Float = 0f,
 )
 
 class EqStateStore(context: Context) {
@@ -39,6 +43,8 @@ class EqStateStore(context: Context) {
         val BASS = intPreferencesKey("eq_bass")
         val VIRTUALIZER = intPreferencesKey("eq_virtualizer")
         val PER_OUTPUT = booleanPreferencesKey("eq_per_output")
+        val TONE_BASS = floatPreferencesKey("eq_tone_bass")
+        val TONE_TREBLE = floatPreferencesKey("eq_tone_treble")
     }
 
     /** EQ distinto por salida (OFF por defecto: un solo EQ global, como hasta ahora). */
@@ -52,7 +58,9 @@ class EqStateStore(context: Context) {
 
     /**
      * EQ guardado para una salida ("speaker", "wired", "usb",
-     * "bluetooth:<nombre>"). Formato: "enabled|niveles,bass|virt".
+     * "bluetooth:<nombre>"). Formato: "enabled|niveles,bass|virt"
+     * o con Tone 2D: "enabled|niveles,bass|virt|graves,agudos".
+     * Los de 4 partes (viejos) se leen con tono en cero.
      * Si no hay nada guardado para esa salida, sale el EQ global.
      */
     fun routeStateFlow(routeKey: String): Flow<EqState?> = dataStore.data
@@ -67,20 +75,27 @@ class EqStateStore(context: Context) {
             prefs[stringPreferencesKey("eq_route_$routeKey")] =
                 "${if (state.enabled) 1 else 0}|" +
                 state.levelsDb.map { it.coerceIn(-15f, 15f) }.joinToString(",") +
-                "|${state.bassBoost.coerceIn(0, 1000)}|${state.virtualizer.coerceIn(0, 1000)}"
+                "|${state.bassBoost.coerceIn(0, 1000)}|${state.virtualizer.coerceIn(0, 1000)}" +
+                "|${state.toneBassDb.coerceIn(-10f, 10f)},${state.toneTrebleDb.coerceIn(-10f, 10f)}"
         }
     }
 
     private fun parseRouteState(raw: String): EqState? {
         val parts = raw.split("|")
-        if (parts.size != 4) return null
+        if (parts.size !in 4..5) return null
         val levels = parts[1].split(",").mapNotNull { it.toFloatOrNull() }
             .takeIf { it.size == 10 } ?: return null
+        val tone = if (parts.size == 5) {
+            parts[4].split(",").mapNotNull { it.toFloatOrNull() }
+                .takeIf { it.size == 2 } ?: return null
+        } else listOf(0f, 0f)
         return EqState(
             enabled = parts[0] == "1",
             levelsDb = levels,
             bassBoost = parts[2].toIntOrNull()?.coerceIn(0, 1000) ?: return null,
             virtualizer = parts[3].toIntOrNull()?.coerceIn(0, 1000) ?: return null,
+            toneBassDb = tone[0].coerceIn(-10f, 10f),
+            toneTrebleDb = tone[1].coerceIn(-10f, 10f),
         )
     }
 
@@ -95,6 +110,8 @@ class EqStateStore(context: Context) {
             levelsDb = levels,
             bassBoost = (prefs[Keys.BASS] ?: 0).coerceIn(0, 1000),
             virtualizer = (prefs[Keys.VIRTUALIZER] ?: 0).coerceIn(0, 1000),
+            toneBassDb = (prefs[Keys.TONE_BASS] ?: 0f).coerceIn(-10f, 10f),
+            toneTrebleDb = (prefs[Keys.TONE_TREBLE] ?: 0f).coerceIn(-10f, 10f),
         )
     }
 
@@ -104,6 +121,8 @@ class EqStateStore(context: Context) {
             prefs[Keys.LEVELS] = state.levelsDb.map { it.coerceIn(-15f, 15f) }.joinToString(",")
             prefs[Keys.BASS] = state.bassBoost.coerceIn(0, 1000)
             prefs[Keys.VIRTUALIZER] = state.virtualizer.coerceIn(0, 1000)
+            prefs[Keys.TONE_BASS] = state.toneBassDb.coerceIn(-10f, 10f)
+            prefs[Keys.TONE_TREBLE] = state.toneTrebleDb.coerceIn(-10f, 10f)
         }
     }
 }
