@@ -87,7 +87,10 @@ import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.IntroStore
+import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
+import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.MAX_NAMED_QUEUES
@@ -497,6 +500,11 @@ private fun AuroraApp(
     val scope = rememberCoroutineScope()
     val playerStore = remember { PlayerSettingsStore(context) }
     val playerSettings by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
+    // Fase 2 — orden de los proveedores de letras (hoja "Elegir
+    // proveedor"): el primero que encuentre la letra gana.
+    val lyricsProviderStore = remember { LyricsProviderStore(context) }
+    val lyricsProviderOrder by lyricsProviderStore.orderFlow.collectAsState(initial = DEFAULT_PROVIDER_ORDER)
+    val lyricsProviders = remember(lyricsProviderOrder) { orderedProviders(lyricsProviderOrder.joinToString(",")) }
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -902,7 +910,7 @@ private fun AuroraApp(
                     if (it > 0) it / 1000 else 0L
                 }
                 if (track.isNotBlank() && artist.isNotBlank()) {
-                    lyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec)
+                    lyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec, lyricsProviders)
                 }
             }
             return@LaunchedEffect
@@ -951,7 +959,7 @@ private fun AuroraApp(
                 if (it > 0) it / 1000 else 0L
             }
             if (track.isNotBlank() && artist.isNotBlank()) {
-                lyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec)
+                lyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec, lyricsProviders)
             }
         }
         // Precarga (idea de BitChord, 2026-11-09): mientras suena la
@@ -985,7 +993,7 @@ private fun AuroraApp(
                             } catch (_: Exception) {
                                 0L
                             }
-                            loadOnlineLyrics(context, item.mediaId, track, artist, album, durationSec)
+                            loadOnlineLyrics(context, item.mediaId, track, artist, album, durationSec, lyricsProviders)
                         }
                     }
                 }
