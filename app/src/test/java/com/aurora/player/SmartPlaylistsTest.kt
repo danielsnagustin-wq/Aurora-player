@@ -1,6 +1,5 @@
 package com.aurora.player
 
-import android.net.Uri
 import com.aurora.player.library.SmartPlaylistKind
 import com.aurora.player.library.smartPlaylistSongs
 import com.aurora.player.model.Song
@@ -17,7 +16,7 @@ class SmartPlaylistsTest {
         lastPlayed: Long? = null,
     ) = Song(
         id = id, title = "T$id", artist = "A", album = "Al", albumId = 1,
-        durationMs = 180_000, path = "/x/$id.mp3", uri = Uri.EMPTY,
+        durationMs = 180_000, path = "/x/$id.mp3", uri = fakeUri(),
         mimeType = "audio/mpeg", sizeBytes = 1000, dateAdded = added,
         isFavorite = favorite, playCount = plays, lastPlayedAt = lastPlayed,
     )
