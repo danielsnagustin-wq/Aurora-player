@@ -97,6 +97,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.media3.common.Player
 import com.aurora.player.data.NamedQueueWithCount
+import com.aurora.player.model.GestureAction
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.normalizeQueueName
@@ -218,6 +219,8 @@ fun PlayerScreen(
     // Gestos con interruptor real en Ajustes (AUDITORÍA 2026-11-09).
     swipeEnabled: Boolean = true,
     doubleTapEnabled: Boolean = true,
+    // Fase 2 — gestos configurables: qué hace el doble toque.
+    doubleTapAction: GestureAction = GestureAction.FAVORITE,
     volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -427,9 +430,19 @@ fun PlayerScreen(
                         onHorizontalDrag = { _, dragAmount -> dragTotal += dragAmount },
                     )
                 }
-                .pointerInput(doubleTapEnabled) {
+                .pointerInput(doubleTapEnabled, doubleTapAction) {
                     detectTapGestures(
-                        onDoubleTap = { if (doubleTapEnabled) onToggleFavorite() },
+                        // Fase 2 — gestos configurables: el doble
+                        // toque hace lo que el usuario eligió.
+                        onDoubleTap = {
+                            if (!doubleTapEnabled) return@detectTapGestures
+                            when (doubleTapAction) {
+                                GestureAction.FAVORITE -> onToggleFavorite()
+                                GestureAction.PLAY_PAUSE -> onPlayPause()
+                                GestureAction.NEXT -> onNext()
+                                GestureAction.PREVIOUS -> onPrevious()
+                            }
+                        },
                         onTap = { canvasControlsVisible = true; canvasHideKey++ },
                     )
                 }
