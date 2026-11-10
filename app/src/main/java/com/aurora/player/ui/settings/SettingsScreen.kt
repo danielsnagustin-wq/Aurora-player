@@ -852,6 +852,30 @@ fun SettingsScreen(
                 onCheckedChange = { savePlayer(player.copy(doubleTapToFavorite = it)) },
             )
         }
+        // Fase 1b: agitar para pasar a la siguiente (OFF por defecto)
+        // y deslizar vertical sobre la portada para el volumen.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Agitar el teléfono pasa a la siguiente", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.shakeToNext,
+                onCheckedChange = { savePlayer(player.copy(shakeToNext = it)) },
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Deslizar vertical sobre la portada cambia el volumen", modifier = Modifier.weight(1f))
+            Switch(
+                checked = player.volumeGesture,
+                onCheckedChange = { savePlayer(player.copy(volumeGesture = it)) },
+            )
+        }
         }
 
         if (section == SettingsSection.LIBRARY) {
