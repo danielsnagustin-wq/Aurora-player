@@ -36,7 +36,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.aurora.player.audio.AUTO_EQ_MODELS
+import com.aurora.player.audio.OutputRoute
+import com.aurora.player.audio.readActiveBtCodec
 import com.aurora.player.audio.applyTone2d
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.isDirectMode
@@ -239,6 +246,53 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 8.dp),
         )
+        // Fase 2, códec BT: solo con auriculares BT y solo si el usuario
+        // lo pide; la lectura es por reflexión y puede no estar
+        // disponible: entonces se dice, no se inventa un códec.
+        if (route == OutputRoute.BLUETOOTH) {
+            var btCodecLine by remember { mutableStateOf<String?>(null) }
+            var btCodecChecked by remember { mutableStateOf(false) }
+            val btPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                if (granted) {
+                    scope.launch {
+                        btCodecLine = readActiveBtCodec(context)?.displayLine()
+                            ?: "Códec no disponible"
+                        btCodecChecked = true
+                    }
+                }
+            }
+            if (!btCodecChecked) {
+                OutlinedButton(
+                    onClick = {
+                        if (ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.BLUETOOTH_CONNECT,
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            scope.launch {
+                                btCodecLine = readActiveBtCodec(context)?.displayLine()
+                                    ?: "Códec no disponible"
+                                btCodecChecked = true
+                            }
+                        } else {
+                            btPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        }
+                    },
+                    modifier = Modifier.padding(top = 4.dp),
+                ) {
+                    Text("Ver códec Bluetooth")
+                }
+            } else {
+                Text(
+                    "Códec: ${btCodecLine ?: "Códec no disponible"}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
