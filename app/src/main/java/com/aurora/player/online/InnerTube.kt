@@ -359,6 +359,63 @@ fun parseCharts(json: String): ChartsResult {
     return ChartsResult(videoPlaylists, artists)
 }
 
+/** Una canción de la Selección rápida de YouTube Music: se puede sonar al tocarla. */
+data class QuickPick(
+    val videoId: String,
+    val title: String,
+    val artist: String,
+    val thumbnailUrl: String?,
+)
+
+/**
+ * Parsea la Selección rápida de la página de inicio de YouTube Music
+ * (browseId FEmusic_home, forma documentada por ytmusicapi): contents
+ * → singleColumnBrowseResultsRenderer → tabs[0] → sectionListRenderer
+ * → carruseles; la fila se reconoce por su título ("Quick picks" o
+ * "Selección rápida"). Sus ítems son musicTwoRowItemRenderer con el
+ * videoId en navigationEndpoint.watchEndpoint. Si no hay fila (sin
+ * login a veces no hay), la lista sale vacía.
+ */
+fun parseQuickPicks(json: String): List<QuickPick> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val sections = root.obj("contents")?.obj("singleColumnBrowseResultsRenderer")
+        ?.obj("tabs")?.arr()?.firstOrNull()
+        ?.obj("tabRenderer")?.obj("content")?.obj("sectionListRenderer")
+        ?.obj("contents")?.arr() ?: return emptyList()
+    for (section in sections) {
+        val shelf = section.obj("musicCarouselShelfRenderer") ?: continue
+        val headerTitle = shelf.obj("header")
+            ?.obj("musicCarouselShelfBasicHeaderRenderer")
+            ?.obj("title")?.obj("runs")?.arr()?.firstOrNull()?.obj("text")?.str()
+            ?: continue
+        val lower = headerTitle.lowercase()
+        if (!lower.contains("quick") && !lower.contains("rápida")) continue
+        val items = shelf.obj("contents")?.arr() ?: return emptyList()
+        val picks = mutableListOf<QuickPick>()
+        for (item in items) {
+            val twoRow = item.obj("musicTwoRowItemRenderer") ?: continue
+            val videoId = twoRow.obj("navigationEndpoint")?.obj("watchEndpoint")
+                ?.obj("videoId")?.str() ?: continue
+            val title = twoRow.obj("title")?.obj("runs")?.arr()
+                ?.firstOrNull()?.obj("text")?.str() ?: continue
+            val subtitle = twoRow.obj("subtitle")?.obj("runs")?.arr()
+                ?.mapNotNull { it.obj("text")?.str() }
+                ?.filter { it != " • " } ?: emptyList()
+            val artist = subtitle.firstOrNull() ?: ""
+            val thumbs = twoRow.obj("thumbnailRenderer")?.obj("musicThumbnailRenderer")
+                ?.obj("thumbnail")?.obj("thumbnails")?.arr()
+            val thumbnail = thumbs?.lastOrNull()?.obj("url")?.str()
+            picks += QuickPick(videoId, title, artist, thumbnail)
+        }
+        return picks
+    }
+    return emptyList()
+}
+
 /** Elige el formato de audio segun la calidad pedida: se
  * recorre su escalera de itags; si ninguno esta, cae al de
  * mayor bitrate. Sin formatos no hay audio (null). */
@@ -396,6 +453,15 @@ class InnerTubeClient(private val authCookies: String? = null) {
         val response = postJson(url, body, SEARCH_CLIENT)
             ?: return@withContext ChartsResult(emptyList(), emptyList())
         parseCharts(response)
+    }
+
+    /** Selección rápida de YouTube Music (Para ti): canciones sugeridas del inicio. */
+    suspend fun getQuickPicks(): List<QuickPick> = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_home\"}"
+        val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext emptyList()
+        parseQuickPicks(response)
     }
 
     /** Resuelve el audio probando la escalera de clientes; en cada
