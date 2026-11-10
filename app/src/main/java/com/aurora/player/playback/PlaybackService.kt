@@ -32,6 +32,7 @@ import com.aurora.player.alarm.AlarmSettings
 import com.aurora.player.alarm.AlarmSource
 import com.aurora.player.audio.ChannelBalanceAudioProcessor
 import com.aurora.player.audio.EqualizerManager
+import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
@@ -102,6 +103,7 @@ class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
     private var equalizer: EqualizerManager? = null
+    private var audioOutputDirect: Boolean = false
 
     /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -240,7 +242,12 @@ class PlaybackService : MediaSessionService() {
         // cuando cambian en Ajustes, sin reiniciar nada.
         serviceScope.launch {
             PlayerSettingsStore(this@PlaybackService).settingsFlow.collect { settings ->
-                crossfadeSeconds = settings.crossfadeSeconds
+                // Salida Directa (Fase 2): todo el procesado se apaga
+                // — ReplayGain, silencio, balance, EQ del sistema,
+                // crossfade — y el volumen queda a 1.0.
+                val direct = isDirectMode(settings.audioOutputMode)
+                audioOutputDirect = direct
+                crossfadeSeconds = if (direct) 0 else settings.crossfadeSeconds
                 crossfadeGaplessAlbum = settings.crossfadeGaplessAlbumException
                 exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
                 autoplayOnConnect = settings.autoplayOnConnect
@@ -253,20 +260,24 @@ class PlaybackService : MediaSessionService() {
                 // RONDA 6: el modo/preamp de ReplayGain se aplica al
                 // cambiar en Ajustes, con la etiqueta de la pista que
                 // suena (si la hay).
-                replayGainMode = settings.replayGainMode
+                replayGainMode = if (direct) "off" else settings.replayGainMode
                 replayGainPreAmpDb = settings.replayGainPreAmpDb
                 applyReplayGain()
                 applyOverlapReplayGain()
                 // RONDA 6: saltar silencio se enciende/apaga en vivo.
-                skipSilenceEnabled = settings.skipSilence
-                silenceProcessor?.enabled = settings.skipSilence
+                skipSilenceEnabled = if (direct) false else settings.skipSilence
+                silenceProcessor?.enabled = skipSilenceEnabled
                 // SPEC 005 FR-001: balance L/R en vivo; en 0 el
                 // procesador pasa el audio sin tocarlo.
-                channelBalance = settings.channelBalance
-                balanceProcessor?.setBalance(settings.channelBalance)
-                balanceProcessor?.enabled = settings.channelBalance != 0f
-                overlapBalanceProcessor?.setBalance(settings.channelBalance)
-                overlapBalanceProcessor?.enabled = settings.channelBalance != 0f
+                channelBalance = if (direct) 0f else settings.channelBalance
+                balanceProcessor?.setBalance(channelBalance)
+                balanceProcessor?.enabled = channelBalance != 0f
+                overlapBalanceProcessor?.setBalance(channelBalance)
+                overlapBalanceProcessor?.enabled = channelBalance != 0f
+                if (direct) {
+                    equalizer?.setEnabled(false)
+                    overlapEqualizer?.setEnabled(false)
+                }
             }
         }
         // Crossfade real (ETAPA 4): fade-in al cambiar de pista y
@@ -415,11 +426,15 @@ class PlaybackService : MediaSessionService() {
         manager?.let { eq ->
             serviceScope.launch {
                 val saved = EqStateStore(this@PlaybackService).stateFlow.first()
-                eq.setEnabled(saved.enabled)
+                val direct = isDirectMode(
+                    PlayerSettingsStore(this@PlaybackService).settingsFlow.first().audioOutputMode,
+                )
+                audioOutputDirect = direct
+                eq.setEnabled(if (direct) false else saved.enabled)
                 eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
-                applyRouteEq()
+                if (!direct) applyRouteEq()
             }
         }
     }
@@ -620,11 +635,11 @@ class PlaybackService : MediaSessionService() {
         manager?.let { eq ->
             serviceScope.launch {
                 val saved = EqStateStore(this@PlaybackService).stateFlow.first()
-                eq.setEnabled(saved.enabled)
+                eq.setEnabled(if (audioOutputDirect) false else saved.enabled)
                 eq.applyPreset(EqualizerManager.Preset("Guardado", saved.levelsDb))
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
-                applyRouteEq()
+                if (!audioOutputDirect) applyRouteEq()
             }
         }
     }
