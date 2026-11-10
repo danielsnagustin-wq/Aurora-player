@@ -80,6 +80,9 @@ object BackupManager {
         val AUTO = booleanPreferencesKey("auto_backup_enabled")
         val LAST_AUTO_MS = longPreferencesKey("last_auto_backup_ms")
         val LAST_NAME = stringPreferencesKey("last_backup_name")
+        // Fase 2 — respaldo a carpeta: la carpeta elegida por el
+        // usuario (Uri de árbol SAF, en texto). Vacía = Descargas.
+        val FOLDER_URI = stringPreferencesKey("backup_folder_uri")
     }
 
     private const val AUTO_INTERVAL_MS = 24L * 60L * 60L * 1000L
@@ -93,6 +96,20 @@ object BackupManager {
 
     suspend fun lastBackupName(context: Context): String =
         context.backupDataStore.data.first()[Keys.LAST_NAME] ?: ""
+
+    /** Carpeta elegida para los respaldos, o null (Descargas). */
+    suspend fun getBackupFolderUri(context: Context): Uri? {
+        val raw = context.backupDataStore.data.first()[Keys.FOLDER_URI] ?: return null
+        return runCatching { Uri.parse(raw) }.getOrNull()
+    }
+
+    /** Guarda (o quita, con null) la carpeta elegida para respaldos. */
+    suspend fun setBackupFolderUri(context: Context, uri: Uri?) {
+        context.backupDataStore.edit { prefs ->
+            if (uri == null) prefs.remove(Keys.FOLDER_URI)
+            else prefs[Keys.FOLDER_URI] = uri.toString()
+        }
+    }
 
     /** Recoge todo lo respaldable en un BackupData. */
     suspend fun collectBackup(context: Context): BackupData = withContext(Dispatchers.IO) {
@@ -137,9 +154,7 @@ object BackupManager {
     suspend fun exportBackup(context: Context, data: BackupData): Result<ExportResult> =
         withContext(Dispatchers.IO) {
             runCatching {
-                val stamp = SimpleDateFormat("yyyyMMdd-HHmm", Locale.US)
-                    .format(java.util.Date(data.createdAtMs))
-                val fileName = "aurora-player-respaldo-$stamp.json"
+                val fileName = backupFileName(data.createdAtMs)
                 val text = data.toJsonString()
                 val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val values = ContentValues().apply {
@@ -171,6 +186,50 @@ object BackupManager {
                 ErrorLog.log(context, "Exportar respaldo", e)
             }
         }
+
+    /**
+     * Escribe el respaldo en la carpeta elegida por el usuario
+     * (árbol SAF). Si el permiso persistente se perdió o la carpeta
+     * ya no existe, devuelve el fallo (el llamador avisa y el
+     * usuario puede elegir otra carpeta); nunca se escribe en otro
+     * sitio sin avisar.
+     */
+    suspend fun exportBackupToFolder(
+        context: Context,
+        data: BackupData,
+        folderUri: Uri,
+    ): Result<ExportResult> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val fileName = backupFileName(data.createdAtMs)
+                val text = data.toJsonString()
+                val docUri = android.provider.DocumentsContract.createDocument(
+                    context.contentResolver, folderUri, "application/json", fileName,
+                ) ?: throw IllegalStateException("No se pudo crear el archivo en la carpeta")
+                context.contentResolver.openOutputStream(docUri)?.use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                } ?: throw IllegalStateException("No se pudo escribir el archivo")
+                context.backupDataStore.edit { prefs ->
+                    prefs[Keys.LAST_NAME] = fileName
+                }
+                val folderName = backupFolderDisplayName(folderUri.toString())
+                val location = if (folderName.isEmpty()) fileName else "$folderName/$fileName"
+                ExportResult(docUri, fileName, location)
+            }.onFailure { e ->
+                ErrorLog.log(context, "Exportar respaldo a carpeta", e)
+            }
+        }
+
+    /**
+     * Exporta donde toca: a la carpeta elegida si hay una, si no a
+     * Descargas (como hasta ahora). Es lo que usan el botón y el
+     * respaldo automático.
+     */
+    suspend fun exportBackupSmart(context: Context, data: BackupData): Result<ExportResult> {
+        val folder = getBackupFolderUri(context)
+        return if (folder != null) exportBackupToFolder(context, data, folder)
+        else exportBackup(context, data)
+    }
 
     /** Lee el texto de un respaldo elegido por el usuario (SAF). */
     suspend fun readBackupText(context: Context, uri: Uri): Result<String> =
@@ -272,7 +331,7 @@ object BackupManager {
             val last = prefs[Keys.LAST_AUTO_MS] ?: 0L
             if (System.currentTimeMillis() - last < AUTO_INTERVAL_MS) return false
             val data = collectBackup(context)
-            val result = exportBackup(context, data)
+            val result = exportBackupSmart(context, data)
             if (result.isSuccess) {
                 context.backupDataStore.edit { it[Keys.LAST_AUTO_MS] = System.currentTimeMillis() }
                 true
