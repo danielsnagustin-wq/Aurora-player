@@ -1521,6 +1521,7 @@ private fun AuroraApp(
                 spotifyConnected = spotifyConnected,
                 onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
                 ytMusicCookies = ytMusicCookies,
+                streamQuality = playerSettings.streamQuality,
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
