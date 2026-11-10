@@ -25,9 +25,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.aurora.player.online.InnerTubeClient
+import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import kotlinx.coroutines.launch
@@ -62,6 +64,8 @@ fun OnlineScreen(
     }
 
     val client = remember(ytMusicCookies) { InnerTubeClient(ytMusicCookies) }
+    val context = LocalContext.current
+    val cacheStore = remember { StreamCacheStore(context) }
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<OnlineTrack>?>(null) }
@@ -94,9 +98,19 @@ fun OnlineScreen(
         error = null
         scope.launch {
             try {
-                val url = client.resolveStreamUrl(track.videoId, streamQuality)
-                if (url != null) {
-                    onPlayTrack(track, url)
+                // Caché (Fase 2): si ya sonó antes, suena del disco
+                // sin gastar datos; si no, suena la URL y el audio se
+                // baja en segundo plano para la próxima vez.
+                cacheStore.cachedFile(track.videoId, streamQuality)?.let {
+                    onPlayTrack(track, it.toURI().toString())
+                    return@launch
+                }
+                val stream = client.resolveStream(track.videoId, streamQuality)
+                if (stream != null) {
+                    onPlayTrack(track, stream.url)
+                    scope.launch {
+                        cacheStore.download(track.videoId, stream.itag, stream.url, streamQuality)
+                    }
                 } else {
                     error = "YouTube no devolvió audio para \"${track.title}\". Prueba con otro resultado."
                 }

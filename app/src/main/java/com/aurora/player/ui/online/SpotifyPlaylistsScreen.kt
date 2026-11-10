@@ -43,6 +43,7 @@ import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.parseSpotifyPlaylistId
 import com.aurora.player.online.SpotifyPlaylist
 import com.aurora.player.online.SpotifyTrack
@@ -77,6 +78,7 @@ fun SpotifyPlaylistsSection(
     val spotifyStore = remember { SpotifyStore(context) }
     val cookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val spotify = remember { SpotifyClient() }
+    val cacheStore = remember { StreamCacheStore(context) }
     val tube = remember(ytMusicCookies) { InnerTubeClient(ytMusicCookies) }
 
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>?>(null) }
@@ -167,11 +169,17 @@ fun SpotifyPlaylistsSection(
                         emptyList()
                     }.firstOrNull()
                     val url = found?.let {
-                        try {
-                            tube.resolveStreamUrl(it.videoId, streamQuality)
-                        } catch (_: Exception) {
-                            null
-                        }
+                        cacheStore.cachedFile(it.videoId, streamQuality)?.toURI()?.toString()
+                            ?: try {
+                                val stream = tube.resolveStream(it.videoId, streamQuality)
+                                stream?.also { resolved ->
+                                    scope.launch {
+                                        cacheStore.download(it.videoId, resolved.itag, resolved.url, streamQuality)
+                                    }
+                                }?.url
+                            } catch (_: Exception) {
+                                null
+                            }
                     }
                     if (found != null && url != null) {
                         matched.add(found to url)
