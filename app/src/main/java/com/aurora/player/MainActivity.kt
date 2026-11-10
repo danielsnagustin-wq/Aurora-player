@@ -89,6 +89,8 @@ import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.IntroStore
 import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.online.SpotifyCanvasClient
+import com.aurora.player.online.SpotifyClient
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
@@ -509,6 +511,7 @@ private fun AuroraApp(
     // Fase 2 — Spotify como BitChord: tus listas en la pestaña Online.
     val spotifyStore = remember { SpotifyStore(context) }
     val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
+    val spotifyCookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -551,6 +554,9 @@ private fun AuroraApp(
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
     var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+    // Fase 2 — Spotify Canvas: URL del vídeo en bucle de la canción
+    // que suena (null = sin Canvas, se ve la portada de siempre).
+    var canvasUrl by remember { mutableStateOf<String?>(null) }
     // RONDA 2 (2026-11-09): línea de calidad real del tema actual.
     var qualityText by remember { mutableStateOf<String?>(null) }
     var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
@@ -902,6 +908,7 @@ private fun AuroraApp(
         val mediaId = currentMediaId
         lyrics = emptyList()
         qualityText = null
+        canvasUrl = null
         if (mediaId == null) return@LaunchedEffect
         if (mediaId.startsWith("yt:")) {
             lyricsOffsetMs = 0
@@ -1000,6 +1007,24 @@ private fun AuroraApp(
                             loadOnlineLyrics(context, item.mediaId, track, artist, album, durationSec, lyricsProviders)
                         }
                     }
+                }
+            }
+        }
+        // Canvas de Spotify (Fase 2): si el modo online está
+        // encendido y Spotify conectado, busca el id de la canción
+        // y pide su Canvas; solo vídeo (la imagen no aporta nada
+        // sobre la portada). Si cambia la canción, el efecto se
+        // reinicia y la búsqueda vieja se cancela.
+        if (playerSettings.onlineMode && spotifyConnected) {
+            val meta = controller?.currentMediaItem?.mediaMetadata
+            val track = meta?.title?.toString().orEmpty()
+            val artist = meta?.artist?.toString().orEmpty()
+            if (track.isNotBlank() && artist.isNotBlank()) {
+                val token = SpotifyClient().fetchAccessToken(spotifyCookie)
+                if (token != null) {
+                    val trackId = SpotifyCanvasClient().searchTrackId(token, track, artist)
+                    val canvas = trackId?.let { SpotifyCanvasClient().fetchCanvas(token, it) }
+                    if (canvas?.isVideo == true) canvasUrl = canvas.url
                 }
             }
         }
@@ -1189,6 +1214,7 @@ private fun AuroraApp(
             artist = currentArtist,
             album = currentAlbum,
             artworkUri = currentArtwork,
+            canvasUrl = canvasUrl,
             songUri = songUri,
             isPlaying = isPlaying,
             positionMs = positionMs,
