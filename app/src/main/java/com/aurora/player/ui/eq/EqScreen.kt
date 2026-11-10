@@ -191,6 +191,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Slider(
                 value = levels.getOrNull(band) ?: 0f,
                 onValueChange = { db ->
+                    if (!enabled) {
+                        enabled = true
+                        manager?.setEnabled(true)
+                    }
                     levels = levels.toMutableList().also {
                         while (it.size <= band) it.add(0f)
                         it[band] = db
@@ -200,7 +204,6 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 },
                 onValueChangeFinished = { persist() },
                 valueRange = -15f..15f,
-                enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -209,12 +212,15 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         Slider(
             value = bass,
             onValueChange = {
+                if (!enabled) {
+                    enabled = true
+                    manager?.setEnabled(true)
+                }
                 bass = it
                 manager?.setBassBoost(it.toInt().toShort())
             },
             onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
-            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -222,12 +228,15 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         Slider(
             value = virtualizer,
             onValueChange = {
+                if (!enabled) {
+                    enabled = true
+                    manager?.setEnabled(true)
+                }
                 virtualizer = it
                 manager?.setVirtualizer(it.toInt().toShort())
             },
             onValueChangeFinished = { persist() },
             valueRange = 0f..1000f,
-            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
 
