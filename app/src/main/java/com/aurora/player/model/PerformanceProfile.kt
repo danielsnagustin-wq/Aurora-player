@@ -13,17 +13,22 @@ package com.aurora.player.model
  * - BATTERY: lo mínimo visual — fondo plano, sin color dinámico, sin
  *   animaciones. Es lo que la política automática aplica cuando el
  *   sistema entra en ahorro de energía o en temperatura severa.
- * - PERFORMANCE: mismo aspecto que Equilibrado. Su diferencia real es
- *   de política: NO se le aplica la bajada automática (ver
- *   PerformancePolicy). El usuario renuncia explícitamente a ella.
+ * - PERFORMANCE: TODO activado para dispositivos potentes (2026-11-10:
+ *   antes era idéntico a Equilibrado y el usuario tenía razón al decir
+ *   que "no cumple su propósito"): color dinámico, fondo degradado,
+ *   esquinas al máximo y animaciones. Además, por política, NO se le
+ *   aplica la bajada automática (ver PerformancePolicy).
  * - CUSTOM: cualquier cambio manual a un ajuste visual pone el perfil
  *   aquí. Los valores manuales mandan sobre los presets.
  */
-enum class PerformanceProfile(val label: String) {
-    BALANCED("Equilibrado"),
-    BATTERY("Ahorro de batería"),
-    PERFORMANCE("Alto rendimiento"),
-    CUSTOM("Personalizado"),
+enum class PerformanceProfile(val label: String, val description: String) {
+    BALANCED("Equilibrado", "Aspecto completo y equilibrado"),
+    BATTERY("Ahorro de batería", "Fondo plano, sin color dinámico ni animaciones"),
+    PERFORMANCE(
+        "Alto rendimiento",
+        "Todo activado: color dinámico, fondo degradado, esquinas al máximo y animaciones",
+    ),
+    CUSTOM("Personalizado", "Tus ajustes manuales"),
 }
 
 /**
@@ -46,8 +51,8 @@ fun PerformanceProfile.applyTo(current: ThemeSettings): ThemeSettings = when (th
     )
     PerformanceProfile.PERFORMANCE -> current.copy(
         dynamicColor = true,
-        playerBackground = PlayerBackground.COVER,
-        cornerRadiusDp = 16,
+        playerBackground = PlayerBackground.GRADIENT,
+        cornerRadiusDp = 28,
         animationsEnabled = true,
     )
     PerformanceProfile.CUSTOM -> current

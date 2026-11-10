@@ -58,6 +58,22 @@ fun childFolders(paths: List<String>, current: String): List<FolderEntry> {
 fun isDirectlyInFolder(path: String, current: String): Boolean =
     parentPath(path) == current
 
+/**
+ * Id de árbol del selector de carpetas (SAF) a ruta de archivo:
+ * "primary:Music/Rock" -> "/storage/emulated/0/Music/Rock";
+ * "1234-5678:Music" -> "/storage/1234-5678/Music" (tarjeta SD).
+ * Null si el id no tiene la forma "volumen:ruta".
+ */
+fun treeDocumentIdToPath(treeDocumentId: String): String? {
+    val colon = treeDocumentId.indexOf(':')
+    if (colon < 0) return null
+    val volume = treeDocumentId.substring(0, colon)
+    val rest = treeDocumentId.substring(colon + 1)
+    if (volume.isEmpty()) return null
+    val base = if (volume == "primary") "/storage/emulated/0" else "/storage/$volume"
+    return if (rest.isEmpty()) base else "$base/$rest"
+}
+
 /** true si la canción está dentro de una carpeta excluida (o es ella). */
 fun isInExcludedFolder(path: String, excluded: Set<String>): Boolean {
     val dir = parentPath(path)

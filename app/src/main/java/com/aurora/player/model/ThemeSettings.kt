@@ -14,11 +14,11 @@ package com.aurora.player.model
  * - Sin dorado/amarillo en presets: solo si el usuario escribe el HEX
  *   a mano es su elección y se aplica.
  */
-enum class ThemeMode(val label: String) {
-    LIGHT("Claro"),
-    DARK("Oscuro"),
-    AMOLED("AMOLED"),
-    SYSTEM("Sistema"),
+enum class ThemeMode(val label: String, val description: String) {
+    LIGHT("Claro", "Fondo claro, texto oscuro"),
+    DARK("Oscuro", "Gris oscuro, distinto del negro AMOLED"),
+    AMOLED("AMOLED", "Negro puro, ahorra batería en pantallas AMOLED"),
+    SYSTEM("Sistema", "Sigue al sistema del teléfono"),
 }
 enum class CoverShape { SQUARE, ROUNDED, CIRCLE }
 enum class ListDensity { COMPACT, COMFORTABLE }
