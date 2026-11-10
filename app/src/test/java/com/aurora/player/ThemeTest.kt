@@ -12,6 +12,9 @@ import com.aurora.player.ui.theme.darkenForLight
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
 import com.aurora.player.ui.theme.parseHexOrNull
 import com.aurora.player.ui.theme.readableTextOn
+import com.aurora.player.ui.theme.resolveBackgroundColor
+import com.aurora.player.ui.theme.resolvePlayerBarColor
+import com.aurora.player.ui.theme.resolveSurfaceColor
 import com.aurora.player.ui.theme.toHex
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -107,5 +110,43 @@ class ThemeTest {
         assertEquals(ice.alpha, dark.alpha)
         assertEquals(Color.Black, darkenForLight(Color.Black))
         assertEquals(Color.White, contrastOn(dark))
+    }
+
+    @Test
+    fun `Claro con fondo de fabrica pinta blanco, no negro`() {
+        val def = ThemeSettings.DEFAULT
+        assertEquals(Color.White, resolveBackgroundColor(def, useDark = false, isAmoled = false))
+        assertEquals(Color.White, resolveBackgroundColor(def, useDark = false, isAmoled = true))
+    }
+
+    @Test
+    fun `Claro con fondo personalizado respeta el HEX elegido`() {
+        val custom = ThemeSettings.DEFAULT.copy(backgroundHex = "#202020")
+        assertEquals(Color(0xFF202020), resolveBackgroundColor(custom, useDark = false, isAmoled = false))
+    }
+
+    @Test
+    fun `Oscuro con fondo de fabrica es gris, distinto de AMOLED`() {
+        val def = ThemeSettings.DEFAULT
+        assertEquals(Color(0xFF1E1E26), resolveBackgroundColor(def, useDark = true, isAmoled = false))
+        assertEquals(Color.Black, resolveBackgroundColor(def, useDark = true, isAmoled = true))
+    }
+
+    @Test
+    fun `Claro con tarjeta de fabrica es clara, no negra`() {
+        val def = ThemeSettings.DEFAULT
+        assertEquals(Color(0xFFF2F2F2), resolveSurfaceColor(def, useDark = false))
+        assertEquals(Color(0xFF111111), resolveSurfaceColor(def, useDark = true))
+        val custom = def.copy(cardHex = "#223344")
+        assertEquals(Color(0xFF223344), resolveSurfaceColor(custom, useDark = false))
+    }
+
+    @Test
+    fun `Claro con barra de fabrica usa la superficie`() {
+        val def = ThemeSettings.DEFAULT
+        val surface = Color(0xFFF2F2F2)
+        assertEquals(surface, resolvePlayerBarColor(def, useDark = false, surface))
+        val custom = def.copy(playerBarHex = "#445566")
+        assertEquals(Color(0xFF445566), resolvePlayerBarColor(custom, useDark = false, surface))
     }
 }
