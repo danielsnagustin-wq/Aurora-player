@@ -14,8 +14,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import com.aurora.player.model.ThemePreset
+import com.aurora.player.model.themePresetFromJsonValue
+import com.aurora.player.online.JsonParser
 import androidx.compose.ui.platform.LocalContext
 import com.aurora.player.widget.AuroraWidgetProvider
 import com.aurora.player.widget.WidgetStyle
@@ -234,6 +239,67 @@ fun SettingsInterfaceSection(
             AuroraWidgetProvider.setStyle(widgetContext, next)
         },
     )
+
+    // Fase 2 — skins por archivo (AIMP): el tema actual se exporta
+    // como un archivo JSON y un archivo así se importa y se aplica.
+    // La biblioteca "Mis temas" sigue fuera (él pidió quitarla): el
+    // skin es el archivo, no una lista guardada. La maquinaria de
+    // exportar/importar ya existía en ThemeEditor/SettingsThemesSection
+    // pero sin uso; aquí se expone solo el archivo.
+    val skinContext = LocalContext.current
+    var skinMessage by remember { mutableStateOf<String?>(null) }
+    val pickSkin = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val text = try {
+                skinContext.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            } catch (_: Exception) {
+                null
+            }
+            if (text == null) {
+                skinMessage = "No se pudo leer ese archivo."
+                return@launch
+            }
+            val preset = try {
+                themePresetFromJsonValue(JsonParser.parse(text))
+            } catch (_: Exception) {
+                null
+            }
+            if (preset == null) {
+                skinMessage = "Ese archivo no es un tema de Aurora Player."
+                return@launch
+            }
+            onSaveTheme(preset.settings)
+            skinMessage = "Tema «${preset.name}» aplicado."
+        }
+    }
+    AuroraSectionHeader(
+        title = "Tema como archivo (skin)",
+        description = "Exporta el tema actual como un archivo para guardarlo o compartirlo; importar uno lo aplica al instante.",
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Button(
+            onClick = {
+                scope.launch {
+                    val result = exportThemeFile(skinContext, ThemePreset("Mi tema", applied))
+                    skinMessage = result.fold(
+                        onSuccess = { "Tema exportado en $it." },
+                        onFailure = { "No se pudo exportar el tema." },
+                    )
+                }
+            },
+            colors = auroraButtonColors(),
+        ) { Text("Exportar tema actual") }
+        OutlinedButton(onClick = { pickSkin.launch(arrayOf("application/json")) }) {
+            Text("Importar tema…")
+        }
+    }
+    skinMessage?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
 
     // Fase 2 — selector de fuentes: solo familias del sistema, sin
     // descargar nada. Se aplica a toda la app al instante.
