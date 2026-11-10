@@ -34,6 +34,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.aurora.player.online.ChartsResult
 import com.aurora.player.online.InnerTubeClient
+import com.aurora.player.online.QuickPick
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
@@ -80,6 +81,7 @@ fun OnlineScreen(
     // Fase 2 — Para ti: los charts se cargan una sola vez por
     // entrada a la pestaña; si YouTube no responde, se dice claro.
     var charts by remember { mutableStateOf<ChartsResult?>(null) }
+    var quickPicks by remember { mutableStateOf<List<QuickPick>>(emptyList()) }
     var chartsLoading by remember { mutableStateOf(false) }
     var chartsError by remember { mutableStateOf<String?>(null) }
     var chartsLoaded by remember { mutableStateOf(false) }
@@ -123,6 +125,7 @@ fun OnlineScreen(
         if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
             chartsError = "No se pudieron cargar los charts de YouTube Music."
         }
+        quickPicks = client.getQuickPicks()
     }
 
     fun play(track: OnlineTrack) {
@@ -202,6 +205,19 @@ fun OnlineScreen(
             onSearchQuery = { q ->
                 query = q
                 doSearch()
+            },
+            quickPicks = quickPicks,
+            onPlayQuickPick = { pick ->
+                play(
+                    OnlineTrack(
+                        videoId = pick.videoId,
+                        title = pick.title,
+                        artist = pick.artist,
+                        album = null,
+                        durationSec = null,
+                        thumbnailUrl = pick.thumbnailUrl,
+                    ),
+                )
             },
         )
         if (searching) {
