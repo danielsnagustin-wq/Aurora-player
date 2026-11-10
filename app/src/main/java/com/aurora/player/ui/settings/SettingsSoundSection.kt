@@ -1,6 +1,10 @@
 package com.aurora.player.ui.settings
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.platform.LocalContext
+import com.aurora.player.audio.findUsbDac
+import com.aurora.player.audio.mixerSampleRateHz
+import com.aurora.player.audio.usbStatusLine
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -139,4 +143,16 @@ fun SettingsSoundSection(
         directModeStatusLine(isDirectMode(player.audioOutputMode), null, null),
         modifier = Modifier.padding(top = 8.dp),
     )
+    // Ronda USB Serie A: si hay un DAC USB conectado, se muestra
+    // con sus tasas. Sin tasa de pista a mano aquí, la línea es la
+    // genérica; el enrutado real lo hace el servicio.
+    val usbContext = LocalContext.current
+    val usbDac = findUsbDac(usbContext)?.second
+    val usbMixerRate = mixerSampleRateHz(usbContext)
+    if (usbDac != null) {
+        Text(
+            usbStatusLine(usbDac, null, usbMixerRate),
+            modifier = Modifier.padding(top = 8.dp),
+        )
+    }
 }
