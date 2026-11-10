@@ -32,6 +32,7 @@ import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
 import com.aurora.player.model.PerformanceProfile
 import com.aurora.player.model.PlayerBackground
+import com.aurora.player.model.applyTo
 import com.aurora.player.model.TextSize
 import com.aurora.player.model.ThemeMode
 import com.aurora.player.model.ThemeSettings
