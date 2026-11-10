@@ -33,6 +33,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.model.AppFont
+import com.aurora.player.model.LAB_THEME_PRESETS
+import com.aurora.player.model.labThemePreset
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
@@ -138,6 +140,22 @@ fun SettingsInterfaceSection(
     if (!ThemeSettings.isValidHex(hexText)) {
         Text("HEX no válido: usa #RRGGBB con 6 cifras hexadecimales.")
     }
+
+    // LABORATORIO DE DISEÑO (Fase 4 del AI DEVELOPMENT STUDIO):
+    // las 3 propuestas como temas completos a un toque. Cada una
+    // aplica TODO el ThemeSettings (colores, fondo del reproductor,
+    // cuadrícula, radio...), no solo el acento. Si el tema actual
+    // no coincide con ninguna propuesta (lo personalizó después),
+    // ninguna queda marcada: es el estado real, no un invento.
+    AuroraSectionHeader(
+        title = "Temas del laboratorio",
+        description = "Las 3 propuestas de diseño, listas para aplicar a un toque: Aurora Hielo (la actual, evolucionada), Medianoche Lavanda (degradado + onda) y Turquesa Vivo (cuadrícula + espectro).",
+    )
+    AuroraOptionChips(
+        options = LAB_THEME_PRESETS.map { it.name to it.name },
+        selected = LAB_THEME_PRESETS.find { it.settings == applied }?.name ?: "",
+        onSelect = { name -> labThemePreset(name)?.let { onSaveTheme(it.settings) } },
+    )
 
     // SPEC 007: cada color en su fila compacta (muestra + nombre
     // + HEX); tocar abre el picker avanzado (HEX/RGB/HSL).
