@@ -16,6 +16,7 @@ import kotlinx.coroutines.withContext
  */
 private val CAPTION_P_REGEX = Regex("""(?s)<p\b([^>]*)>(.*?)</p>""")
 private val CAPTION_T_REGEX = Regex("""\bt\s*=\s*"(\d+)"""")
+private val CAPTION_D_REGEX = Regex("""\bd\s*=\s*"(\d+)"""")
 private val CAPTION_TAG_REGEX = Regex("""<[^>]+>""")
 
 /** XML timedtext (srv3) -> líneas con su tiempo en ms. Vacía si no hay nada. */
@@ -31,14 +32,19 @@ fun parseTimedText(xml: String): List<LrcLine> {
             ?: continue
         val text = TtmlParser.unescape(CAPTION_TAG_REGEX.replace(inner, "")).trim()
         if (text.isEmpty()) continue
-        lines.add(LrcLine(startMs, text))
+        // Ronda 29: el `d` (duración) se leía en la doc pero no se
+        // guardaba: el subtítulo se quedaba visible en los huecos
+        // entre diálogos. Sin `d`, null (comportamiento de siempre).
+        val durationMs = CAPTION_D_REGEX.find(attrs)?.groupValues?.get(1)?.toLongOrNull()
+        lines.add(LrcLine(startMs, text, durationMs = durationMs))
     }
     return lines
 }
 
-/** La línea que toca a esta posición: la última que ya empezó. Null si aún no empezó ninguna. */
+/** La línea que toca a esta posición: la última que ya empezó y cuya duración no ha vencido. Null si aún no empezó ninguna o si la última ya terminó. */
 fun captionLineAt(lines: List<LrcLine>, positionMs: Long): LrcLine? =
     lines.lastOrNull { it.timeMs <= positionMs }
+        ?.takeIf { it.durationMs == null || positionMs < it.timeMs + it.durationMs }
 
 /**
  * Baja el timedtext de una pista y lo parsea. Pide srv3 si la URL
