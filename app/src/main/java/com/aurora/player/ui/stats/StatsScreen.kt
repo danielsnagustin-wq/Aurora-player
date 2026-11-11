@@ -303,7 +303,15 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
 
 /** Inicial del día (LU/MA/MI/JU/VI/SA/DO) para la columna del gráfico semanal. */
 private fun dayLabel(indexFromOldest: Int): String {
-    val dayMs = 24L * 60 * 60 * 1000
-    val date = Date(System.currentTimeMillis() - (6 - indexFromOldest) * dayMs)
-    return SimpleDateFormat("EE", Locale.getDefault()).format(date).take(2).uppercase()
+    // Ronda 22: las barras cuentan por medianoches de calendario
+    // (ronda 13); las etiquetas restaban bloques fijos de 24 h y
+    // alrededor del cambio de horario caían en el día equivocado.
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+        add(Calendar.DAY_OF_YEAR, -(6 - indexFromOldest))
+    }
+    return SimpleDateFormat("EE", Locale.getDefault()).format(cal.time).take(2).uppercase()
 }
