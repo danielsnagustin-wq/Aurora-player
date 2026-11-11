@@ -1569,6 +1569,36 @@ fun AlbumCover(
  * ([songUri]); si tampoco hay, la inicial grande.
  */
 /**
+ * loadThumbnail (API 29+) puede devolver un bitmap de hardware: con él,
+ * createScaledBitmap y getPixel tiran y la app se cierra al abrir el
+ * reproductor. Los demás reproductores trabajan siempre con bitmaps de
+ * software: se normaliza aquí, en el único punto donde entra una portada
+ * de MediaStore. (2026-11-11, caza del crash al tocar una canción.)
+ */
+private fun Bitmap.toSoftware(): Bitmap =
+    if (config == Bitmap.Config.HARDWARE) {
+        try {
+            copy(Bitmap.Config.ARGB_8888, false)
+        } catch (_: Exception) {
+            null
+        } ?: this
+    } else {
+        this
+    }
+
+/** Escala sin tumbar nada: si el escalado falla, vale el bitmap tal cual. */
+private fun scaleSafe(bitmap: Bitmap, sizePx: Int): Bitmap =
+    if (sizePx >= bitmap.width) {
+        bitmap
+    } else {
+        try {
+            Bitmap.createScaledBitmap(bitmap.toSoftware(), sizePx, sizePx, true)
+        } catch (_: Exception) {
+            bitmap
+        }
+    }
+
+/**
  * Carga la portada (MediaStore o incrustada en el archivo) y la
  * devuelve como Bitmap. La usan ArtworkImage y el reproductor, que
  * necesita el bitmap para el fondo y el color dinámico (spec 003).
@@ -1599,19 +1629,17 @@ fun rememberArtworkBitmap(
                 // de 64 px ya no pide nada al sistema).
                 val cachedLarge = albumId?.let { LargeArtCache.get(it) }
                 if (cachedLarge != null) {
-                    if (sizePx >= cachedLarge.width) cachedLarge
-                    else Bitmap.createScaledBitmap(cachedLarge, sizePx, sizePx, true)
+                    scaleSafe(cachedLarge, sizePx)
                 } else if (albumId != null) {
                     // Ronda 5: la grande de disco vale para cualquier
                     // tamaño, igual que la de memoria.
                     val diskLarge = DiskArtCache.read(context, albumId, DiskArtCache.LARGE_PX)
                     if (diskLarge != null) {
                         LargeArtCache.put(albumId, diskLarge)
-                        if (sizePx >= diskLarge.width) diskLarge
-                        else Bitmap.createScaledBitmap(diskLarge, sizePx, sizePx, true)
+                        scaleSafe(diskLarge, sizePx)
                     } else {
                         val loaded = try {
-                            context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
+                            context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)?.toSoftware()
                         } catch (_: Exception) {
                             null
                         } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
@@ -1623,7 +1651,7 @@ fun rememberArtworkBitmap(
                     }
                 } else {
                     val loaded = try {
-                        context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
+                        context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)?.toSoftware()
                     } catch (_: Exception) {
                         null
                     } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
