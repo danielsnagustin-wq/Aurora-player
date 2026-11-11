@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,6 +46,7 @@ fun ForYouSection(
     onSearchQuery: (String) -> Unit,
     quickPicks: List<QuickPick> = emptyList(),
     onPlayQuickPick: (QuickPick) -> Unit = {},
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -69,6 +71,14 @@ fun ForYouSection(
             // Ronda 21: sin return — el error es de los charts, y
             // las recomendaciones rápidas se muestran igual cuando
             // existen; si todo está vacío, el texto de abajo avisa.
+            // Ronda 33: el error decía "inténtalo otra vez" pero no
+            // había cómo reintentarlo sin salir de la pestaña.
+            if (!loading) {
+                OutlinedButton(
+                    onClick = onRetry,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                ) { Text("Reintentar") }
+            }
         }
         // Selección rápida: suena al tocarla, sin pasar por la búsqueda.
         if (quickPicks.isNotEmpty()) {
