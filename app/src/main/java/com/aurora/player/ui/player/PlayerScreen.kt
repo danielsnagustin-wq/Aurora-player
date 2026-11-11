@@ -1119,7 +1119,13 @@ private fun LyricsLines(
         state = listState,
         modifier = modifier,
     ) {
-        itemsIndexed(lyrics) { index, line ->
+        // Ronda 6-fluidez (Codex #4): clave estable por línea
+        // (índice + tiempo: las letras no se reordenan, y dos
+        // líneas pueden compartir el mismo tiempo).
+        itemsIndexed(
+            lyrics,
+            key = { index, line -> "$index|${line.timeMs}" },
+        ) { index, line ->
             val isCurrent = index == currentLine
             Column(modifier = Modifier.fillMaxWidth()) {
                 // Fase 2 — modos de karaoke: las palabras solo se
