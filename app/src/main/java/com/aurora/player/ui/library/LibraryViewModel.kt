@@ -248,6 +248,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         if (!hasAudioPermission) {
             _scanError.value = null
             _uiState.value = LibraryUiState.Empty
+            // RONDA 87: sin esto, al conceder el permiso otra vez
+            // load(true) se topaba con loaded=true y volvía sin
+            // escanear: la biblioteca se quedaba vacía hasta pulsar
+            // "Volver a escanear" a mano.
+            loaded = false
             return
         }
         if (loaded) return
@@ -297,8 +302,17 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 // agrupar álbumes/artistas), lastLoadError no lo cubre
                 // y la pantalla diría "biblioteca vacía" en vez de avisar.
                 ?: if (loadFailed) "No se pudo escanear la biblioteca. Revisa el permiso de música e inténtalo otra vez." else null
-            _stats.value = withContext(Dispatchers.IO) {
-                db.libraryDao().statsPerSong().associateBy { it.songId }
+            // RONDA 87: esta consulta quedaba fuera del try de carga:
+            // si fallaba, la corrutina moría con la excepción y la
+            // app se cerraba con la biblioteca ya cargada. Ahora se
+            // queda sin estadísticas, que es lo que toca.
+            _stats.value = try {
+                withContext(Dispatchers.IO) {
+                    db.libraryDao().statsPerSong().associateBy { it.songId }
+                }
+            } catch (e: Exception) {
+                ErrorLog.log(getApplication(), "Estadísticas de biblioteca", e)
+                emptyMap()
             }
         }
     }
