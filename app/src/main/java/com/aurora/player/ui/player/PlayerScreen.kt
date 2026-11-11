@@ -297,9 +297,13 @@ fun PlayerScreen(
     // al instante en vez de desplazarse animada.
     val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(showLyrics, currentLine) {
-        if (showLyrics && currentLine >= 0) {
-            if (animationsEnabled) lyricsListState.animateScrollToItem(currentLine)
-            else lyricsListState.scrollToItem(currentLine)
+        if (showLyrics) {
+            // RONDA 47: antes de la primera línea currentLine es -1 y
+            // no se desplazaba nada, así que la letra podía abrirse en
+            // la posición de la canción anterior; ahora se va al inicio.
+            val target = if (currentLine >= 0) currentLine else 0
+            if (animationsEnabled) lyricsListState.animateScrollToItem(target)
+            else lyricsListState.scrollToItem(target)
         }
     }
     // COLA (2026-11-10): al abrirla, la pantalla baja sola hasta
