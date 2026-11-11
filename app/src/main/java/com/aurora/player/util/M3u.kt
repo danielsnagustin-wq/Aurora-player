@@ -41,6 +41,30 @@ object M3u {
         }
         return entries
     }
+
+    /**
+     * Resuelve una ruta de entrada M3U contra la biblioteca por
+     * sufijo (ronda 18). Las rutas relativas no se pueden resolver
+     * contra la ubicación del archivo M3U (el selector del sistema
+     * no da una ruta real), así que la cola de la ruta de entrada
+     * tiene que coincidir con la cola de la ruta de la biblioteca,
+     * con límite de directorio: "rock/song.mp3" casa con
+     * "/storage/.../Música/rock/song.mp3"; "../Música/rock/song.mp3"
+     * también (se quitan los ".." iniciales); "song.mp3" casa con
+     * cualquier canción de ese nombre. Las barras "\" de Windows
+     * se normalizan a "/". Devuelve la ruta de biblioteca que casa,
+     * o null.
+     */
+    fun matchBySuffix(entryPath: String, libraryPaths: List<String>): String? {
+        val tail = entryPath.replace('\\', '/').trim()
+            .split('/')
+            .dropWhile { it == "." || it == ".." }
+            .joinToString("/")
+            .trimStart('/')
+        if (tail.isEmpty()) return null
+        val suffix = "/$tail"
+        return libraryPaths.firstOrNull { it.endsWith(suffix) || it == tail }
+    }
 }
 
 /** Formato de duraciones y contadores. Sin inventar: 0 = "0:00". */
