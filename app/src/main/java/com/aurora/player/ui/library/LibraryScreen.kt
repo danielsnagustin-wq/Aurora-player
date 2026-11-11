@@ -189,6 +189,8 @@ fun LibraryScreen(
     ytMusicCookies: String? = null,
     ytMusicToken: String? = null,
     onYtTokenRejected: (String) -> Unit = {},
+    // Ronda 7b: sesión de cookies caducada (401 sin token).
+    onYtCookiesRejected: () -> Unit = {},
     streamQuality: StreamQuality = StreamQuality.HIGH,
     // Ronda 7 (Gemini): abrir Ajustes directo en Red desde Online.
     onOpenSettings: () -> Unit = {},
@@ -344,6 +346,7 @@ fun LibraryScreen(
                 ytMusicCookies = ytMusicCookies,
                 ytMusicToken = ytMusicToken,
                 onYtTokenRejected = onYtTokenRejected,
+                onYtCookiesRejected = onYtCookiesRejected,
                 streamQuality = streamQuality,
                 localCount = (uiState as? LibraryUiState.Loaded)?.songs?.size ?: 0,
                 onShowLocal = { tab = 0 },
