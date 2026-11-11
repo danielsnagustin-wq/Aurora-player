@@ -45,8 +45,28 @@ fun LyricsEditorDialog(
     onSave: (List<LrcLine>) -> Unit,
 ) {
     var lines by remember { mutableStateOf(lyrics.map { it.copy() }) }
+    // Ronda 19: salir sin guardar (tocar fuera, atrás o Cancelar)
+    // tiraba la edición en silencio. Si hay cambios, se pregunta.
+    var showDiscardConfirm by remember { mutableStateOf(false) }
+    val isDirty = lines != lyrics
+    fun requestDismiss() {
+        if (isDirty) showDiscardConfirm = true else onDismiss()
+    }
+    if (showDiscardConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirm = false },
+            title = { Text("¿Descartar los cambios?") },
+            text = { Text("Editó la letra y no la guardó. Si sale ahora, los cambios se pierden.") },
+            confirmButton = {
+                TextButton(onClick = onDismiss) { Text("Descartar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDiscardConfirm = false }) { Text("Seguir editando") }
+            },
+        )
+    }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { requestDismiss() },
         title = { Text("Editar letras") },
         text = {
             Column {
@@ -96,7 +116,7 @@ fun LyricsEditorDialog(
             ) { Text("Guardar") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancelar") }
+            TextButton(onClick = { requestDismiss() }) { Text("Cancelar") }
         },
     )
 }
