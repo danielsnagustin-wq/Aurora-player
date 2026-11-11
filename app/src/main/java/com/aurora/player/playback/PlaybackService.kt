@@ -352,6 +352,12 @@ class PlaybackService : MediaLibraryService() {
                     // pista; A lo hereda para no medir dos veces.
                     trackLufsDb = overlapLufsDb
                     applyReplayGain()
+                    // Ronda 8 (Codex): el flag se limpia AQUÍ, no en
+                    // finishOverlapHandoff: la transición es asíncrona
+                    // y si se limpiaba en síncrono el callback llegaba
+                    // con el flag ya en false y startFadeIn() bajaba
+                    // el volumen a 0 al terminar cada solape.
+                    overlapHandoff = false
                     return
                 }
                 // El usuario cambió de pista a mano durante un
@@ -415,7 +421,12 @@ class PlaybackService : MediaLibraryService() {
                     val duration = p.duration
                     val remaining = duration - p.currentPosition
                     val windowMs = crossfadeSeconds * 1000L
-                    if (duration > 0 && p.currentPosition > 5000 && remaining in 0..windowMs) {
+                    // Ronda 8 (Codex): en pistas de 5 s o menos el
+                    // umbral de 5000 ms nunca se cumplía con remaining
+                    // >= 0 y el solape no arrancaba nunca; el umbral
+                    // baja a la mitad de la duración en pistas cortas,
+                    // en las demás queda igual.
+                    if (duration > 0 && p.currentPosition > minOf(5000L, duration / 2) && remaining in 0..windowMs) {
                         if (!overlapping) {
                             // Fase 1b: solape real si aplica; si no,
                             // el fade-out de siempre.
@@ -786,7 +797,9 @@ class PlaybackService : MediaLibraryService() {
         p.seekToNextMediaItem()
         p.seekTo(b.currentPosition)
         p.volume = 1f
-        overlapHandoff = false
+        // Ronda 8 (Codex): NO limpiar overlapHandoff aquí: la
+        // transición es asíncrona y onMediaItemTransition lo limpia
+        // cuando la ve (ver la rama de traspaso arriba).
         releaseOverlapPlayer()
         overlapping = false
     }
