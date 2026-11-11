@@ -102,6 +102,22 @@ fun SpotifyLoginDialog(
         onConnect(cookie)
     }
 
+    // RONDA LOGIN 2026-11-11: el reproductor web es una SPA y la
+    // navegación tras entrar no siempre dispara onPageFinished.
+    // Se revisa la cookie cada 2 s mientras el diálogo está
+    // abierto: en cuanto aparece sp_dc, la sesión se guarda sola.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_000)
+            val cookie = readCookie()
+            if (cookie != null && cookie != triedCookie) {
+                triedCookie = cookie
+                onConnect(cookie)
+                break
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -136,6 +152,11 @@ fun SpotifyLoginDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             CookieManager.getInstance().setAcceptCookie(true)
+                            // RONDA LOGIN 2026-11-11: Spotify pone la
+                            // cookie sp_dc desde otro dominio al iniciar
+                            // sesión; sin esto puede no quedarse.
+                            CookieManager.getInstance()
+                                .setAcceptThirdPartyCookies(this, true)
                             // Agente de Chrome de escritorio (2026-11-10):
                             // igual que YouTube Music, Spotify sirve otro
                             // flujo (o rechaza) al WebView móvil y el
@@ -217,12 +238,15 @@ fun SpotifyLoginDialog(
                                     }
                                 }
                             }
-                            // Entrar directo al formulario de login:
-                            // open.spotify.com en móvil solo enseña
-                            // "Abrir aplicación" + la oferta Premium
-                            // tapando el formulario (2026-11-10). La
-                            // cookie sp_dc se pone igual en .spotify.com.
-                            loadUrl("https://accounts.spotify.com/login")
+                            // RONDA LOGIN 2026-11-11: entrar por el
+                            // reproductor web (open.spotify.com), como
+                            // hacen Spotube y MuSicX. La entrada vieja
+                            // (accounts.spotify.com/login) se quedaba en
+                            // negro en el WebView: cargaba sin error pero
+                            // no pintaba nada. Con el agente de escritorio
+                            // el reproductor web enseña su botón de entrar
+                            // y la cookie sp_dc se pone igual.
+                            loadUrl("https://open.spotify.com/")
                         }
                     },
                     modifier = Modifier.fillMaxSize(),
