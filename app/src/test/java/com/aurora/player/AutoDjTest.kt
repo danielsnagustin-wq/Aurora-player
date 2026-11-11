@@ -50,6 +50,38 @@ class AutoDjTest {
     }
 
     @Test
+    fun artistaVacio_noCuentaComoCoincidencia() {
+        // La actual no tiene artista: no debe elegir una "del mismo
+        // artista" solo porque ambas tengan el artista vacío (ronda 17).
+        val current = song(1, artist = "", genre = "Rock", album = "Al1")
+        val pool = listOf(
+            song(2, artist = "", genre = "Pop"),
+            song(3, artist = "Z", genre = "Rock"),
+        )
+        assertEquals(3L, autoDjNext(current, pool, random = Random(1))?.id)
+    }
+
+    @Test
+    fun generoVacio_noCuentaComoCoincidencia() {
+        val current = song(1, artist = "X", genre = "", album = "Al1")
+        val pool = listOf(
+            song(2, artist = "Y", genre = "", album = "Otro"),
+            song(3, artist = "Z", genre = "Pop", album = "Al1"),
+        )
+        assertEquals(3L, autoDjNext(current, pool, random = Random(1))?.id)
+    }
+
+    @Test
+    fun albumVacio_noCuentaComoCoincidencia() {
+        val current = song(1, artist = "X", genre = "Rock", album = "")
+        val pool = listOf(
+            song(2, artist = "Y", genre = "Pop", album = ""),
+            song(3, artist = "Y", genre = "Jazz", album = "Al9", plays = 5),
+        )
+        assertEquals(3L, autoDjNext(current, pool, random = Random(1))?.id)
+    }
+
+    @Test
     fun sinNadaElegible_null() {
         val current = song(1)
         assertNull(autoDjNext(current, listOf(song(1))))
