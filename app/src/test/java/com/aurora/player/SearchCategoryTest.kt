@@ -50,4 +50,17 @@ class SearchCategoryTest {
         assertTrue(matchesSearchQuery("Sol", "Luna", "Mar", "Rock", "", SearchCategory.SONGS))
         assertTrue(matchesSearchQuery("Sol", "Luna", "Mar", "Rock", "SOL", SearchCategory.SONGS))
     }
+
+    @Test
+    fun `la busqueda no distingue acentos`() {
+        // Ronda 23: "cancion" encuentra "Canción" en cualquier campo.
+        assertTrue(matchesSearchQuery("Canción", "José", "Música", "Pop", "cancion", SearchCategory.SONGS))
+        assertTrue(matchesSearchQuery("Canción", "José", "Música", "Pop", "jose", SearchCategory.ARTISTS))
+        assertTrue(matchesSearchQuery("Canción", "José", "Música", "Pop", "musica", SearchCategory.ALBUMS))
+        assertTrue(matchesSearchQuery("Canción", "José", "Música", "Pop", "cancion", SearchCategory.ALL))
+        // Y al revés: la consulta con acento encuentra el texto sin él.
+        assertTrue(matchesSearchQuery("Cancion", "Jose", "Musica", "Pop", "canción", SearchCategory.SONGS))
+        // Lo que no coincide sigue sin coincidir.
+        assertFalse(matchesSearchQuery("Canción", "José", "Música", "Pop", "cantar", SearchCategory.SONGS))
+    }
 }
