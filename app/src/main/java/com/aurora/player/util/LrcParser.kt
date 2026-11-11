@@ -45,6 +45,37 @@ object LrcParser {
             val line = raw.trim()
             val tags = TAG_REGEX.findAll(line).toList()
             if (tags.isEmpty()) continue
+            // RONDA 67: tiempos de palabra ENTRE CORCHETES
+            // ([00:10.00]ho [00:11.00]la): antes cada etiqueta daba
+            // su propia línea con el texto de la última palabra
+            // ("mundo" a las 10, 11 y 12). Si hay texto entre dos
+            // etiquetas, es una sola línea con palabras, no varias
+            // líneas. Sin texto entre ellas ([00:01.00][00:05.00]
+            // coro) sigue siendo multi-tiempo, como en la ronda 6.
+            val hasTextBetween = tags.zipWithNext().any { (a, b) ->
+                line.substring(a.range.last + 1, b.range.first).isNotBlank()
+            }
+            if (hasTextBetween) {
+                val words = mutableListOf<LrcWord>()
+                val parts = StringBuilder()
+                for ((i, tag) in tags.withIndex()) {
+                    val end = if (i + 1 < tags.size) tags[i + 1].range.first else line.length
+                    // Por si la línea mezcla corchetes y ángulos, las
+                    // etiquetas de palabra en ángulo no se muestran.
+                    val word = line.substring(tag.range.last + 1, end)
+                        .replace(WORD_TAG_REGEX, " ").replace(SPACES_REGEX, " ").trim()
+                    val timeMs = tagToMs(tag) ?: continue
+                    if (word.isNotEmpty()) {
+                        words += LrcWord(timeMs, word)
+                        if (parts.isNotEmpty()) parts.append(' ')
+                        parts.append(word)
+                    }
+                }
+                if (parts.isEmpty()) continue
+                val firstTime = words.firstOrNull()?.timeMs ?: continue
+                lines += LrcLine(firstTime, parts.toString(), words)
+                continue
+            }
             // El texto es lo que queda tras la última etiqueta.
             val rawText = line.substring(tags.last().range.last + 1).trim()
             if (rawText.isEmpty()) continue
