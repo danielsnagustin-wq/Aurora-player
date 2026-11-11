@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +50,7 @@ import com.aurora.player.online.YouTubeMusicAuth
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -70,6 +72,18 @@ fun YouTubeMusicLoginDialog(
     var loadFailed by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
+
+    // Ronda 20: igual que el diálogo de Spotify — si la página no
+    // termina de cargar (redirecciones que nunca disparan
+    // onPageFinished), el spinner tapaba todo para siempre. A los
+    // 12 s se quita igual: la página que haya cargado queda usable
+    // y el usuario puede reintentar.
+    LaunchedEffect(loading) {
+        if (loading) {
+            delay(12_000)
+            loading = false
+        }
+    }
 
     // Cuenta de Google del teléfono (2026-11-10): el selector de
     // cuentas del sistema, sin escribir nada. La primera vez Google
