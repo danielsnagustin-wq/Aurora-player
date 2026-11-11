@@ -7,6 +7,7 @@ import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
 
 /**
@@ -153,9 +154,12 @@ suspend fun fetchLyricsFirst(
 ): OnlineLyrics? = coroutineScope {
     // RONDA 93: los proveedores se consultan EN PARALELO. Antes era
     // en serie: con 3 timeouts de 6 s, la letra tardaba hasta ~18 s
-    // en aparecer (o en saberse que no hay). El orden se respeta: gana
-    // el primero de la lista que traiga letra, aunque otro termine
-    // antes; el peor caso ahora es ~6 s, no ~18 s.
+    // en aparecer (o en saberse que no hay).
+    // RONDA 126: se acepta el PRIMER proveedor que traiga letra, en
+    // orden de LLEGADA, no de lista: esperar en orden de lista
+    // anulaba el paralelo (LRCLIB puede tardar ~12 s entre exacta y
+    // difusa y otro proveedor ya tenía la letra). Los 3 devuelven la
+    // misma forma (sincronizada o texto), así que manda la rapidez.
     val deferred = providers.map { provider ->
         async {
             try {
@@ -166,15 +170,23 @@ suspend fun fetchLyricsFirst(
             }
         }
     }
-    for (d in deferred) {
-        val result = d.await()
-        if (result != null &&
-            (!result.syncedLrc.isNullOrBlank() || !result.plainText.isNullOrBlank())
-        ) {
-            return@coroutineScope result
+    val pending = deferred.toMutableList()
+    var result: OnlineLyrics? = null
+    while (pending.isNotEmpty() && result == null) {
+        select<Unit> {
+            pending.forEach { d ->
+                d.onAwait { r ->
+                    pending.remove(d)
+                    if (r != null &&
+                        (!r.syncedLrc.isNullOrBlank() || !r.plainText.isNullOrBlank())
+                    ) {
+                        result = r
+                    }
+                }
+            }
         }
     }
-    null
+    result
 }
 
 /** LRCLIB: coincidencia exacta primero, búsqueda difusa si da 404. */
