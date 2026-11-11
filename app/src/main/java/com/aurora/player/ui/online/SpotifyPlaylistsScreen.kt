@@ -105,9 +105,16 @@ fun SpotifyPlaylistsSection(
                 if (token == null) {
                     message = "La cookie de Spotify caducó o no sirve. Vuelve a conectarla en Ajustes → Red → Spotify."
                 } else {
+                    // Ronda 34: fetchPlaylists devuelve null si
+                    // Spotify no respondió; una lista vacía de verdad
+                    // no es lo mismo que un fallo de carga.
                     val found = spotify.fetchPlaylists(token)
-                    playlists = found
-                    if (found.isEmpty()) message = "No tienes listas en Spotify."
+                    if (found == null) {
+                        message = "Sin conexión o Spotify no respondió."
+                    } else {
+                        playlists = found
+                        if (found.isEmpty()) message = "No tienes listas en Spotify."
+                    }
                 }
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
@@ -129,9 +136,15 @@ fun SpotifyPlaylistsSection(
                 if (token == null) {
                     message = "La cookie de Spotify caducó o no sirve. Vuelve a conectarla en Ajustes → Red → Spotify."
                 } else {
+                    // Ronda 34: igual que las listas, null es un
+                    // fallo de carga y no una lista vacía de verdad.
                     val found = spotify.fetchPlaylistTracks(token, playlist.id)
-                    tracks = found
-                    if (found.isEmpty()) message = "Esa lista está vacía."
+                    if (found == null) {
+                        message = "Sin conexión o Spotify no respondió."
+                    } else {
+                        tracks = found
+                        if (found.isEmpty()) message = "Esa lista está vacía."
+                    }
                 }
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
@@ -164,11 +177,15 @@ fun SpotifyPlaylistsSection(
             try {
                 val matched = mutableListOf<Pair<OnlineTrack, String>>()
                 var missing = 0
+                // Ronda 34: una búsqueda que falla por la red no es
+                // una canción sin coincidencia; se cuenta aparte.
+                var searchErrors = 0
                 for ((index, track) in list.withIndex()) {
                     importProgress = "Buscando ${index + 1}/${list.size}…"
                     val found = try {
                         tube.search("${track.artist} ${track.name}")
                     } catch (_: Exception) {
+                        searchErrors++
                         emptyList()
                     }.firstOrNull()
                     val url = found?.let {
@@ -191,11 +208,16 @@ fun SpotifyPlaylistsSection(
                     }
                 }
                 if (matched.isEmpty()) {
-                    message = "Ninguna canción tuvo coincidencia en YouTube Music."
+                    message = if (searchErrors == list.size) {
+                        "Sin conexión o YouTube no respondió al buscar las canciones."
+                    } else {
+                        "Ninguna canción tuvo coincidencia en YouTube Music."
+                    }
                 } else {
                     onImportTracks(matched)
                     message = "Importadas ${matched.size} de ${list.size}" +
-                        if (missing > 0) " ($missing sin coincidencia en YouTube)." else "."
+                        if (missing > 0) " ($missing sin coincidencia en YouTube" +
+                            if (searchErrors > 0) ", $searchErrors fallaron por la red)." else ")." else "."
                 }
             } finally {
                 importing = false
