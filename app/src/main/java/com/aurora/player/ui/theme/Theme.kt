@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.pow
 import com.aurora.player.model.CardStyle
 import com.aurora.player.model.CoverShape
 import com.aurora.player.model.ListDensity
@@ -126,12 +127,25 @@ fun brightnessOf(color: Color): Float =
     color.red * 0.299f + color.green * 0.587f + color.blue * 0.114f
 
 /**
+ * Luminancia relativa WCAG (sRGB linealizado): 0 = negro, 1 = blanco.
+ * RONDA 62: el brillo percibido no basta para elegir el texto — con
+ * un fondo de tono medio (gris #808080, luma 0.5) el blanco apenas
+ * contrasta 3.9:1 y el negro 5.3:1, pero el umbral viejo ponía blanco.
+ * El punto donde negro y blanco empatan es luminancia ~0.179.
+ */
+fun relativeLuminance(color: Color): Float {
+    fun lin(c: Float): Float =
+        if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
+    return 0.2126f * lin(color.red) + 0.7152f * lin(color.green) + 0.0722f * lin(color.blue)
+}
+
+/**
  * Texto que se lee sobre un color: negro si es claro, blanco si es
  * oscuro. Antes vivía solo dentro del tema; ahora es de nivel superior
  * porque el reproductor también lo necesita para el acento dinámico.
  */
 fun contrastOn(color: Color): Color =
-    if (brightnessOf(color) > 0.5f) PureBlack else Color.White
+    if (relativeLuminance(color) > 0.179f) PureBlack else Color.White
 
 /**
  * Texto que se lee sobre un color (2026-11-10): el del usuario si
@@ -147,12 +161,12 @@ fun readableTextOn(
     lightDefault: Color,
 ): Color {
     val user = parseHexOrNull(userHex)
-    return if (brightnessOf(color) > 0.5f) {
+    return if (relativeLuminance(color) > 0.179f) {
         // Fondo claro: texto oscuro (el del usuario si es oscuro).
-        if (user != null && brightnessOf(user) < 0.5f) user else darkDefault
+        if (user != null && relativeLuminance(user) < 0.179f) user else darkDefault
     } else {
         // Fondo oscuro: texto claro (el del usuario si es claro).
-        if (user != null && brightnessOf(user) > 0.5f) user else lightDefault
+        if (user != null && relativeLuminance(user) > 0.179f) user else lightDefault
     }
 }
 
