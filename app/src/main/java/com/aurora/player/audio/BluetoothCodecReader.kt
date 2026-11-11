@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -51,6 +52,30 @@ fun btBitsConstantToBits(value: Int): Int? = when (value) {
     else -> null
 }
 
+/**
+ * Ronda 16: con varios A2DP conectados, el primero no tiene por qué
+ * ser el que suena. Se prefiere el dispositivo cuya dirección aparece
+ * entre las salidas activas de AudioManager; si ninguno coincide (o
+ * la lectura falla), se usa el primero (comportamiento anterior).
+ */
+private fun pickActiveBtDevice(
+    context: Context,
+    devices: List<BluetoothDevice>,
+): BluetoothDevice? {
+    if (devices.isEmpty()) return null
+    if (devices.size == 1) return devices.first()
+    val activeAddresses = try {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            ?.mapNotNull { it.address }
+            ?.toSet()
+            .orEmpty()
+    } catch (_: Exception) {
+        emptySet()
+    }
+    return devices.firstOrNull { it.address in activeAddresses } ?: devices.first()
+}
+
 suspend fun readActiveBtCodec(context: Context): BtCodecInfo? =
     withContext(Dispatchers.IO) {
         try {
@@ -80,7 +105,7 @@ suspend fun readActiveBtCodec(context: Context): BtCodecInfo? =
                     emptyList()
                 }
                 val device: BluetoothDevice =
-                    devices.firstOrNull() ?: return@withContext null
+                    pickActiveBtDevice(context, devices) ?: return@withContext null
                 val status = try {
                     a2dp.javaClass
                         .getMethod("getCodecStatus", BluetoothDevice::class.java)
