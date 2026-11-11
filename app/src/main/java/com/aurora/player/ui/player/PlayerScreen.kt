@@ -260,19 +260,27 @@ fun PlayerScreen(
     var waveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
     val playerContext = LocalContext.current
     LaunchedEffect(songUri) {
-        waveformPeaks = emptyList()
-        val uri = songUri ?: return@LaunchedEffect
-        if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
-        val key = uri.toString()
-        val cached = WaveformCache.read(playerContext, key)
-        if (cached != null) {
-            waveformPeaks = cached
-        } else {
-            val measured = measureWaveform(playerContext, uri)
-            if (measured != null) {
-                WaveformCache.write(playerContext, key, measured)
-                waveformPeaks = measured
+        try {
+            waveformPeaks = emptyList()
+            val uri = songUri ?: return@LaunchedEffect
+            if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
+            val key = uri.toString()
+            val cached = WaveformCache.read(playerContext, key)
+            if (cached != null) {
+                waveformPeaks = cached
+            } else {
+                val measured = measureWaveform(playerContext, uri)
+                if (measured != null) {
+                    WaveformCache.write(playerContext, key, measured)
+                    waveformPeaks = measured
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 2026-11-11 (crash al tocar una canción): que un fallo
+            // midiendo la onda nunca cierre el reproductor.
+            com.aurora.player.util.ErrorLog.log(playerContext, "Forma de onda", e)
         }
     }
     val lyricsListState = rememberLazyListState()
@@ -1252,19 +1260,27 @@ private fun LyricsFullScreen(
     var waveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
     val playerContext = LocalContext.current
     LaunchedEffect(songUri) {
-        waveformPeaks = emptyList()
-        val uri = songUri ?: return@LaunchedEffect
-        if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
-        val key = uri.toString()
-        val cached = WaveformCache.read(playerContext, key)
-        if (cached != null) {
-            waveformPeaks = cached
-        } else {
-            val measured = measureWaveform(playerContext, uri)
-            if (measured != null) {
-                WaveformCache.write(playerContext, key, measured)
-                waveformPeaks = measured
+        try {
+            waveformPeaks = emptyList()
+            val uri = songUri ?: return@LaunchedEffect
+            if (uri.scheme != "content" && uri.scheme != "file") return@LaunchedEffect
+            val key = uri.toString()
+            val cached = WaveformCache.read(playerContext, key)
+            if (cached != null) {
+                waveformPeaks = cached
+            } else {
+                val measured = measureWaveform(playerContext, uri)
+                if (measured != null) {
+                    WaveformCache.write(playerContext, key, measured)
+                    waveformPeaks = measured
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 2026-11-11 (crash al tocar una canción): que un fallo
+            // midiendo la onda nunca cierre el reproductor.
+            com.aurora.player.util.ErrorLog.log(playerContext, "Forma de onda", e)
         }
     }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
