@@ -53,7 +53,6 @@ fun computeYearStats(
     history: List<PlayHistoryEntity>,
     songsById: Map<Long, SongInfo>,
 ): YearStats {
-    val dayMs = 24L * 60 * 60 * 1000
     val bySong = history.groupingBy { it.songId }.eachCount()
     val topSongs = bySong.entries
         .sortedByDescending { it.value }
@@ -76,7 +75,17 @@ fun computeYearStats(
             .map { it.key to it.value },
         topGenres = genreCounts.entries.sortedByDescending { it.value }.take(3)
             .map { it.key to it.value },
-        distinctDays = history.map { it.playedAt / dayMs }.toSet().size,
+        // RONDA 35: dias distintos en hora LOCAL, no en bloques UTC de
+        // 24 h (cerca de medianoche local un mismo dia contaba como dos).
+        distinctDays = history.map { ts ->
+            val cal = Calendar.getInstance()
+            cal.timeInMillis = ts
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            cal.timeInMillis
+        }.toSet().size,
         firstPlayedAt = history.minOfOrNull { it.playedAt },
         lastPlayedAt = history.maxOfOrNull { it.playedAt },
         topSongIds = bySong.entries
