@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -405,6 +406,11 @@ class PlaybackService : MediaLibraryService() {
         serviceScope.launch {
             while (true) {
                 val p = player
+                // Ronda 4 (optimización): fuera de la ventana de
+                // crossfade no hay nada que vigilar 4 veces por
+                // segundo: dormir hasta su entrada (máx. 2 s por
+                // pasada, para seguir restaurando el volumen).
+                var sleepMs = if (p?.isPlaying == true) 250L else 2000L
                 if (p != null && p.isPlaying && !fadingIn && crossfadeSeconds > 0) {
                     val duration = p.duration
                     val remaining = duration - p.currentPosition
@@ -417,13 +423,13 @@ class PlaybackService : MediaLibraryService() {
                                 p.volume = (remaining.toFloat() / windowMs.toFloat()).coerceIn(0.05f, 1f)
                             }
                         }
-                    } else if (duration > 0 && remaining > windowMs && p.volume < 1f) {
-                        p.volume = 1f
+                        sleepMs = 250L
+                    } else if (duration > 0 && remaining > windowMs) {
+                        if (p.volume < 1f) p.volume = 1f
+                        sleepMs = minOf(remaining - windowMs, 2000L).coerceAtLeast(250L)
                     }
                 }
-                // Refinamiento: en pausa el monitor duerme 2 s en vez de
-                // despertar 4 veces por segundo sin nada que vigilar.
-                delay(if (p?.isPlaying == true) 250 else 2000)
+                delay(sleepMs)
             }
         }
     }
@@ -650,8 +656,12 @@ class PlaybackService : MediaLibraryService() {
         fadeJob = serviceScope.launch {
             val steps = 20
             val stepMs = seconds * 1000L / steps
+            // Ronda 4: reloj monotónico — cada paso espera solo
+            // lo que falta hasta su instante previsto, sin acumular
+            // la deriva de los delay. Mismos 20 niveles y duración.
+            val startMs = SystemClock.elapsedRealtime()
             for (i in 1..steps) {
-                delay(stepMs)
+                delay((startMs + i * stepMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
                 p.volume = i / steps.toFloat()
             }
             fadingIn = false
@@ -745,8 +755,10 @@ class PlaybackService : MediaLibraryService() {
         overlapJob = serviceScope.launch {
             val steps = 20
             val stepMs = window / steps
+            // Ronda 4: reloj monotónico, como el fade-in.
+            val startMs = SystemClock.elapsedRealtime()
             for (i in 1..steps) {
-                delay(stepMs)
+                delay((startMs + i * stepMs - SystemClock.elapsedRealtime()).coerceAtLeast(0L))
                 val f = i / steps.toFloat()
                 p.volume = (1f - f).coerceIn(0f, 1f)
                 b.volume = f
