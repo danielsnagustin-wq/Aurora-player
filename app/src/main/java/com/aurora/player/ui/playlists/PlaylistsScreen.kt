@@ -97,7 +97,13 @@ fun PlaylistsScreen(
             }
             val entries = M3u.parse(text)
             val byPath = allSongs.associateBy { it.path }
-            val byFileName = allSongs.associateBy { java.io.File(it.path).name }
+            // Ronda 32: el nombre de archivo puede repetirse en
+            // álbumes distintos; si hay más de una canción con ese
+            // nombre, no se adivina: la entrada queda sin coincidir
+            // y se cuenta como tal en el mensaje de importación.
+            val byFileNameUnique = allSongs
+                .groupBy { java.io.File(it.path).name }
+                .mapValues { (_, songs) -> songs.singleOrNull() }
             val libraryPaths = allSongs.map { it.path }
             val matched = entries.mapNotNull { entry ->
                 byPath[entry.path]
@@ -106,13 +112,15 @@ fun PlaylistsScreen(
                     // selector no da una ruta real), así que se
                     // compara el sufijo de la ruta.
                     ?: M3u.matchBySuffix(entry.path, libraryPaths)?.let { byPath[it] }
-                    ?: byFileName[java.io.File(entry.path).name]
-                    ?: allSongs.firstOrNull { it.title == entry.title }
+                    ?: byFileNameUnique[java.io.File(entry.path).name]
+                    // Ronda 32: igual que el nombre de archivo, el
+                    // título solo vale si es único en la biblioteca.
+                    ?: allSongs.filter { it.title == entry.title }.singleOrNull()
                     // Ronda 18: el #EXTINF que exportamos es
                     // "artista - título", no el título solo: sin
                     // esta rama el rescate por título nunca casaba
                     // con nuestros propios M3U.
-                    ?: allSongs.firstOrNull { "${it.artist} - ${it.title}" == entry.title }
+                    ?: allSongs.filter { "${it.artist} - ${it.title}" == entry.title }.singleOrNull()
             }.distinctBy { it.id }
             // RONDA 5 (2026-11-09): el nombre salía de
             // lastPathSegment, que en un Uri de contenido es un ID
@@ -317,12 +325,20 @@ private fun PlaylistDetail(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    // Ronda 32: si no se puede escribir el archivo, antes no se
+    // avisaba y el usuario creía que la exportación había salido.
+    var exportMessage by remember { mutableStateOf<String?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("audio/x-mpegurl"),
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         try {
-            context.contentResolver.openOutputStream(uri)?.use { out ->
+            val out = context.contentResolver.openOutputStream(uri)
+            if (out == null) {
+                exportMessage = "No se pudo escribir ese archivo M3U."
+                return@rememberLauncherForActivityResult
+            }
+            out.use {
                 val entries = songs.map { song ->
                     M3u.Entry(
                         song.durationMs / 1000,
@@ -330,11 +346,13 @@ private fun PlaylistDetail(
                         song.path,
                     )
                 }
-                out.write(M3u.build(entries).toByteArray(Charsets.UTF_8))
+                it.write(M3u.build(entries).toByteArray(Charsets.UTF_8))
             }
+            exportMessage = null
         } catch (e: Exception) {
             // Exportar falló: la playlist sigue intacta en Room.
             ErrorLog.log(context, "Exportar M3U", e)
+            exportMessage = "No se pudo escribir ese archivo M3U."
         }
     }
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
@@ -359,6 +377,9 @@ private fun PlaylistDetail(
             ) {
                 Text("Exportar M3U")
             }
+        }
+        exportMessage?.let { message ->
+            Text(message, modifier = Modifier.padding(top = 8.dp))
         }
         if (songs.isEmpty()) {
             Text(
