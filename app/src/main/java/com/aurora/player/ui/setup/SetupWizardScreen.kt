@@ -48,6 +48,7 @@ import com.aurora.player.model.ThemeSettings
 import com.aurora.player.model.treeDocumentIdToPath
 import com.aurora.player.model.applyTo
 import com.aurora.player.ui.library.AlbumArtCache
+import com.aurora.player.util.DiskArtCache
 import kotlinx.coroutines.launch
 
 /**
@@ -274,6 +275,9 @@ fun SetupWizardScreen(
                     TextButton(
                         onClick = {
                             AlbumArtCache.clear()
+                            // Ronda 5: "Borrar caché" vacía también el
+                            // disco de carátulas, no solo la memoria.
+                            scope.launch { DiskArtCache.clear(context) }
                             cacheCleared = true
                         },
                         modifier = Modifier.padding(top = 8.dp),
