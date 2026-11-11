@@ -200,6 +200,7 @@ fun LibraryScreen(
 ) {
     val viewModel: LibraryViewModel = viewModel()
     val uiState by viewModel.uiState.collectAsState()
+    val scanError by viewModel.scanError.collectAsState()
     val query by viewModel.query.collectAsState()
     val searchCategory by viewModel.searchCategory.collectAsState()
     val filtered by viewModel.filteredSongs.collectAsState()
@@ -366,7 +367,9 @@ fun LibraryScreen(
             }
             LibraryUiState.Empty -> {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.")
+                    // Ronda 31: si el escaneo falló, se dice; si no,
+                    // es que de verdad no hay música todavía.
+                    Text(scanError ?: "No hay canciones aquí todavía. Añade archivos de música al teléfono y vuelve a escanear.")
                     // AUDITORÍA (2026-11-09): el texto decía "vuelve a
                     // escanear" pero NO HABÍA ningún botón para hacerlo.
                     OutlinedButton(
