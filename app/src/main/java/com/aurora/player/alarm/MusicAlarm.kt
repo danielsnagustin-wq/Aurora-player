@@ -31,7 +31,13 @@ fun nextAlarmTime(hour: Int, minute: Int, nowMs: Long): Long {
     cal.set(Calendar.SECOND, 0)
     cal.set(Calendar.MILLISECOND, 0)
     var next = cal.timeInMillis
-    if (next <= nowMs) next += 24L * 60 * 60 * 1000
+    if (next <= nowMs) {
+        // Sumar un DÍA DE CALENDARIO, no 24 h exactas: al cruzar un
+        // cambio de horario de verano el día dura 23 o 25 h y la
+        // alarma sonaría una hora antes o después (ronda 13).
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        next = cal.timeInMillis
+    }
     return next
 }
 
@@ -48,7 +54,10 @@ fun describeNextAlarm(hour: Int, minute: Int, nowMs: Long): String {
     cal.set(Calendar.MINUTE, 0)
     cal.set(Calendar.SECOND, 0)
     cal.set(Calendar.MILLISECOND, 0)
-    val tomorrowStart = cal.timeInMillis + 24L * 60 * 60 * 1000
+    // La medianoche de mañana es un día de calendario después, no
+    // 24 h exactas (mismo horario de verano que nextAlarmTime).
+    cal.add(Calendar.DAY_OF_YEAR, 1)
+    val tomorrowStart = cal.timeInMillis
     val day = if (next < tomorrowStart) "hoy" else "mañana"
     return "Sonará $day a las ${formatAlarmTime(hour, minute)}"
 }
