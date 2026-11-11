@@ -671,6 +671,42 @@ private fun AuroraApp(
     var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
     var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
     var sleepAtSongEnd by remember { mutableStateOf(false) }
+    // RONDA 143: el temporizador de apagado también sobrevive al giro
+    // y a la muerte del proceso (antes vivía solo en `remember` y se
+    // perdía en silencio). Se guarda al ponerlo y se borra al
+    // dispararse o al apagarlo.
+    val sleepTimerStore = remember { SleepTimerStore(context) }
+    fun persistSleepTimer() {
+        scope.launch {
+            try {
+                if (sleepTimer == SleepTimerOption.OFF) sleepTimerStore.clear()
+                else sleepTimerStore.save(sleepTimer.name, sleepUntilMs, sleepAtSongEnd)
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Guardar temporizador", e)
+            }
+        }
+    }
+    // RONDA 143: restaurar el temporizador guardado al arrancar. Un
+    // plazo de minutos ya vencido se descarta: caducó con la app
+    // muerta y no castiga la siguiente sesión; el de fin de canción
+    // sí se restaura, sigue teniendo sentido.
+    LaunchedEffect(Unit) {
+        val saved = sleepTimerStore.timerFlow.first()
+        if (saved != null) {
+            val option = runCatching { SleepTimerOption.valueOf(saved.optionName) }.getOrNull()
+            if (option == null || option == SleepTimerOption.OFF) {
+                sleepTimerStore.clear()
+            } else if (option == SleepTimerOption.END_OF_SONG || saved.untilMs == null ||
+                saved.untilMs > System.currentTimeMillis()
+            ) {
+                sleepTimer = option
+                sleepAtSongEnd = saved.atSongEnd
+                sleepUntilMs = saved.untilMs
+            } else {
+                sleepTimerStore.clear()
+            }
+        }
+    }
 
     // Ideas open source: favorito de la canción actual y ajuste de
     // sincronización de letras por canción (se guarda en DataStore).
@@ -782,6 +818,8 @@ private fun AuroraApp(
         } else {
             null
         }
+        // RONDA 143: que sobreviva al giro y a la muerte del proceso.
+        persistSleepTimer()
     }
 
     /** Historial real: una pista cuenta cuando suena 30 s o más. */
@@ -1193,6 +1231,8 @@ private fun AuroraApp(
         // temporizador corría también en pausa.
         var lastTickMs = SystemClock.elapsedRealtime()
         var lastQueueSaveMs = SystemClock.elapsedRealtime()
+        // RONDA 143: último guardado del plazo del temporizador en pausa.
+        var lastSleepSaveMs = SystemClock.elapsedRealtime()
         while (true) {
             try {
                 val tickNow = SystemClock.elapsedRealtime()
@@ -1227,6 +1267,8 @@ private fun AuroraApp(
                             c.pause()
                             sleepAtSongEnd = false
                             sleepTimer = SleepTimerOption.OFF
+                            // RONDA 143: el temporizador se disparó, se borra.
+                            persistSleepTimer()
                         }
                         // RONDA 4 (2026-11-09): historyDone nunca se
                         // limpiaba: si una canción ya había contado
@@ -1264,10 +1306,20 @@ private fun AuroraApp(
                         // En pausa el temporizador no corre: el plazo se
                         // desplaza lo mismo que duró la pausa.
                         sleepUntilMs = until + tickDelta
+                        // RONDA 143: el plazo guardado se quedaba viejo
+                        // en pausa: al girar el teléfono a mitad de una
+                        // pausa, el temporizador restaurado contaba ese
+                        // tiempo. Se re-guarda como mucho cada 10 s.
+                        if (tickNow - lastSleepSaveMs >= 10_000L) {
+                            lastSleepSaveMs = tickNow
+                            persistSleepTimer()
+                        }
                     } else if (System.currentTimeMillis() >= until) {
                         c.pause()
                         sleepUntilMs = null
                         sleepTimer = SleepTimerOption.OFF
+                        // RONDA 143: el temporizador se disparó, se borra.
+                        persistSleepTimer()
                     }
                 }
                 // Ronda 24: el umbral era < 1000 ms y cortaba hasta el
@@ -1279,6 +1331,8 @@ private fun AuroraApp(
                     c.pause()
                     sleepAtSongEnd = false
                     sleepTimer = SleepTimerOption.OFF
+                    // RONDA 143: el temporizador se disparó, se borra.
+                    persistSleepTimer()
                 }
             }
             } catch (e: Exception) {
