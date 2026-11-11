@@ -2,6 +2,12 @@
 <resources>
     <style name="Theme.AuroraPlayer" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">@color/amoled_background</item>
+        <!-- RONDA CAST-CRASH 2026-11-11: MediaRouteButton lee
+             android:colorBackground de su tema y aquí no existía:
+             resolvía a #0 (transparente) y su constructor tiraba
+             IllegalArgumentException al abrir el reproductor.
+             El fondo es el mismo negro opaco del windowBackground. -->
+        <item name="android:colorBackground">@color/amoled_background</item>
         <item name="android:textColor">@color/silver</item>
     </style>
 </resources>
