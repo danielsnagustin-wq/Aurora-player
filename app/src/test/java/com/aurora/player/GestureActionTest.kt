@@ -21,8 +21,11 @@ class GestureActionTest {
     }
 
     @Test
-    fun cuatroAccionesConEtiqueta() {
-        assertEquals(4, GestureAction.entries.size)
-        assertEquals(4, GestureAction.entries.map { it.label }.toSet().size)
+    fun sieteAccionesConEtiqueta() {
+        assertEquals(7, GestureAction.entries.size)
+        assertEquals(7, GestureAction.entries.map { it.label }.toSet().size)
+        assertEquals(GestureAction.FAST_FORWARD, parseGestureAction("FAST_FORWARD", GestureAction.NEXT))
+        assertEquals(GestureAction.REWIND, parseGestureAction("REWIND", GestureAction.NEXT))
+        assertEquals(GestureAction.TOGGLE_MUTE, parseGestureAction("TOGGLE_MUTE", GestureAction.NEXT))
     }
 }
