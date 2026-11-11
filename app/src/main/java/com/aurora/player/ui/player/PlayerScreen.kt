@@ -296,11 +296,14 @@ fun PlayerScreen(
     // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
     // al instante en vez de desplazarse animada.
     val animationsEnabled = LocalAnimationsEnabled.current
-    LaunchedEffect(showLyrics, currentLine) {
+    LaunchedEffect(showLyrics, currentLine, songUri) {
         if (showLyrics) {
             // RONDA 47: antes de la primera línea currentLine es -1 y
             // no se desplazaba nada, así que la letra podía abrirse en
             // la posición de la canción anterior; ahora se va al inicio.
+            // RONDA 55: songUri en las claves — al cambiar de canción
+            // con el mismo currentLine (-1/0 al inicio), el efecto no se
+            // relanzaba y la lista quedaba en la posición vieja.
             val target = if (currentLine >= 0) currentLine else 0
             if (animationsEnabled) lyricsListState.animateScrollToItem(target)
             else lyricsListState.scrollToItem(target)
