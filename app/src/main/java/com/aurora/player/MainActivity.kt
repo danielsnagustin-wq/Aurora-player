@@ -663,6 +663,9 @@ private fun AuroraApp(
         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, it)
     }
     var lyrics by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
+    // RONDA 153: true si la búsqueda online de la letra falló por red
+    // (ningún proveedor respondió): no es "sin letras", es un error.
+    var lyricsError by remember { mutableStateOf(false) }
     var translatedLyrics by remember { mutableStateOf<List<String>>(emptyList()) }
     // Fase 2 — Spotify Canvas: URL del vídeo en bucle de la canción
     // que suena (null = sin Canvas, se ve la portada de siempre).
@@ -1357,6 +1360,7 @@ private fun AuroraApp(
     LaunchedEffect(currentMediaId) {
         val mediaId = currentMediaId
         lyrics = emptyList()
+        lyricsError = false
         translatedLyrics = emptyList()
         qualityText = null
         canvasUrl = null
@@ -1372,7 +1376,10 @@ private fun AuroraApp(
                     if (it > 0) it / 1000 else 0L
                 }
                 if (track.isNotBlank() && artist.isNotBlank()) {
-                    lyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec, lyricsProviders)
+                    // RONDA 153: un fallo de red no es "sin letras".
+                    val onlineLyrics = loadOnlineLyrics(context, mediaId, track, artist, album, durationSec, lyricsProviders)
+                    lyrics = onlineLyrics ?: emptyList()
+                    lyricsError = onlineLyrics == null
                 }
             }
             // Traducción automática (2026-11-10, como BitChord).
@@ -1437,7 +1444,10 @@ private fun AuroraApp(
                 if (it > 0) it / 1000 else 0L
             }
             if (track.isNotBlank() && artist.isNotBlank()) {
-                lyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec, lyricsProviders)
+                // RONDA 153: un fallo de red no es "sin letras".
+                val onlineLyrics = loadOnlineLyrics(context, id.toString(), track, artist, album, durationSec, lyricsProviders)
+                lyrics = onlineLyrics ?: emptyList()
+                lyricsError = onlineLyrics == null
             }
         }
         // Precarga (idea de BitChord, 2026-11-09): mientras suena la
@@ -1854,6 +1864,7 @@ private fun AuroraApp(
             onDeleteSavedQueue = { deleteSavedQueue(it) },
             onSavedQueueMessageConsumed = { savedQueueMessage = null },
             lyrics = lyrics,
+            lyricsError = lyricsError,
             translatedLyrics = translatedLyrics,
             qualityText = qualityText,
             onlineMode = playerSettings.onlineMode,
