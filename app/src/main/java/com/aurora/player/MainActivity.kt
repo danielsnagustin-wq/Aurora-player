@@ -126,6 +126,7 @@ import com.aurora.player.ui.player.PlayerScreen
 import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.settings.SettingsScreen
+import com.aurora.player.ui.settings.SettingsSection
 import com.aurora.player.ui.setup.SetupWizardScreen
 import com.aurora.player.ui.stats.StatsScreen
 import com.aurora.player.ui.theme.AuroraPlayerTheme
@@ -514,6 +515,9 @@ private fun AuroraApp(
 ) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
+    // Ronda 7 (Gemini): sección de Ajustes que se abre directo
+    // (p. ej. Red, desde la pestaña Online con el modo apagado).
+    var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
     var showPlayer by remember { mutableStateOf(false) }
     var showEq by remember { mutableStateOf(false) }
     // Fase 2 app — YouTube con vídeo: el vídeo que se está viendo
@@ -1733,6 +1737,7 @@ private fun AuroraApp(
                 ytMusicToken = ytMusicToken,
                 onYtTokenRejected = onYtTokenRejected,
                 streamQuality = playerSettings.streamQuality,
+                onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
                 modifier = Modifier.padding(padding),
             )
             Tab.PLAYLISTS -> PlaylistsScreen(
@@ -1748,6 +1753,8 @@ private fun AuroraApp(
             )
             Tab.SETTINGS -> SettingsScreen(
                 modifier = Modifier.padding(padding),
+                initialSection = settingsSection,
+                onInitialSectionConsumed = { settingsSection = null },
                 onOpenEq = { showEq = true },
                 onImportTracks = { tracks -> playOnlineTracks(tracks) },
                 onShareErrorLog = { shareErrorLog() },
