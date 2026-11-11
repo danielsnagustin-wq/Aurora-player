@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.FolderStore
+import com.aurora.player.data.LibraryPrefsStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.SongStatsRow
@@ -70,6 +71,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val repository = MusicRepository(application)
     private val playerStore = PlayerSettingsStore(application)
     private val folderStore = FolderStore(application)
+    private val libraryPrefs = LibraryPrefsStore(application)
     private val db = AuroraDatabase.getInstance(application)
 
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
@@ -144,6 +146,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch(Dispatchers.IO) {
             db.libraryDao().favoriteIdsFlow().collect { ids ->
                 _favoriteIds.value = ids.toSet()
+            }
+        }
+        // Ronda 19: el orden se pierde al recrear el ViewModel (antes
+        // solo vivía en memoria). Se persiste en LibraryPrefsStore;
+        // un nombre desconocido (versión vieja) cae a TITLE.
+        viewModelScope.launch {
+            libraryPrefs.sortFlow.collect { name ->
+                _sortOrder.value = runCatching { LibrarySort.valueOf(name) }
+                    .getOrDefault(LibrarySort.TITLE)
             }
         }
         // Ronda 17: estadísticas en vivo — las listas inteligentes
@@ -308,6 +319,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
 
     fun setSort(sort: LibrarySort) {
         _sortOrder.value = sort
+        viewModelScope.launch { libraryPrefs.saveSort(sort.name) }
     }
 
     fun filterByArtist(artist: String?) {
