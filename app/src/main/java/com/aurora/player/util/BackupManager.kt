@@ -336,13 +336,20 @@ object BackupManager {
                     }
                 }
             } catch (e: Exception) {
+                // RONDA 101: si una vuelta atrás también falla, que
+                // quede en el registro de errores: antes se tragaba en
+                // silencio y los ajustes podían quedar a medias sin
+                // rastro de por qué.
                 runCatching { themeStore.save(prevTheme) }
+                    .onFailure { ErrorLog.log(appContext, "Restaurar respaldo", it) }
                 runCatching { playerStore.save(prevPlayer) }
+                    .onFailure { ErrorLog.log(appContext, "Restaurar respaldo", it) }
                 runCatching { queueStore.save(prevQueue.songIds, prevQueue.index, prevQueue.positionMs) }
+                    .onFailure { ErrorLog.log(appContext, "Restaurar respaldo", it) }
                 runCatching {
                     for (preset in presetStore.presetsFlow.first()) presetStore.delete(preset.name)
                     for (preset in prevPresets) presetStore.save(preset.name, preset.levelsDb)
-                }
+                }.onFailure { ErrorLog.log(appContext, "Restaurar respaldo", it) }
                 throw e
             }
             RestoreReport(
