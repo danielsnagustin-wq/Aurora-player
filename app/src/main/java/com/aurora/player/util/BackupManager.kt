@@ -253,7 +253,15 @@ object BackupManager {
             val appContext = context.applicationContext
             val db = AuroraDatabase.getInstance(appContext)
             val playerSettings = PlayerSettingsStore(appContext).settingsFlow.first()
-            val library = MusicRepository(appContext).loadSongs(playerSettings.minDurationMs)
+            // RONDA 161: la biblioteca para emparejar se carga con el
+            // filtro MÁS permisivo entre el actual y el del respaldo.
+            // Los ajustes del respaldo se aplican DESPUÉS (abajo), y
+            // con el filtro actual una canción que el respaldo sí
+            // tenía (porque entonces el mínimo era menor) quedaba
+            // fuera del emparejado y se descartaba aunque el archivo
+            // sigue en el teléfono.
+            val matchMinDurationMs = minOf(playerSettings.minDurationMs, data.player.minDurationMs)
+            val library = MusicRepository(appContext).loadSongs(matchMinDurationMs)
             val libraryPairs = library.map { it.id to it.path }
             val missing = mutableListOf<BackupSongRef>()
 
