@@ -475,22 +475,19 @@ fun MiniPlayerPreview(applied: ThemeSettings) {
         )
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.padding(top = 4.dp),
         ) {
-            IconButton(onClick = {}) {
-                Icon(Icons.Filled.SkipPrevious, contentDescription = null, tint = scheme.onSurface)
-            }
-            IconButton(onClick = {}) {
-                Icon(
-                    Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    tint = scheme.primary,
-                    modifier = Modifier.size(40.dp),
-                )
-            }
-            IconButton(onClick = {}) {
-                Icon(Icons.Filled.SkipNext, contentDescription = null, tint = scheme.onSurface)
-            }
+            // Vista previa del tema, no controles reales: iconos
+            // sin acción, para que nadie toque un botón que no hace nada.
+            Icon(Icons.Filled.SkipPrevious, contentDescription = null, tint = scheme.onSurface)
+            Icon(
+                Icons.Filled.PlayArrow,
+                contentDescription = null,
+                tint = scheme.primary,
+                modifier = Modifier.size(40.dp),
+            )
+            Icon(Icons.Filled.SkipNext, contentDescription = null, tint = scheme.onSurface)
         }
     }
 }
