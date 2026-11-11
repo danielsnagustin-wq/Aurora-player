@@ -96,8 +96,13 @@ class MusicRepository(private val context: Context) {
             "${MediaStore.Audio.Media.DURATION} >= ?"
         val selectionArgs = arrayOf(minDurationMs.toString())
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
-        context.contentResolver.query(uri, projection.toTypedArray(), selection, selectionArgs, sortOrder)
-            ?.use { cursor ->
+        // RONDA 124: query() puede devolver null sin lanzar nada (el
+        // proveedor falla) y el ?.use lo tragaba: biblioteca vacía SIN
+        // error aunque hubiera música. Un cursor nulo es un fallo de
+        // escaneo y va por el camino de error de loadSongs().
+        val cursor = context.contentResolver.query(uri, projection.toTypedArray(), selection, selectionArgs, sortOrder)
+            ?: throw IllegalStateException("MediaStore devolvió un cursor nulo al escanear la biblioteca")
+        cursor.use { cursor ->
                 val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
                 val titleCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
                 val artistCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
