@@ -1085,7 +1085,13 @@ private fun AuroraApp(
                     val id = c.currentMediaItem?.mediaId?.toLongOrNull()
                     if (id != null && id != listenedId) {
                         listenedId = id
-                        listenedMs = 0L
+                        // RONDA 58: el primer tick tras el cambio de pista
+                        // solo inicializaba y no sumaba nada, así que una
+                        // canción de 30 s justos se quedaba en ~29,5 s y
+                        // no contaba como escucha. El intervalo del tick
+                        // pertenece casi todo a la pista nueva (el cambio
+                        // cayó dentro de él), así que se suma.
+                        listenedMs = tickDelta
                         // RONDA 4 (2026-11-09): historyDone nunca se
                         // limpiaba: si una canción ya había contado
                         // una vez en esta sesión, sus siguientes
