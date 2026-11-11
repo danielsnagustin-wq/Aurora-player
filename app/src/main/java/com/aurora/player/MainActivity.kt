@@ -158,6 +158,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -701,18 +703,29 @@ private fun AuroraApp(
         }
     }
 
+    // RONDA 109: igual que en la biblioteca, dos toques rápidos
+    // decidían con el mismo estado y el segundo se perdía. Cambio
+    // optimista serializado con candado; el flujo de Room lo
+    // confirma al emitir.
+    val favoriteMutex = remember { Mutex() }
+
     fun toggleFavorite() {
         val id = currentSongId ?: return
         scope.launch(Dispatchers.IO) {
-            try {
-                val dao = db.libraryDao()
-                if (id in favoriteIds) {
-                    dao.removeFavorite(id)
-                } else {
-                    dao.addFavorite(FavoriteEntity(id))
+            favoriteMutex.withLock {
+                val adding = id !in favoriteIds
+                favoriteIds = if (adding) favoriteIds + id else favoriteIds - id
+                try {
+                    val dao = db.libraryDao()
+                    if (adding) {
+                        dao.addFavorite(FavoriteEntity(id))
+                    } else {
+                        dao.removeFavorite(id)
+                    }
+                } catch (e: Exception) {
+                    favoriteIds = if (adding) favoriteIds - id else favoriteIds + id
+                    ErrorLog.log(context, "Favorito", e)
                 }
-            } catch (e: Exception) {
-                ErrorLog.log(context, "Favorito", e)
             }
         }
     }
@@ -791,6 +804,15 @@ private fun AuroraApp(
                         val updated = db.libraryDao().updateHistoryDuration(id, at, finalMs)
                         if (updated == 0) {
                             db.libraryDao().addHistory(PlayHistoryEntity(id, at, finalMs))
+                            // RONDA 110: la inserción periódica puede
+                            // aterrizar entre la actualización (0
+                            // filas) y este insert (IGNORE): la fila
+                            // quedaría con la duración corta y el
+                            // insert de respaldo no haría nada. Se
+                            // vuelve a actualizar para que la duración
+                            // final quede siempre, aterrice cuando
+                            // aterrice la inserción.
+                            db.libraryDao().updateHistoryDuration(id, at, finalMs)
                         }
                         historyDone = historyDone + id
                     } catch (e: Exception) {
