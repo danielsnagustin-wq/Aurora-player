@@ -1007,18 +1007,25 @@ private fun SavedQueuesDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                // RONDA 92: con 20 colas el botón se apagaba siempre,
+                // también para actualizar una cola que ya existe (la
+                // ronda 18 lo permite en MainActivity). Si el nombre
+                // ya existe, se puede guardar encima.
+                val normalizedName = normalizeQueueName(name)
+                val nameExists = normalizedName != null &&
+                    savedQueues.any { it.queue.name.equals(normalizedName, ignoreCase = true) }
                 TextButton(
                     onClick = {
-                        normalizeQueueName(name)?.let {
+                        normalizedName?.let {
                             onSaveQueue(it)
                             name = ""
                         }
                     },
-                    enabled = normalizeQueueName(name) != null &&
-                        queueSize > 0 && savedQueues.size < MAX_NAMED_QUEUES,
+                    enabled = normalizedName != null &&
+                        queueSize > 0 && (savedQueues.size < MAX_NAMED_QUEUES || nameExists),
                     modifier = Modifier.padding(top = 4.dp),
                 ) { Text("Guardar cola actual") }
-                if (savedQueues.size >= MAX_NAMED_QUEUES) {
+                if (savedQueues.size >= MAX_NAMED_QUEUES && !nameExists) {
                     Text(
                         "Ya tienes $MAX_NAMED_QUEUES colas guardadas; borra una para guardar otra.",
                         modifier = Modifier.padding(top = 4.dp),
