@@ -70,10 +70,14 @@ fun SpotifyLoginDialog(
     // que nunca disparan onPageFinished), el spinner tapaba el
     // formulario para siempre. A los 12 s se quita igual: la página
     // que haya cargado queda usable y el usuario puede reintentar.
+    // RONDA LOGIN (Codex #6): si a los 12 s no terminó, no dejarla
+    // muda: avisar, porque una página en blanco sin mensaje era
+    // justo lo que se veía en el teléfono.
     LaunchedEffect(loading) {
         if (loading) {
             delay(12_000)
             loading = false
+            hint = "La página tardó demasiado en cargar. Si se ve en blanco, ciérrala y vuelve a intentarlo."
         }
     }
 
