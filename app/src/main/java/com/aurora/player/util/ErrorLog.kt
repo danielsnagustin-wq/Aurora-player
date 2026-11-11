@@ -24,14 +24,22 @@ object ErrorLog {
 
     fun file(context: Context): File = File(context.cacheDir, FILE_NAME)
 
+    /** Recorta el archivo a la mitad si pasa de ~128 KB. */
+    private fun trimIfOver(f: File) {
+        var guard = 0
+        while (f.exists() && f.length() > MAX_BYTES && guard < 10) {
+            val lines = f.readLines()
+            if (lines.size <= 1) break
+            f.writeText(lines.drop(lines.size / 2).joinToString("\n"))
+            guard++
+        }
+    }
+
     /** Escribe una entrada sanitizada; nunca lanza. */
     fun log(context: Context, tag: String, throwable: Throwable?) {
         try {
             val f = file(context)
-            if (f.exists() && f.length() > MAX_BYTES) {
-                val lines = f.readLines()
-                f.writeText(lines.drop(lines.size / 2).joinToString("\n"))
-            }
+            trimIfOver(f)
             val time = java.text.SimpleDateFormat(
                 "yyyy-MM-dd HH:mm:ss",
                 java.util.Locale.getDefault(),
@@ -54,6 +62,10 @@ object ErrorLog {
                 }
             }
             f.appendText(BugReport.sanitize(entry))
+            // El tope se vuelve a comprobar DESPUÉS de añadir: una
+            // entrada muy larga dejaba el archivo por encima de 128 KB
+            // hasta la siguiente escritura (ronda 11).
+            trimIfOver(f)
         } catch (_: Exception) {
             // El registro nunca puede romper la app.
         }
