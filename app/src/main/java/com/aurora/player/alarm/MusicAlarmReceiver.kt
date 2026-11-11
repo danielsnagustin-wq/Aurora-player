@@ -22,6 +22,10 @@ import kotlinx.coroutines.launch
  *   como activa pero sin permiso (RONDA 43), al concederlo desde los
  *   ajustes del sistema se programa sola sin tener que reabrir la
  *   pantalla ni pulsar "Actualizar".
+ * - Cambia la hora o la zona horaria (RONDA 130): la alarma es una
+ *   marca RTC calculada al programarla; si cambia la zona, sonaría a
+ *   la hora local equivocada. Al cambiar la hora o la zona se vuelve
+ *   a programar sola con la hora local nueva.
  * - "Apagar": le dice al servicio que pare la música.
  */
 class MusicAlarmReceiver : BroadcastReceiver() {
@@ -36,6 +40,8 @@ class MusicAlarmReceiver : BroadcastReceiver() {
                     Intent.ACTION_BOOT_COMPLETED -> onBoot(context)
                     AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED ->
                         onExactAlarmPermissionChanged(context)
+                    Intent.ACTION_TIME_CHANGED,
+                    Intent.ACTION_TIMEZONE_CHANGED -> onTimeChanged(context)
                 }
             } finally {
                 pending.finish()
@@ -64,6 +70,11 @@ class MusicAlarmReceiver : BroadcastReceiver() {
     }
 
     private suspend fun onBoot(context: Context) {
+        val settings = AlarmStore(context).settingsFlow.first()
+        if (settings.enabled) AlarmScheduler.schedule(context, settings)
+    }
+
+    private suspend fun onTimeChanged(context: Context) {
         val settings = AlarmStore(context).settingsFlow.first()
         if (settings.enabled) AlarmScheduler.schedule(context, settings)
     }
