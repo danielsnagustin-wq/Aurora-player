@@ -27,7 +27,7 @@ fun SettingsGroupTitle(text: String, modifier: Modifier = Modifier) {
         style = MaterialTheme.typography.titleMedium.copy(
             fontWeight = FontWeight.SemiBold,
         ),
-        modifier = modifier.padding(top = 24.dp),
+        modifier = modifier.padding(top = 28.dp),
     )
 }
 

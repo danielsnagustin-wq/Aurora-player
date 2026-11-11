@@ -14,6 +14,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -69,6 +71,7 @@ import androidx.compose.runtime.getValue
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -422,6 +425,13 @@ fun PlayerScreen(
         val audioManager = remember(context) {
             context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
         }
+        // Ronda 4: vibración al doble toque y posición actual
+        // (rememberUpdatedState: dentro de pointerInput la posición
+        // quedaría obsoleta si se leyera el parámetro directo).
+        val haptics = LocalHapticFeedback.current
+        val latestPositionMs by rememberUpdatedState(positionMs)
+        val latestDurationMs by rememberUpdatedState(durationMs)
+        val latestOnSeek by rememberUpdatedState(onSeek)
         val coverCorner = RoundedCornerShape(coverShapeToCornerPercent(LocalCoverShape.current))
         // Canvas de Spotify (Fase 2): cuando la canción tiene
         // Canvas, el vídeo en bucle ocupa el lugar de la portada;
@@ -431,7 +441,7 @@ fun PlayerScreen(
         Box(
             modifier = Modifier.fillMaxWidth().aspectRatio(1f)
                 // Resplandor con el color de la portada (spec 003).
-                .shadow(32.dp, coverCorner, ambientColor = accent.copy(alpha = 0.7f), spotColor = accent.copy(alpha = 0.7f))
+                .shadow(24.dp, coverCorner, ambientColor = accent.copy(alpha = 0.5f), spotColor = accent.copy(alpha = 0.5f))
                 .pointerInput(swipeEnabled) {
                     detectHorizontalDragGestures(
                         onDragEnd = {
@@ -454,11 +464,27 @@ fun PlayerScreen(
                         // toque hace lo que el usuario eligió.
                         onDoubleTap = {
                             if (!doubleTapEnabled) return@detectTapGestures
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             when (doubleTapAction) {
                                 GestureAction.FAVORITE -> onToggleFavorite()
                                 GestureAction.PLAY_PAUSE -> onPlayPause()
                                 GestureAction.NEXT -> onNext()
                                 GestureAction.PREVIOUS -> onPrevious()
+                                // Ronda 4: ±10 s; con duración
+                                // desconocida no se recorta.
+                                GestureAction.FAST_FORWARD -> {
+                                    val target = latestPositionMs + 10_000L
+                                    latestOnSeek(if (latestDurationMs > 0) target.coerceAtMost(latestDurationMs) else target)
+                                }
+                                GestureAction.REWIND -> latestOnSeek((latestPositionMs - 10_000L).coerceAtLeast(0L))
+                                GestureAction.TOGGLE_MUTE -> {
+                                    val action = if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
+                                        AudioManager.ADJUST_UNMUTE
+                                    } else {
+                                        AudioManager.ADJUST_MUTE
+                                    }
+                                    audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, action, AudioManager.FLAG_SHOW_UI)
+                                }
                             }
                         },
                         onTap = { canvasControlsVisible = true; canvasHideKey++ },
