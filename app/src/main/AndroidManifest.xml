@@ -68,13 +68,17 @@
                 android:resource="@xml/aurora_widget_info" />
         </receiver>
 
-        <!-- RONDA 7 P4: alarma musical. Recibe la hora programada y el
-             arranque del teléfono (para volver a programarla sola). -->
+        <!-- RONDA 7 P4: alarma musical. Recibe la hora programada, el
+             arranque del teléfono (para volver a programarla sola) y el
+             cambio del permiso de alarmas exactas (RONDA 43: si se
+             concede desde los ajustes del sistema, la alarma guardada
+             como activa se programa sola). -->
         <receiver
             android:name=".alarm.MusicAlarmReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
 
