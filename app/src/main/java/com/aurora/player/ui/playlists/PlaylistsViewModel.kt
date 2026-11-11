@@ -144,7 +144,10 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
     fun importM3u(name: String, songIds: List<Long>) {
         val clean = name.trim().ifEmpty { "Importada" }
         viewModelScope.launch(Dispatchers.IO) {
-            val id = dao.insertPlaylist(PlaylistEntity(name = clean))
+            // Reimportar el mismo M3U actualiza la lista, no crea otra con
+            // el mismo nombre (ronda 53; mismo patrón que "Tu año").
+            val id = dao.playlistByName(clean)?.id
+                ?: dao.insertPlaylist(PlaylistEntity(name = clean))
             if (songIds.isNotEmpty()) {
                 dao.replaceSongs(
                     id,
