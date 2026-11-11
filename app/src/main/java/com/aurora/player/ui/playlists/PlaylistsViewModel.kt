@@ -148,14 +148,17 @@ class PlaylistsViewModel(application: Application) : AndroidViewModel(applicatio
             // el mismo nombre (ronda 53; mismo patrón que "Tu año").
             val id = dao.playlistByName(clean)?.id
                 ?: dao.insertPlaylist(PlaylistEntity(name = clean))
-            if (songIds.isNotEmpty()) {
-                dao.replaceSongs(
-                    id,
-                    songIds.mapIndexed { index, songId ->
-                        PlaylistSongEntity(playlistId = id, songId = songId, position = index)
-                    },
-                )
-            }
+            // RONDA 108: reimportar con 0 coincidencias también
+            // actualiza: antes la lista vieja quedaba intacta aunque
+            // el aviso decía que nada coincidió (y una lista nueva
+            // quedaba vacía: incoherente). replaceSongs con lista
+            // vacía la deja vacía, como dice el M3U.
+            dao.replaceSongs(
+                id,
+                songIds.mapIndexed { index, songId ->
+                    PlaylistSongEntity(playlistId = id, songId = songId, position = index)
+                },
+            )
             _playlists.value = dao.allPlaylists()
         }
     }
