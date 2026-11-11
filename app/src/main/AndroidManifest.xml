@@ -58,7 +58,7 @@
 
         <receiver
             android:name=".widget.AuroraWidgetProvider"
-            android:exported="false"
+            android:exported="true"
             android:label="Aurora Player">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
