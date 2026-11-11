@@ -77,9 +77,9 @@ fun computeYearStats(
             .map { it.key to it.value },
         // RONDA 35: dias distintos en hora LOCAL, no en bloques UTC de
         // 24 h (cerca de medianoche local un mismo dia contaba como dos).
-        distinctDays = history.map { ts ->
+        distinctDays = history.map { entry ->
             val cal = Calendar.getInstance()
-            cal.timeInMillis = ts
+            cal.timeInMillis = entry.playedAt
             cal.set(Calendar.HOUR_OF_DAY, 0)
             cal.set(Calendar.MINUTE, 0)
             cal.set(Calendar.SECOND, 0)
