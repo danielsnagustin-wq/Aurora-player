@@ -20,7 +20,7 @@ import java.io.FileOutputStream
  *
  * Cómo funciona (código propio, sin librerías):
  * - Dos tamaños por álbum: 144 px (lista) y 1024 px (reproductor),
- *   en JPEG 85, bajo cacheDir/album-art/ ("<albumId>_<sizePx>.jpg").
+ *   en JPEG 85, bajo filesDir/album-art/ ("<albumId>_<sizePx>.jpg").
  * - La escritura es atómica: se escribe a "<nombre>.tmp" y se renombra;
  *   una lectura nunca ve un archivo a medias.
  * - Tope 200 MB con desalojo LRU por último acceso: al escribir, si el
@@ -28,12 +28,20 @@ import java.io.FileOutputStream
  * - Nada tira excepciones: cualquier fallo devuelve null/false y la
  *   llamada sigue su camino normal (MediaStore o incrustada).
  *
+ * Pedido del usuario (2026-11-11 03:12): que se guarden en la DATA de
+ * la aplicación, no en la caché. filesDir es la data privada de la
+ * app: Android NO la purga sola (cacheDir sí lo hacía si le faltaba
+ * espacio), no aparece en la galería ni en las carpetas de música, y
+ * solo se borra desde "Borrar caché de imágenes" o "Borrar datos".
+ * La carpeta vieja (cacheDir/album-art/) se borra sola al migrar.
+ *
  * Límites honestos:
- * - Es cacheDir: Android puede purgarlo si le falta espacio. "Para
- *   siempre" es mientras el sistema no lo limpie, como en cualquier
- *   reproductor.
+ * - El espacio que ocupa es el mismo (tope 200 MB, en la práctica
+ *   unos pocos MB): cambia el SITIO, no el tamaño.
  * - La clave es el albumId: si el usuario cambia la portada de un
  *   álbum, la guardada queda vieja hasta "Borrar caché de imágenes".
+ * - Tras el cambio de sitio, la primera biblioteca se vuelve a
+ *   guardar (un pase lento) y después queda para siempre.
  */
 object DiskArtCache {
     const val DIR_NAME = "album-art"
@@ -49,7 +57,16 @@ object DiskArtCache {
     /** Nombre de archivo puro y testeable. */
     fun fileName(albumId: Long, sizePx: Int): String = "${albumId}_$sizePx.jpg"
 
-    fun dir(context: Context): File = File(context.cacheDir, DIR_NAME)
+    /** Data privada de la app (filesDir), no la caché: Android no la purga. */
+    fun dir(context: Context): File = File(context.filesDir, DIR_NAME)
+
+    /** Borra la carpeta vieja de la caché (migración cacheDir -> filesDir). */
+    private fun deleteLegacyDir(context: Context) {
+        runCatching {
+            val legacy = File(context.cacheDir, DIR_NAME)
+            if (legacy.exists()) legacy.deleteRecursively()
+        }
+    }
 
     /** Lee la portada guardada, o null si no está. Toca el archivo para el LRU. */
     suspend fun read(context: Context, albumId: Long, sizePx: Int): Bitmap? =
@@ -67,6 +84,7 @@ object DiskArtCache {
     suspend fun write(context: Context, albumId: Long, sizePx: Int, bitmap: Bitmap): Boolean =
         withContext(Dispatchers.IO) {
             runCatching {
+                deleteLegacyDir(context)
                 val directory = dir(context).apply { if (!exists()) mkdirs() }
                 val target = File(directory, fileName(albumId, sizePx))
                 if (target.exists()) return@runCatching true
@@ -95,7 +113,10 @@ object DiskArtCache {
     /** Vacía el disco de carátulas (botón "Borrar caché de imágenes"). */
     suspend fun clear(context: Context) {
         withContext(Dispatchers.IO) {
-            runCatching { dir(context).deleteRecursively() }
+            runCatching {
+                dir(context).deleteRecursively()
+                deleteLegacyDir(context)
+            }
         }
     }
 
