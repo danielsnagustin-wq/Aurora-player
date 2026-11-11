@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
@@ -281,6 +282,11 @@ class PlaybackService : MediaLibraryService() {
         val autoplayFilter = IntentFilter().apply {
             addAction(Intent.ACTION_HEADSET_PLUG)
             addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED)
+            // Ronda 16: conectar un DAC USB no dispara ni HEADSET_PLUG
+            // ni A2DP: sin estas acciones el DAC no se buscaba hasta
+            // otro evento y el audio se quedaba en la ruta anterior.
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(autoplayReceiver, autoplayFilter, Context.RECEIVER_NOT_EXPORTED)
@@ -637,7 +643,12 @@ class PlaybackService : MediaLibraryService() {
             val store = EqStateStore(this@PlaybackService)
             if (!store.perOutputFlow.first()) return@launch
             val (route, name) = currentOutputRoute(this@PlaybackService)
-            val saved = store.routeStateFlow(routeKey(route, name)).first() ?: return@launch
+            // Ronda 16: sin EQ guardado para esta salida, vuelve el EQ
+            // global (así lo documenta EqStateStore); antes se
+            // retornaba y el EQ de la salida anterior seguía sonando
+            // en los nuevos auriculares.
+            val saved = store.routeStateFlow(routeKey(route, name)).first()
+                ?: store.stateFlow.first()
             eq.setEnabled(saved.enabled)
             eq.applyPreset(
                 EqualizerManager.Preset(
