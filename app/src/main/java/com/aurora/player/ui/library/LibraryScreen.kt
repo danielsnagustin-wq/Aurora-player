@@ -190,6 +190,8 @@ fun LibraryScreen(
     ytMusicToken: String? = null,
     onYtTokenRejected: (String) -> Unit = {},
     streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Ronda 7 (Gemini): abrir Ajustes directo en Red desde Online.
+    onOpenSettings: () -> Unit = {},
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -345,6 +347,7 @@ fun LibraryScreen(
                 streamQuality = streamQuality,
                 localCount = (uiState as? LibraryUiState.Loaded)?.songs?.size ?: 0,
                 onShowLocal = { tab = 0 },
+                onOpenSettings = onOpenSettings,
                 modifier = Modifier.fillMaxSize(),
             )
         } else when (val state = uiState) {
@@ -929,7 +932,7 @@ private fun SongRow(
     if (LocalListDensity.current == ListDensity.COMPACT) {
         Row(
             modifier = Modifier.fillMaxWidth()
-                .height(52.dp)
+                .heightIn(min = 52.dp)
                 .combinedClickable(onClick = onClick, onLongClick = { onDetails(song) })
                 .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1020,7 +1023,7 @@ private fun DuplicatesDialog(
                     "Mismo título, artista y duración. Toca un grupo para ver sus copias. Nada se borra desde aquí.",
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
-                LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
+                LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
                     // Ronda 5 (fluidez): clave estable por grupo
                     // (título + artista + duración lo identifican).
                     items(
