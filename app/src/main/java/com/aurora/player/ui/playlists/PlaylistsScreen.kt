@@ -86,8 +86,15 @@ fun PlaylistsScreen(
     ) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
         try {
+            // Ronda 26: si no se puede abrir el archivo, antes se
+            // salía en silencio y el usuario no sabía por qué no
+            // se importó nada. Ahora se avisa.
             val text = context.contentResolver.openInputStream(uri)?.bufferedReader()
-                ?.use { it.readText() } ?: return@rememberLauncherForActivityResult
+                ?.use { it.readText() }
+            if (text == null) {
+                importMessage = "No se pudo leer ese archivo M3U."
+                return@rememberLauncherForActivityResult
+            }
             val entries = M3u.parse(text)
             val byPath = allSongs.associateBy { it.path }
             val byFileName = allSongs.associateBy { java.io.File(it.path).name }
