@@ -126,6 +126,9 @@ fun SettingsScreen(
     onConnectYouTubeMusicToken: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
+    // Ronda 7 (Gemini): abrir Ajustes directo en una sección.
+    initialSection: SettingsSection? = null,
+    onInitialSectionConsumed: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val store = remember { ThemeSettingsStore(context) }
@@ -140,6 +143,14 @@ fun SettingsScreen(
     // AIMP/Musicolet: null muestra la lista de categorías; al tocar
     // una se abre solo esa sección.
     var section by remember { mutableStateOf<SettingsSection?>(null) }
+    // Ronda 7 (Gemini): si quien abre Ajustes pidió una sección,
+    // se entra directo en ella y se consume el pedido.
+    LaunchedEffect(initialSection) {
+        if (initialSection != null) {
+            section = initialSection
+            onInitialSectionConsumed()
+        }
+    }
     // SPEC 007 (2026-11-09): editor de color + Mis temas.
     val presetStore = remember { ThemePresetStore(context) }
     val recentColors by presetStore.recentColorsFlow.collectAsState(initial = emptyList())
@@ -157,7 +168,6 @@ fun SettingsScreen(
     // Fase 2 — Spotify como BitChord (cookie sp_dc, solo en el teléfono).
     val spotifyStore = remember { SpotifyStore(context) }
     val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
-    var spotifyCookieText by remember { mutableStateOf("") }
     var spotifyStatus by remember { mutableStateOf<String?>(null) }
 
     fun save(next: ThemeSettings) {
@@ -262,16 +272,15 @@ fun SettingsScreen(
             )
         }
 
-        // Spotify: conectar/desconectar vive aquí porque lo usan
-        // la sección Red y la pantalla Cuenta e integraciones.
-        // El tipo explícito () -> Unit es necesario: sin él, la
-        // lambda devuelve el Job de scope.launch y no compila
-        // (run #286: Argument type mismatch, líneas 284 y 297).
+        // Spotify: conectar/desconectar vive aquí porque lo usa
+        // la pantalla Cuenta e integraciones (ronda 7: Red ya no
+        // lo duplica). El tipo explícito () -> Unit es necesario:
+        // sin él, la lambda devuelve el Job de scope.launch y no
+        // compila (run #286: Argument type mismatch, líneas 284 y 297).
         val disconnectSpotify: () -> Unit = {
             scope.launch {
                 spotifyStore.clear()
                 spotifyStatus = null
-                spotifyCookieText = ""
             }
         }
         val connectSpotify: (String) -> Unit = { cookie ->
@@ -280,7 +289,6 @@ fun SettingsScreen(
                 val token = SpotifyClient().fetchAccessToken(cookie.trim())
                 if (token != null) {
                     spotifyStore.setCookie(cookie.trim())
-                    spotifyCookieText = ""
                     spotifyStatus = "Conectado."
                 } else {
                     spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
@@ -290,6 +298,7 @@ fun SettingsScreen(
         if (section == SettingsSection.INTEGRATIONS) {
             IntegrationsScreen(
                 spotifyConnected = spotifyConnected,
+                spotifyStatus = spotifyStatus,
                 onConnectSpotify = connectSpotify,
                 onDisconnectSpotify = disconnectSpotify,
                 onImportTracks = onImportTracks,
@@ -306,12 +315,6 @@ fun SettingsScreen(
             SettingsNetworkSection(
                 player = player,
                 onSavePlayer = { savePlayer(it) },
-                spotifyConnected = spotifyConnected,
-                spotifyCookieText = spotifyCookieText,
-                onSpotifyCookieTextChange = { spotifyCookieText = it },
-                spotifyStatus = spotifyStatus,
-                onDisconnectSpotify = disconnectSpotify,
-                onConnectSpotify = connectSpotify,
             )
         }
 
