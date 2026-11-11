@@ -98,6 +98,12 @@ class CastManager(context: Context) {
                     null
                 } ?: "Chromecast"
                 _state.value = CastState.Connected(name)
+                // RONDA 71: la sesión ya estaba activa cuando se
+                // recreó la pantalla (rotación, vuelta a la app):
+                // el listener no vuelve a disparar onSessionStarted,
+                // así que sin esto la canción no pasaba al Chromecast
+                // aunque la app dijera "Conectado".
+                onSessionStarted?.invoke()
             }
         } catch (e: Exception) {
             castContext = null
