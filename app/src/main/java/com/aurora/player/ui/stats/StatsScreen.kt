@@ -174,7 +174,12 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     val viewModel: StatsViewModel = viewModel()
     val stats by viewModel.stats.collectAsState()
-    LaunchedEffect(Unit) { viewModel.refresh(hasAudioPermission) }
+    // RONDA 79: la clave era Unit, así que si el permiso de música
+    // se concedía en Ajustes del sistema con esta pantalla abierta
+    // (MainActivity.onResume ya lo vuelve a comprobar), la pantalla
+    // seguía vacía hasta salir y volver a entrar. Con el permiso
+    // como clave, al cambiar se vuelve a cargar.
+    LaunchedEffect(hasAudioPermission) { viewModel.refresh(hasAudioPermission) }
     // RONDA 7 P3: Tu año.
     var showYear by remember { mutableStateOf(false) }
     // Fase 1b: exportar estadísticas a CSV.
