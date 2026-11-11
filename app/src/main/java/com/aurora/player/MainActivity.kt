@@ -867,10 +867,19 @@ private fun AuroraApp(
         if (ms < 30_000L || id in historyDone || id in historyPending) return
         val at = historyFlushedAt
         if (at != null && historyFlushedId == id) {
+            // RONDA 133: esta actualización periódica NO estaba marcada
+            // en historyPending: si aterrizaba DESPUÉS de que
+            // finalizeHistory escribiera la duración final, la
+            // sobrescribía con un valor viejo y la escucha quedaba
+            // corta. Marcada igual que la inserción, finalizeHistory
+            // espera 500 ms y escribe la final después.
+            historyPending = historyPending + id
             scope.launch(Dispatchers.IO) {
                 try {
                     db.libraryDao().updateHistoryDuration(id, at, ms)
                 } catch (_: Exception) {
+                } finally {
+                    historyPending = historyPending - id
                 }
             }
             return
