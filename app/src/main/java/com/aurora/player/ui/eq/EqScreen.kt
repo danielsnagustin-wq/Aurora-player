@@ -545,11 +545,20 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             enabled = true
                             manager?.setEnabled(true)
                         }
+                        // RONDA 140: antes se mostraban y guardaban los
+                        // niveles aunque el efecto no los hubiera aplicado
+                        // (solo se protegía la marca del preset): la
+                        // pantalla decía una curva y el audio tenía otra.
+                        // Ahora solo se confirman si el efecto los aplicó
+                        // de verdad; si falla, vuelven los niveles viejos.
+                        val oldLevels = levels
                         levels = preset.levelsDb
-                        // RONDA 73: solo se marca el preset si el
-                        // efecto lo aplicó de verdad.
-                        if (applyToManager()) selectedPreset = preset.name
-                        persist()
+                        if (applyToManager()) {
+                            selectedPreset = preset.name
+                            persist()
+                        } else {
+                            levels = oldLevels
+                        }
                     },
                 )
             }
@@ -596,9 +605,14 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             enabled = true
                             manager?.setEnabled(true)
                         }
+                        val oldLevels = levels
                         levels = model.levelsDb
-                        if (applyToManager()) selectedPreset = "AutoEq: ${model.name}"
-                        persist()
+                        if (applyToManager()) {
+                            selectedPreset = "AutoEq: ${model.name}"
+                            persist()
+                        } else {
+                            levels = oldLevels
+                        }
                     },
                 )
             }
@@ -620,9 +634,14 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                                     enabled = true
                                     manager?.setEnabled(true)
                                 }
+                                val oldLevels = levels
                                 levels = preset.levelsDb
-                                if (applyToManager()) selectedPreset = preset.name
-                                persist()
+                                if (applyToManager()) {
+                                    selectedPreset = preset.name
+                                    persist()
+                                } else {
+                                    levels = oldLevels
+                                }
                             },
                         )
                         IconButton(onClick = {
