@@ -1521,11 +1521,16 @@ private fun AuroraApp(
         // Ronda 18: el índice guardado es sobre la cola original;
         // si se borraron canciones anteriores, el índice numérico
         // apuntaba a otra canción. Se busca la canción actual por
-        // su ID; si ya no está, se cae al índice numérico de antes.
+        // su ID; si ya no está, se cae al hueco que dejó: cuántas
+        // de las anteriores siguen vivas (esa es la siguiente
+        // canción, no el índice numérico de antes, que se pasaba
+        // de largo cuando también se borraron anteriores).
         val currentId = saved.songIds.getOrNull(saved.index)
         val restoreIndex = currentId?.let { id ->
             ordered.indexOfFirst { it.id == id }
-        }?.takeIf { it >= 0 } ?: saved.index.coerceIn(0, ordered.size - 1)
+        }?.takeIf { it >= 0 } ?: saved.songIds.take(saved.index)
+            .count { id -> ordered.any { it.id == id } }
+            .coerceIn(0, ordered.size - 1)
         try {
             c.setMediaItems(
                 ordered.map { songToMediaItem(context, it) },
