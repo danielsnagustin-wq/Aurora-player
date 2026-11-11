@@ -381,7 +381,20 @@ class PlaybackService : MediaLibraryService() {
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 // Pausa/reanudación durante el solape: B sigue a A.
-                if (overlapping) overlapPlayer?.playWhenReady = isPlaying
+                if (overlapping) {
+                    if (isPlaying) {
+                        overlapPlayer?.playWhenReady = true
+                    } else {
+                        // RONDA 149: pausar NO cancelaba la rampa: la
+                        // corrutina seguía bajando/subiendo volúmenes
+                        // y el traspaso avanzaba a la pista siguiente
+                        // con la música en pausa. Pausar congela todo:
+                        // se cancela el solape y A vuelve a volumen 1
+                        // (cancelOverlap solo lo restaura si suena).
+                        cancelOverlap()
+                        player?.volume = 1f
+                    }
+                }
             }
 
             override fun onPositionDiscontinuity(
