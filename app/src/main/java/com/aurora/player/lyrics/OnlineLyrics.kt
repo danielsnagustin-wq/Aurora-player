@@ -4,6 +4,8 @@ import android.content.Context
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
 import java.net.URLEncoder
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -145,6 +147,10 @@ fun resolveLyrics(localLrcText: String?, online: OnlineLyrics?): List<LrcLine> {
 }
 
 /** Prueba los proveedores en orden; un proveedor caído no tumba la búsqueda. */
+/** RONDA 153: todos los proveedores fallaron por red (ninguno pudo
+ * contestar). No es "sin letra": quien llama lo distingue. */
+class LyricsSearchFailedException : Exception()
+
 suspend fun fetchLyricsFirst(
     providers: List<LyricsProvider>,
     track: String,
@@ -160,12 +166,20 @@ suspend fun fetchLyricsFirst(
     // anulaba el paralelo (LRCLIB puede tardar ~12 s entre exacta y
     // difusa y otro proveedor ya tenía la letra). Los 3 devuelven la
     // misma forma (sincronizada o texto), así que manda la rapidez.
+    // RONDA 153: un proveedor que FALLA (red) no es uno que contesta
+    // "no hay letra". Se cuentan los fallos: si TODOS fallaron, la
+    // búsqueda falló y se lanza (loadOnlineLyrics devuelve null).
+    // La cancelación (cambio de canción) nunca se traga ni se cuenta.
+    val failed = AtomicInteger(0)
     val deferred = providers.map { provider ->
         async {
             try {
                 provider.fetch(track, artist, album, durationSec)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Siguiente proveedor.
+                failed.incrementAndGet()
                 null
             }
         }
@@ -185,6 +199,9 @@ suspend fun fetchLyricsFirst(
                 }
             }
         }
+    }
+    if (result == null && providers.isNotEmpty() && failed.get() == providers.size) {
+        throw LyricsSearchFailedException()
     }
     result
 }
@@ -206,30 +223,32 @@ class LrclibProvider : LyricsProvider {
         search?.let { parseLrclibResponse(it) }
     }
 
+    // RONDA 153: un error de red NO es "sin letra": se propaga (el
+    // que busca cuenta los fallos) y solo un código distinto de 200
+    // devuelve null. Antes el catch tragaba timeouts y conexiones
+    // caídas como si el proveedor hubiera contestado "no hay letra".
     private fun httpGet(url: String): String? {
-        return try {
-            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
-            conn.setRequestProperty("Accept", "application/json")
-            conn.connectTimeout = 6000
-            conn.readTimeout = 6000
-            try {
-                if (conn.responseCode != 200) return null
-                conn.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            null
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
+        conn.setRequestProperty("Accept", "application/json")
+        conn.connectTimeout = 6000
+        conn.readTimeout = 6000
+        try {
+            if (conn.responseCode != 200) return null
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
         }
     }
 }
 
 /**
  * Busca la letra online de una canción (caché primero, luego
- * proveedores). Devuelve las líneas listas para mostrar, o vacío.
- * Solo se llama con el interruptor de letras online encendido.
+ * proveedores). Devuelve las líneas listas para mostrar, vacío si
+ * ningún proveedor tiene la letra, o null si la búsqueda falló por
+ * red (ningún proveedor pudo responder). Solo se llama con el
+ * interruptor de letras online encendido.
  */
 suspend fun loadOnlineLyrics(
     context: Context,
@@ -243,7 +262,7 @@ suspend fun loadOnlineLyrics(
         BetterLyricsProvider(),
         BiniLyricsProvider(),
     ),
-): List<LrcLine> = withContext(Dispatchers.IO) {
+): List<LrcLine>? = withContext(Dispatchers.IO) {
     LyricsCache.read(context, cacheKey)?.let { cached ->
         if (cached.isNotBlank()) {
             val parsed = LrcParser.parse(cached)
@@ -251,8 +270,14 @@ suspend fun loadOnlineLyrics(
             return@withContext plainToLrcLines(cached)
         }
     }
-    val found = fetchLyricsFirst(providers, track, artist, album, durationSec)
-        ?: return@withContext emptyList()
+    // RONDA 153: si todos los proveedores fallaron por red, null
+    // (no vacío): quien llama avisa del fallo en vez de decir que
+    // la canción no tiene letra.
+    val found = try {
+        fetchLyricsFirst(providers, track, artist, album, durationSec)
+    } catch (_: LyricsSearchFailedException) {
+        return@withContext null
+    } ?: return@withContext emptyList()
     val synced = found.syncedLrc
     if (!synced.isNullOrBlank()) {
         val parsed = LrcParser.parse(synced)
