@@ -103,7 +103,10 @@ fun LyricsEditorDialog(
                     }
                 }
                 TextButton(
-                    onClick = { lines = lines + LrcLine(positionMs, "") },
+                    // RONDA 91: la línea nueva se mete en su sitio
+                    // por tiempo, no al final: si no, el editor la
+                    // mostraba abajo aunque fuera de mitad de canción.
+                    onClick = { lines = (lines + LrcLine(positionMs, "")).sortedBy { it.timeMs } },
                     modifier = Modifier.padding(top = 8.dp),
                 ) {
                     Text("Añadir línea en ${formatLrcTime(positionMs)}")
