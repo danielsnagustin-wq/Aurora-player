@@ -20,7 +20,7 @@ import java.io.FileOutputStream
  *
  * Cómo funciona (código propio, sin librerías):
  * - Dos tamaños por álbum: 144 px (lista) y 1024 px (reproductor),
- *   en JPEG 85, bajo filesDir/album-art/ ("<albumId>_<sizePx>.jpg").
+ *   en JPEG 85, bajo cacheDir/album-art/ ("<albumId>_<sizePx>.jpg").
  * - La escritura es atómica: se escribe a "<nombre>.tmp" y se renombra;
  *   una lectura nunca ve un archivo a medias.
  * - Tope 200 MB con desalojo LRU por último acceso: al escribir, si el
@@ -28,20 +28,21 @@ import java.io.FileOutputStream
  * - Nada tira excepciones: cualquier fallo devuelve null/false y la
  *   llamada sigue su camino normal (MediaStore o incrustada).
  *
- * Pedido del usuario (2026-11-11 03:12): que se guarden en la DATA de
- * la aplicación, no en la caché. filesDir es la data privada de la
- * app: Android NO la purga sola (cacheDir sí lo hacía si le faltaba
- * espacio), no aparece en la galería ni en las carpetas de música, y
- * solo se borra desde "Borrar caché de imágenes" o "Borrar datos".
- * La carpeta vieja (cacheDir/album-art/) se borra sola al migrar.
+ * Decisión del usuario (2026-11-11 03:40): vuelta a la CACHÉ.
+ * Es el sistema que usan los demás reproductores (Musicolet, AIMP):
+ * la caché de la app, con tope y borrando las más viejas. Si a Android
+ * le falta espacio, puede purgarla sola y la app las vuelve a crear
+ * al abrir la biblioteca — eso es lo que más cuida que el teléfono
+ * no se llene. La carpeta de la data (filesDir/album-art/, del
+ * cambio 03:12 que nunca llegó al teléfono) se borra sola al migrar.
  *
  * Límites honestos:
  * - El espacio que ocupa es el mismo (tope 200 MB, en la práctica
  *   unos pocos MB): cambia el SITIO, no el tamaño.
  * - La clave es el albumId: si el usuario cambia la portada de un
  *   álbum, la guardada queda vieja hasta "Borrar caché de imágenes".
- * - Tras el cambio de sitio, la primera biblioteca se vuelve a
- *   guardar (un pase lento) y después queda para siempre.
+ * - Si Android purga la caché, la primera biblioteca se vuelve a
+ *   guardar (un pase lento) y después queda hasta la próxima purga.
  */
 object DiskArtCache {
     const val DIR_NAME = "album-art"
@@ -57,13 +58,13 @@ object DiskArtCache {
     /** Nombre de archivo puro y testeable. */
     fun fileName(albumId: Long, sizePx: Int): String = "${albumId}_$sizePx.jpg"
 
-    /** Data privada de la app (filesDir), no la caché: Android no la purga. */
-    fun dir(context: Context): File = File(context.filesDir, DIR_NAME)
+    /** Caché de la app (cacheDir): el sistema estándar de los reproductores. */
+    fun dir(context: Context): File = File(context.cacheDir, DIR_NAME)
 
-    /** Borra la carpeta vieja de la caché (migración cacheDir -> filesDir). */
+    /** Borra la carpeta de la data (migración filesDir -> cacheDir, cambio 03:12). */
     private fun deleteLegacyDir(context: Context) {
         runCatching {
-            val legacy = File(context.cacheDir, DIR_NAME)
+            val legacy = File(context.filesDir, DIR_NAME)
             if (legacy.exists()) legacy.deleteRecursively()
         }
     }
