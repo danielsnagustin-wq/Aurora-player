@@ -1,6 +1,7 @@
 package com.aurora.player.model
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 
 /**
  * Aurora Player — modelo de canción.
@@ -8,6 +9,11 @@ import android.net.Uri
  * multi-artista / disc numbers / ReplayGain leídos del archivo.
  * Nada inventado: si un campo no existe en el archivo, es null o vacío.
  */
+// RONDA NAV 2026-11-11: inmutable para que Compose pueda saltar la
+// recomposición de una fila cuando su contenido no cambió (con copias
+// nuevas pero iguales, sin esto cada emisión de enrichedSongs
+// recomponía las 1471 filas).
+@Immutable
 data class Song(
     val id: Long,
     val title: String,
