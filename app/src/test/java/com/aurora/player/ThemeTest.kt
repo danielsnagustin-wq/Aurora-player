@@ -113,6 +113,26 @@ class ThemeTest {
     }
 
     @Test
+    fun `contrastOn - un gris medio lleva texto negro, no blanco`() {
+        // Gris medio #808080: luminancia ~0.216; el negro contrasta
+        // 5.3:1 y el blanco solo 3.9:1. El umbral viejo (brillo 0.5)
+        // ponía blanco y se leía mal.
+        assertEquals(Color.Black, contrastOn(Color(0xFF808080)))
+        assertEquals(Color.White, contrastOn(Color(0xFF1A1C1E)))
+        assertEquals(Color.Black, contrastOn(Color(0xFFDCE8F5)))
+        assertEquals(Color.White, contrastOn(Color.Black))
+        assertEquals(Color.Black, contrastOn(Color.White))
+    }
+
+    @Test
+    fun `readableTextOn - fondo de tono medio lleva texto oscuro`() {
+        val darkText = Color(0xFF1A1C1E)
+        val lightText = Color(0xFFDCE8F5)
+        assertEquals(darkText, readableTextOn(Color(0xFF808080), "#DCE8F5", darkText, lightText))
+        assertEquals(lightText, readableTextOn(Color(0xFF1A1C1E), "#DCE8F5", darkText, lightText))
+    }
+
+    @Test
     fun `Claro con fondo de fabrica pinta blanco, no negro`() {
         val def = ThemeSettings.DEFAULT
         assertEquals(Color.White, resolveBackgroundColor(def, useDark = false, isAmoled = false))
