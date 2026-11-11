@@ -66,7 +66,9 @@ fun ForYouSection(
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(bottom = 8.dp),
             )
-            return
+            // Ronda 21: sin return — el error es de los charts, y
+            // las recomendaciones rápidas se muestran igual cuando
+            // existen; si todo está vacío, el texto de abajo avisa.
         }
         // Selección rápida: suena al tocarla, sin pasar por la búsqueda.
         if (quickPicks.isNotEmpty()) {
