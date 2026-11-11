@@ -634,6 +634,13 @@ private fun AuroraApp(
     // doble insert si finalizeHistory se llama dos veces seguidas, y
     // que un insert fallido deje el id marcado como hecho).
     var historyPending by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    // RONDA 85: escucha en curso ya guardada en Room (su playedAt):
+    // el bucle la escribe al cumplir 30 s y actualiza su duración
+    // cada 10 s, así que si Android mata la actividad a mitad de
+    // canción la escucha no se pierde; al terminar, finalizeHistory
+    // solo actualiza esa misma fila con la duración final.
+    var historyFlushedId by remember { mutableStateOf<Long?>(null) }
+    var historyFlushedAt by remember { mutableStateOf<Long?>(null) }
     var queueRestored by remember { mutableStateOf(false) }
     // Último estado guardado en el widget, para no reescribirlo en
     // cada cambio de estado del reproductor.
@@ -769,6 +776,23 @@ private fun AuroraApp(
         val id = listenedId ?: return
         val ms = listenedMs
         if (ms < 30_000L || id in historyDone || id in historyPending) return
+        val at = historyFlushedAt
+        if (at != null && historyFlushedId == id) {
+            // RONDA 85: esta escucha ya está en Room (el bucle la
+            // guardó al cumplir 30 s): solo se actualiza su duración
+            // final, sin crear otra fila.
+            historyFlushedId = null
+            historyFlushedAt = null
+            scope.launch(Dispatchers.IO) {
+                try {
+                    db.libraryDao().updateHistoryDuration(id, at, ms)
+                    historyDone = historyDone + id
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Historial", e)
+                }
+            }
+            return
+        }
         // Ronda 14: el id se marca como hecho DESPUÉS de que el insert
         // tenga éxito (antes se marcaba antes de lanzar la corrutina y
         // un insert fallido dejaba la escucha perdida sin reintento).
@@ -779,6 +803,43 @@ private fun AuroraApp(
                 historyDone = historyDone + id
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
+            } finally {
+                historyPending = historyPending - id
+            }
+        }
+    }
+
+    /** RONDA 85: guarda la escucha en curso en Room en cuanto cumple
+     * 30 s y actualiza su duración cada 10 s (junto al guardado de
+     * la cola). Si el sistema mata la actividad con la música
+     * sonando, la escucha ya está guardada; se pierde como mucho
+     * lo de los últimos 10 s. No marca historyDone: la duración
+     * final la pone finalizeHistory al cambiar de pista o pausar. */
+    fun flushHistoryProgress() {
+        val id = listenedId ?: return
+        val ms = listenedMs
+        if (ms < 30_000L || id in historyDone || id in historyPending) return
+        val at = historyFlushedAt
+        if (at != null && historyFlushedId == id) {
+            scope.launch(Dispatchers.IO) {
+                try {
+                    db.libraryDao().updateHistoryDuration(id, at, ms)
+                } catch (_: Exception) {
+                }
+            }
+            return
+        }
+        val now = System.currentTimeMillis()
+        historyFlushedId = id
+        historyFlushedAt = now
+        historyPending = historyPending + id
+        scope.launch(Dispatchers.IO) {
+            try {
+                db.libraryDao().addHistory(PlayHistoryEntity(id, now, ms))
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Historial", e)
+                historyFlushedId = null
+                historyFlushedAt = null
             } finally {
                 historyPending = historyPending - id
             }
@@ -1114,6 +1175,12 @@ private fun AuroraApp(
                         // escuchas no se registraban nunca más (ni en
                         // "Más escuchadas" ni en reproducciones).
                         historyDone = historyDone - id
+                        // RONDA 85: la pista nueva empieza una escucha
+                        // nueva; si quedaba una fila en curso de la
+                        // pista vieja, ya la cerró finalizeHistory
+                        // (el listener corre antes que este tick).
+                        historyFlushedId = null
+                        historyFlushedAt = null
                     } else if (id != null) {
                         listenedMs += tickDelta
                     }
@@ -1124,6 +1191,10 @@ private fun AuroraApp(
                     if (tickNow - lastQueueSaveMs >= 10_000L) {
                         lastQueueSaveMs = tickNow
                         persistQueue(c)
+                        // RONDA 85: la escucha en curso se guarda en
+                        // Room cada 10 s, por si el sistema mata la
+                        // actividad con la música sonando.
+                        flushHistoryProgress()
                     }
                 }
                 // Temporizador de apagado (ETAPA 5): por minutos o al final
