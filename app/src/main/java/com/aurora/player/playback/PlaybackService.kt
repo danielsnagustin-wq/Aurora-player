@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,8 +27,10 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
 import com.aurora.player.MainActivity
 import com.aurora.player.alarm.AlarmScheduler
 import com.aurora.player.alarm.AlarmSettings
@@ -249,6 +252,29 @@ class PlaybackService : MediaLibraryService() {
                 loadFavoriteIds = {
                     AuroraDatabase.getInstance(this).libraryDao().favoriteIds().toSet()
                 },
+                // Pulido notificación: los botones de aleatorio y
+                // bucle de la notificación llegan como comandos
+                // personalizados y se aplican al reproductor.
+                onNotificationCommand = { action ->
+                    val p = player
+                    if (p == null) {
+                        false
+                    } else when (action) {
+                        "aurora_toggle_shuffle" -> {
+                            p.shuffleModeEnabled = !p.shuffleModeEnabled
+                            true
+                        }
+                        "aurora_cycle_repeat" -> {
+                            p.repeatMode = when (p.repeatMode) {
+                                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                                else -> Player.REPEAT_MODE_OFF
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                },
             ),
         )
             // Portadas de la notificación: MediaStore, incrustada en el
@@ -259,6 +285,11 @@ class PlaybackService : MediaLibraryService() {
             // como destino del toque.
             .setSessionActivity(openAppPendingIntent())
             .build()
+        // Pulido notificación: botones de aleatorio y bucle en la
+        // notificación del panel. Media3 1.4.1 solo añade al layout
+        // personalizado los botones con comando personalizado
+        // (COMMAND_CODE_CUSTOM): los de reproductor se ignoran.
+        updateNotificationCustomLayout()
         // Fase 1b: reproducir al conectar auriculares/BT (opt-in,
         // OFF por defecto). El receptor es dinámico: solo vive
         // mientras el servicio está vivo; si la app se cerró del
@@ -395,6 +426,14 @@ class PlaybackService : MediaLibraryService() {
                         player?.volume = 1f
                     }
                 }
+            }
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                updateNotificationCustomLayout()
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                updateNotificationCustomLayout()
             }
 
             override fun onPositionDiscontinuity(
@@ -556,6 +595,38 @@ class PlaybackService : MediaLibraryService() {
      * cambia, se suelta el manager viejo y se crea uno nuevo con el
      * estado guardado del usuario, no en cero.
      */
+    /**
+     * Pulido notificación: los botones de aleatorio y bucle que salen
+     * en la notificación del panel. El icono y el texto muestran el
+     * estado actual (aleatorio sí/no; repetir no/todo/una) y se
+     * actualizan solos al cambiar desde la app o desde la notificación.
+     */
+    private fun updateNotificationCustomLayout() {
+        val session = mediaSession ?: return
+        val p = player ?: return
+        val shuffleButton = CommandButton.Builder(
+            if (p.shuffleModeEnabled) CommandButton.ICON_SHUFFLE_ON else CommandButton.ICON_SHUFFLE_OFF,
+        )
+            .setSessionCommand(SessionCommand("aurora_toggle_shuffle", Bundle.EMPTY))
+            .setDisplayName(if (p.shuffleModeEnabled) "Aleatorio: sí" else "Aleatorio: no")
+            .build()
+        val repeatIcon = when (p.repeatMode) {
+            Player.REPEAT_MODE_ONE -> CommandButton.ICON_REPEAT_ONE
+            Player.REPEAT_MODE_ALL -> CommandButton.ICON_REPEAT_ALL
+            else -> CommandButton.ICON_REPEAT_OFF
+        }
+        val repeatName = when (p.repeatMode) {
+            Player.REPEAT_MODE_ONE -> "Repetir: una"
+            Player.REPEAT_MODE_ALL -> "Repetir: todo"
+            else -> "Repetir: no"
+        }
+        val repeatButton = CommandButton.Builder(repeatIcon)
+            .setSessionCommand(SessionCommand("aurora_cycle_repeat", Bundle.EMPTY))
+            .setDisplayName(repeatName)
+            .build()
+        session.setCustomLayout(listOf(shuffleButton, repeatButton))
+    }
+
     private fun setupEqualizer(sessionId: Int) {
         if (sessionId == 0 || sessionId == equalizerSessionId) return
         equalizer?.release()
