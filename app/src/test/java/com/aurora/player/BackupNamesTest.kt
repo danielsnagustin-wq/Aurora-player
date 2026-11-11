@@ -22,6 +22,9 @@ class BackupNamesTest {
         assertTrue(name.startsWith("aurora-player-respaldo-"))
         assertTrue(name.endsWith(".json"))
         assertEquals(5, name.split("-").size)
+        // La hora lleva segundos (6 dígitos): dos respaldos del mismo
+        // minuto ya no colisionan (ronda 11).
+        assertTrue(name.matches(Regex("aurora-player-respaldo-\\d{8}-\\d{6}\\.json")))
     }
 
     @Test
