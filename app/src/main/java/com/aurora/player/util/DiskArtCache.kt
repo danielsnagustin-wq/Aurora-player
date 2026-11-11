@@ -142,10 +142,24 @@ object DiskArtCache {
 
     private fun evictIfOver(directory: File) {
         runCatching {
-            val files = directory.listFiles()
-                ?.filter { it.isFile && !it.name.endsWith(".tmp") }
-                ?.map { DiskFile(it.name, it.length(), it.lastModified()) }
-                .orEmpty()
+            val all = directory.listFiles().orEmpty()
+            // RONDA 96: un .tmp viejo es el resto de una escritura
+            // interrumpida (la escritura normal borra el suyo al
+            // fallar; si el proceso muere a mitad, queda huérfano).
+            // Los .tmp no cuentan para el tope ni se desalojan, así
+            // que sin esto crecerían fuera del límite. Una escritura
+            // dura segundos: con 1 h de edad es resto seguro.
+            val staleTmpCutoff = System.currentTimeMillis() - 3_600_000L
+            for (tmp in all) {
+                if (tmp.isFile && tmp.name.endsWith(".tmp") &&
+                    tmp.lastModified() < staleTmpCutoff
+                ) {
+                    tmp.delete()
+                }
+            }
+            val files = all
+                .filter { it.isFile && !it.name.endsWith(".tmp") }
+                .map { DiskFile(it.name, it.length(), it.lastModified()) }
             for (name in pickEviction(files, MAX_BYTES)) {
                 File(directory, name).delete()
             }
