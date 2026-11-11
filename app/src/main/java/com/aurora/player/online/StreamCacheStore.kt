@@ -4,7 +4,10 @@ import com.aurora.player.model.StreamQuality
 
 import android.content.Context
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -17,6 +20,15 @@ import kotlinx.coroutines.withContext
  */
 class StreamCacheStore(context: Context) {
     private val dir = File(context.cacheDir, "stream-cache").apply { mkdirs() }
+
+    companion object {
+        // RONDA 69: un candado por archivo, de PROCESO. Online y
+        // Spotify crean cada una su propio StreamCacheStore, así que
+        // un candado de instancia no bastaba: dos descargas del mismo
+        // vídeo escribían el mismo .part y el archivo final salía
+        // corrupto (o una borraba el .part de la otra).
+        private val downloadLocks = ConcurrentHashMap<String, Mutex>()
+    }
 
     /** Archivo en caché para este video con la calidad pedida, o null. */
     fun cachedFile(videoId: String, quality: StreamQuality): File? {
@@ -62,15 +74,28 @@ class StreamCacheStore(context: Context) {
         quality: StreamQuality,
         maxBytes: Long = DEFAULT_STREAM_CACHE_MAX_BYTES,
     ): File? = withContext(Dispatchers.IO) {
+        val key = streamCacheFileName(videoId, itag)
+        downloadLocks.getOrPut(key) { Mutex() }.withLock {
+            downloadLocked(videoId, itag, url, quality, maxBytes)
+        }
+    }
+
+    private fun downloadLocked(
+        videoId: String,
+        itag: Int,
+        url: String,
+        quality: StreamQuality,
+        maxBytes: Long,
+    ): File? {
         try {
             val final = File(dir, streamCacheFileName(videoId, itag))
-            if (final.exists() && final.length() > 0L) return@withContext final
+            if (final.exists() && final.length() > 0L) return final
             val part = File(dir, streamCachePartFileName(videoId, itag))
             val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
             conn.connectTimeout = 10000
             conn.readTimeout = 30000
             conn.connect()
-            if (conn.responseCode !in 200..299) return@withContext null
+            if (conn.responseCode !in 200..299) return null
             // Copia con tope por archivo: la poda LRU solo corre al
             // final, así que un flujo infinito llenaría el disco
             // antes de podar (auditoría 2026-11-10).
@@ -93,17 +118,17 @@ class StreamCacheStore(context: Context) {
             }
             if (capped) {
                 part.delete()
-                return@withContext null
+                return null
             }
             if (part.length() == 0L || !part.renameTo(final)) {
                 part.delete()
-                return@withContext null
+                return null
             }
             prune(maxBytes)
-            final
+            return final
         } catch (_: Exception) {
             runCatching { File(dir, streamCachePartFileName(videoId, itag)).delete() }
-            null
+            return null
         }
     }
 
