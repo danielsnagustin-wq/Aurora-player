@@ -1103,8 +1103,11 @@ private fun AuroraApp(
                         sleepTimer = SleepTimerOption.OFF
                     }
                 }
+                // Ronda 24: el umbral era < 1000 ms y cortaba hasta el
+                // último segundo de la canción. Con ticks de 500 ms,
+                // < 500 ms dispara como mucho medio segundo antes.
                 if (sleepAtSongEnd && c.isPlaying && c.duration > 0 &&
-                    c.duration - c.currentPosition < 1000
+                    c.duration - c.currentPosition < 500
                 ) {
                     c.pause()
                     sleepAtSongEnd = false
