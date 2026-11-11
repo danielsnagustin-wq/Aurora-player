@@ -25,6 +25,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -37,7 +38,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import android.Manifest
+import android.bluetooth.BluetoothDevice
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.hardware.usb.UsbManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -90,16 +98,22 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var autoEqQuery by remember { mutableStateOf("") }
     // EQ por salida: la salida actual se lee al entrar; el EQ de cada
     // salida se guarda aparte solo cuando el interruptor está puesto.
-    val (route, routeName) = remember { currentOutputRoute(context) }
+    // RONDA 73: la ruta es estado, no un remember fijo: si cambia la
+    // salida con la pantalla abierta, la pantalla cambia con ella
+    // (antes se quedaba con la salida vieja y guardaba bajo su clave).
+    var routeState by remember { mutableStateOf(currentOutputRoute(context)) }
+    val (route, routeName) = routeState
     var perOutput by remember { mutableStateOf(false) }
     // RONDA 7 P1: asistente de EQ + gráfica de respuesta.
     var showWizard by remember { mutableStateOf(false) }
 
-    /** Aplica las 10 bandas + Tone 2D al manager real. */
-    fun applyToManager() {
-        manager?.applyPreset(
+    /** Aplica las 10 bandas + Tone 2D al manager real. Sin sesión
+     * todavía devuelve true: los niveles quedan guardados y se aplican
+     * en cuanto suene la primera canción. */
+    fun applyToManager(): Boolean {
+        return manager?.applyPreset(
             EqualizerManager.Preset("EQ", applyTone2d(levels, toneBassDb, toneTrebleDb)),
-        )
+        ) ?: true
     }
 
     /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
@@ -134,8 +148,12 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         m.setVirtualizer(state.virtualizer.toShort())
     }
 
-    LaunchedEffect(manager) {
-        val m = manager ?: return@LaunchedEffect
+    /** Carga el EQ guardado de la salida actual en los deslizadores y
+     * en el manager real (RONDA 73: antes vivía solo dentro del
+     * LaunchedEffect, así que un cambio de salida con la pantalla
+     * abierta nunca recargaba nada). */
+    suspend fun loadForCurrentRoute() {
+        val m = manager ?: return
         // Estado guardado: el EQ vuelve a como lo dejó el usuario, no en
         // cero. Si nunca se guardó nada, el estado por defecto es apagado
         // con niveles en cero, igual que un manager recién creado.
@@ -148,10 +166,47 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             val routeSaved = eqStateStore.routeStateFlow(routeKey(route, routeName)).first()
             if (routeSaved != null) {
                 loadState(routeSaved)
-                return@LaunchedEffect
+                return
             }
         }
         loadState(saved)
+    }
+
+    LaunchedEffect(manager) {
+        loadForCurrentRoute()
+    }
+
+    // RONDA 73: escuchar el cambio de salida mientras la pantalla está
+    // abierta (auriculares, Bluetooth, USB). Al cambiar, se recargan
+    // los niveles de la nueva salida: la pantalla promete que "el EQ
+    // cambia solo" al cambiar de salida, y sin esto no lo hacía.
+    DisposableEffect(context) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val ctx = context ?: return
+                scope.launch {
+                    val newRoute = currentOutputRoute(ctx)
+                    if (newRoute != routeState) {
+                        routeState = newRoute
+                        loadForCurrentRoute()
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_HEADSET_PLUG)
+            addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
+            addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            context.registerReceiver(receiver, filter)
+        }
+        onDispose { context.unregisterReceiver(receiver) }
     }
 
     Column(
@@ -491,8 +546,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             manager?.setEnabled(true)
                         }
                         levels = preset.levelsDb
-                        applyToManager()
-                        selectedPreset = preset.name
+                        // RONDA 73: solo se marca el preset si el
+                        // efecto lo aplicó de verdad.
+                        if (applyToManager()) selectedPreset = preset.name
                         persist()
                     },
                 )
@@ -541,8 +597,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             manager?.setEnabled(true)
                         }
                         levels = model.levelsDb
-                        applyToManager()
-                        selectedPreset = "AutoEq: ${model.name}"
+                        if (applyToManager()) selectedPreset = "AutoEq: ${model.name}"
                         persist()
                     },
                 )
@@ -566,8 +621,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                                     manager?.setEnabled(true)
                                 }
                                 levels = preset.levelsDb
-                                applyToManager()
-                                selectedPreset = preset.name
+                                if (applyToManager()) selectedPreset = preset.name
                                 persist()
                             },
                         )
