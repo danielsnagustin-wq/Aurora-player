@@ -212,6 +212,11 @@ class MainActivity : ComponentActivity() {
     /** Acción del widget pendiente de aplicar cuando el reproductor esté listo. */
     private var pendingWidgetAction by mutableStateOf<String?>(null)
 
+    /** Reproductor a pantalla completa abierto o no. Vive en la clase
+     * (no en remember) para que playSongs() pueda abrirlo al tocar una
+     * canción: antes solo se abría tocando la mini-barra. */
+    private var showPlayer by mutableStateOf(false)
+
     companion object {
         const val ACTION_WIDGET_TOGGLE = "com.aurora.player.WIDGET_TOGGLE"
         const val ACTION_WIDGET_NEXT = "com.aurora.player.WIDGET_NEXT"
@@ -523,7 +528,6 @@ private fun AuroraApp(
     // Ronda 7 (Gemini): sección de Ajustes que se abre directo
     // (p. ej. Red, desde la pestaña Online con el modo apagado).
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
-    var showPlayer by remember { mutableStateOf(false) }
     var showEq by remember { mutableStateOf(false) }
     // Fase 2 app — YouTube con vídeo: el vídeo que se está viendo
     // (null = no hay vídeo en pantalla) y sus subtítulos.
@@ -1648,6 +1652,9 @@ private fun AuroraApp(
             c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
             c.prepare()
             c.play()
+            // Al tocar una canción el reproductor se abre solo: antes
+            // la música sonaba pero te quedabas en la biblioteca.
+            showPlayer = true
         } catch (e: Exception) {
             ErrorLog.log(context, "PLAY", e)
         }
