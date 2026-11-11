@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -384,14 +386,33 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         _genreFilter.value = null
     }
 
+    // RONDA 109: dos toques rápidos al corazón lanzaban dos
+    // corrutinas que decidían con el mismo estado (Room aún no
+    // había emitido) y el segundo toque se perdía. El cambio es
+    // optimista y se serializa con un candado: el flujo de Room
+    // confirma el valor al emitir; si la escritura falla, se
+    // devuelve el estado y queda en el registro.
+    private val favoriteMutex = Mutex()
+
     fun toggleFavorite(songId: Long) {
-        // El estado se actualiza solo por el flujo de favoritos: no se
-        // toca _favoriteIds aquí para no pelear con Room.
         viewModelScope.launch(Dispatchers.IO) {
-            if (songId in _favoriteIds.value) {
-                db.libraryDao().removeFavorite(songId)
-            } else {
-                db.libraryDao().addFavorite(FavoriteEntity(songId))
+            favoriteMutex.withLock {
+                val adding = songId !in _favoriteIds.value
+                _favoriteIds.value =
+                    if (adding) _favoriteIds.value + songId
+                    else _favoriteIds.value - songId
+                try {
+                    if (adding) {
+                        db.libraryDao().addFavorite(FavoriteEntity(songId))
+                    } else {
+                        db.libraryDao().removeFavorite(songId)
+                    }
+                } catch (e: Exception) {
+                    _favoriteIds.value =
+                        if (adding) _favoriteIds.value - songId
+                        else _favoriteIds.value + songId
+                    ErrorLog.log(context, "Favorito", e)
+                }
             }
         }
     }
