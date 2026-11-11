@@ -1172,7 +1172,11 @@ private fun AuroraApp(
     // ETAPA 7: en pausa y con el reproductor cerrado no hay nada que
     // actualizar: el bucle duerme sin leer el reproductor (ahorra
     // batería; la corrutina en sí no consume nada mientras duerme).
-    LaunchedEffect(controller, isPlaying) {
+    // RONDA 122: isPlaying NO es clave del efecto: cada cambio de
+    // play/pausa lo reiniciaba y lastTickMs volvía a empezar, así que
+    // el intervalo entre el último tick y el reinicio no se sumaba al
+    // plazo del temporizador y este avanzaba en pausa.
+    LaunchedEffect(controller) {
         val c = controller ?: return@LaunchedEffect
         // Reloj monótono para medir el tiempo REAL entre iteraciones
         // (ronda 14): el bucle duerme 500 ms pero puede tardar más por
