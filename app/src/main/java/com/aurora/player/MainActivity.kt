@@ -1092,6 +1092,22 @@ private fun AuroraApp(
                         // pertenece casi todo a la pista nueva (el cambio
                         // cayó dentro de él), así que se suma.
                         listenedMs = tickDelta
+                        // RONDA 84: si el temporizador de fin de canción
+                        // está armado y la pista CAMBIÓ, la canción
+                        // terminó: se para aquí mismo. El chequeo de
+                        // < 500 ms de abajo puede no verlo nunca: un
+                        // tick tardío salta por encima del final, y con
+                        // crossfade el cambio llega antes de que la
+                        // pista vieja termine (el solape adelanta el
+                        // cambio). Si el usuario pasó de pista a mano
+                        // con el temporizador armado, también se para:
+                        // pidió parar al final de la canción y la
+                        // canción terminó; reanudar es un toque.
+                        if (sleepAtSongEnd) {
+                            c.pause()
+                            sleepAtSongEnd = false
+                            sleepTimer = SleepTimerOption.OFF
+                        }
                         // RONDA 4 (2026-11-09): historyDone nunca se
                         // limpiaba: si una canción ya había contado
                         // una vez en esta sesión, sus siguientes
