@@ -777,10 +777,26 @@ class PlaybackService : MediaLibraryService() {
         b.play()
         overlapPlayer = b
         overlapping = true
+        // RONDA 127: la rampa duraba la ventana COMPLETA, pero A
+        // termina antes: el solape arrancaba cuando quedaban <=
+        // ventana ms y la rampa (ventana ms + preparar B) terminaba
+        // DESPUÉS del final de A. La transición natural llegaba
+        // primero, cancelaba B y la pista siguiente REEMPEZABA desde
+        // 0 con fade-in: el traspaso no ganaba nunca en el caso
+        // normal (solo cuando la pista siguiente era más corta que la
+        // ventana). La rampa se recorta a lo que le queda a A menos
+        // 150 ms: el traspaso corre justo antes del final de A.
+        val remainingAtRamp = (p.duration - p.currentPosition).coerceAtLeast(0L)
+        val rampWindow = minOf(window, (remainingAtRamp - 150L).coerceAtLeast(0L))
+        if (rampWindow <= 0L) {
+            releaseOverlapPlayer()
+            overlapping = false
+            return false
+        }
         // Rampa: A baja 1→0 y B sube 0→1 en la misma ventana.
         overlapJob = serviceScope.launch {
             val steps = 20
-            val stepMs = window / steps
+            val stepMs = rampWindow / steps
             // Ronda 4: reloj monotónico, como el fade-in.
             val startMs = SystemClock.elapsedRealtime()
             for (i in 1..steps) {
