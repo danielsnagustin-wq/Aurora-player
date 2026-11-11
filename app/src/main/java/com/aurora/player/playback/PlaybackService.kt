@@ -597,13 +597,17 @@ class PlaybackService : MediaLibraryService() {
     private fun applyUsbRouting() {
         val dac = try {
             findUsbDac(this@PlaybackService)?.first
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // Ronda 7 (Codex): que quede en el registro; sin DAC se
+            // limpia la preferencia y Android elige la salida normal.
+            ErrorLog.log(this@PlaybackService, "USB", e)
             null
         }
         for (sink in audioSinks) {
             try {
                 sink.setPreferredDevice(dac)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                ErrorLog.log(this@PlaybackService, "USB", e)
             }
         }
     }
