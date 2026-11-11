@@ -326,6 +326,14 @@ class PlaybackService : MediaLibraryService() {
                 if (direct) {
                     equalizer?.setEnabled(false)
                     overlapEqualizer?.setEnabled(false)
+                } else {
+                    // Ronda 3 (Codex): al volver a estándar se restaura
+                    // el EQ guardado; antes quedaba apagado hasta
+                    // reiniciar el servicio.
+                    val saved = EqStateStore(this@PlaybackService).stateFlow.first()
+                    equalizer?.setEnabled(saved.enabled)
+                    overlapEqualizer?.setEnabled(saved.enabled)
+                    applyRouteEq()
                 }
             }
         }
@@ -600,6 +608,9 @@ class PlaybackService : MediaLibraryService() {
      * para que el tono no cambie a mitad del fundido).
      */
     private fun applyRouteEq() {
+        // Ronda 3 (Codex): en modo directo el EQ no se toca; sin
+        // esta guarda, conectar/quitar auriculares lo reactivaba.
+        if (audioOutputDirect) return
         val eq = equalizer ?: return
         serviceScope.launch {
             val store = EqStateStore(this@PlaybackService)
