@@ -222,11 +222,14 @@ private fun itemThumbnail(item: JsonValue?): String? {
  * → musicShelfRenderer → musicResponsiveListItemRenderer. Solo entran
  * los ítems con videoId y título real; el resto se ignora.
  */
-fun parseSearchResults(json: String): List<OnlineTrack> {
+fun parseSearchResults(json: String): List<OnlineTrack>? {
     val root = try {
         JsonParser.parse(json)
     } catch (_: Exception) {
-        return emptyList()
+        // RONDA 90: JSON inválido es FALLO (null), no "sin
+        // resultados". Una respuesta válida sin la estructura
+        // esperada sigue siendo lista vacía (ver abajo).
+        return null
     }
     val tabs = root.obj("contents")?.obj("tabbedSearchResultsRenderer")
         ?.obj("tabs")?.arr() ?: return emptyList()
@@ -561,10 +564,14 @@ class InnerTubeClient(
     // Ronda 7b: sesión de cookies caducada (401 sin token OAuth).
     private val onCookiesRejected: (() -> Unit)? = null,
 ) {
-    suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
+    /** RONDA 90: devuelve null si la búsqueda FALLÓ (sin red,
+     * YouTube no respondió, JSON inválido). Una lista vacía es
+     * "sin resultados", no un error: antes todo era lista vacía
+     * y la pantalla decía "Sin resultados" hasta sin internet. */
+    suspend fun search(query: String): List<OnlineTrack>? = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
             "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
-        val body = postJson(url, buildSearchBody(query), SEARCH_CLIENT) ?: return@withContext emptyList()
+        val body = postJson(url, buildSearchBody(query), SEARCH_CLIENT) ?: return@withContext null
         parseSearchResults(body)
     }
 
