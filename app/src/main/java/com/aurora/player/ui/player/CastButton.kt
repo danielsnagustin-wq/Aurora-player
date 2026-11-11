@@ -1,7 +1,7 @@
 package com.aurora.player.ui.player
 
 import android.content.Context
-import android.content.ContextThemeWrapper
+import android.view.ContextThemeWrapper
 import android.view.View
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
