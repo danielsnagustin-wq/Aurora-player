@@ -1,6 +1,5 @@
 package com.aurora.player.ui.settings
 
-import android.app.Activity
 import android.graphics.Bitmap
 import android.webkit.CookieManager
 import android.webkit.WebResourceError
@@ -8,8 +7,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,23 +32,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.aurora.player.online.GoogleAccountAuth
-import com.aurora.player.online.GoogleAccountAuth.TokenResult
 import com.aurora.player.online.YouTubeMusicAuth
 import com.aurora.player.ui.theme.auroraButtonColors
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
  * Inicio de sesión con YouTube Music dentro de la app (2026-11-10,
@@ -64,7 +54,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun YouTubeMusicLoginDialog(
     onConnect: (String) -> Unit,
-    onConnectToken: (String) -> Unit = {},
     onDismiss: () -> Unit,
 ) {
     var triedCookies by remember { mutableStateOf<String?>(null) }
@@ -78,64 +67,14 @@ fun YouTubeMusicLoginDialog(
     // onPageFinished), el spinner tapaba todo para siempre. A los
     // 12 s se quita igual: la página que haya cargado queda usable
     // y el usuario puede reintentar.
+    // RONDA LOGIN (Codex #6): si a los 12 s no terminó, no dejarla
+    // muda: avisar, porque una página en blanco sin mensaje era
+    // justo lo que se veía en el teléfono.
     LaunchedEffect(loading) {
         if (loading) {
             delay(12_000)
             loading = false
-        }
-    }
-
-    // Cuenta de Google del teléfono (2026-11-10): el selector de
-    // cuentas del sistema, sin escribir nada. La primera vez Google
-    // puede pedir consentimiento: se lanza su pantalla y al volver
-    // se pide el token otra vez.
-    val dialogContext = LocalContext.current
-    val dialogScope = rememberCoroutineScope()
-    val consentLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode != Activity.RESULT_OK) {
-            hint = "Falta el permiso de Google para YouTube."
-            return@rememberLauncherForActivityResult
-        }
-        val account = GoogleSignIn.getLastSignedInAccount(dialogContext)
-        if (account == null) {
-            hint = "No se pudo leer la cuenta de Google."
-            return@rememberLauncherForActivityResult
-        }
-        dialogScope.launch {
-            // El consentimiento ya se aceptó: se pide el token otra
-            // vez directamente. (No se puede relanzar consentLauncher
-            // desde su propio callback: la variable aún no existe ahí.)
-            when (val retry = GoogleAccountAuth.fetchToken(dialogContext, account)) {
-                is TokenResult.Ok -> onConnectToken(retry.token)
-                else -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
-            }
-        }
-    }
-    val googleLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult(),
-    ) { result ->
-        if (result.resultCode != Activity.RESULT_OK) {
-            hint = "No se eligió ninguna cuenta."
-            return@rememberLauncherForActivityResult
-        }
-        val account = try {
-            GoogleSignIn.getSignedInAccountFromIntent(result.data)
-                .getResult(ApiException::class.java)
-        } catch (_: ApiException) {
-            null
-        }
-        if (account == null) {
-            hint = "No se pudo leer la cuenta de Google."
-            return@rememberLauncherForActivityResult
-        }
-        dialogScope.launch {
-            when (val result = GoogleAccountAuth.fetchToken(dialogContext, account)) {
-                is TokenResult.Ok -> onConnectToken(result.token)
-                is TokenResult.NeedsConsent -> consentLauncher.launch(result.intent)
-                TokenResult.Failed -> hint = "Google no dio el permiso de YouTube. Prueba con el inicio web de abajo."
-            }
+            hint = "La página tardó demasiado en cargar. Si se ve en blanco, ciérrala y vuelve a intentarlo."
         }
     }
 
@@ -160,6 +99,22 @@ fun YouTubeMusicLoginDialog(
         triedCookies = cookies
         hint = "Comprobando la sesión…"
         onConnect(cookies)
+    }
+
+    // RONDA LOGIN 2026-11-11: music.youtube.com es una SPA y la
+    // redirección final del login no siempre dispara onPageFinished.
+    // Se revisan las cookies cada 2 s mientras el diálogo está
+    // abierto: en cuanto aparece SAPISID, la sesión se guarda sola.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2_000)
+            val cookies = readCookies()
+            if (cookies != null && cookies != triedCookies) {
+                triedCookies = cookies
+                onConnect(cookies)
+                break
+            }
+        }
     }
 
     Dialog(
@@ -188,23 +143,6 @@ fun YouTubeMusicLoginDialog(
                 "Entra con tu cuenta de Google. Aurora solo guarda la sesión en tu teléfono, no sube nada.",
                 modifier = Modifier.padding(top = 4.dp),
             )
-            Button(
-                onClick = {
-                    googleLauncher.launch(
-                        GoogleAccountAuth.signInClient(dialogContext).signInIntent,
-                    )
-                },
-                colors = auroraButtonColors(),
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-            ) {
-                Text("Usar mi cuenta de Google")
-            }
-            Text(
-                "Sin escribir correo ni contraseña: eliges tu cuenta y listo. Si prefieres, abajo sigue el inicio web de siempre.",
-                modifier = Modifier.padding(top = 4.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
                 AndroidView(
                     factory = { context ->
@@ -213,6 +151,11 @@ fun YouTubeMusicLoginDialog(
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             CookieManager.getInstance().setAcceptCookie(true)
+                            // RONDA LOGIN 2026-11-11: Google pone sus
+                            // cookies de sesión desde otro dominio al
+                            // iniciar sesión; sin esto pueden no quedarse.
+                            CookieManager.getInstance()
+                                .setAcceptThirdPartyCookies(this, true)
                             // Agente de Chrome de escritorio (2026-11-10):
                             // con el UA de WebView móvil Google rechaza
                             // el inicio ("navegador no seguro") y la web
