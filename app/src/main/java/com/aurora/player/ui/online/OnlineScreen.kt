@@ -127,8 +127,17 @@ fun OnlineScreen(
         scope.launch {
             try {
                 val found = client.search(q)
-                results = found
-                if (found.isEmpty()) error = "Sin resultados para \"$q\"."
+                // RONDA 90: null es FALLO (sin red, YouTube no
+                // respondió, JSON inválido); lista vacía es "sin
+                // resultados". Antes todo era lista vacía y sin
+                // internet la pantalla decía "Sin resultados".
+                if (found == null) {
+                    error = "Sin conexión o YouTube no respondió. Revisa internet e inténtalo otra vez."
+                    results = emptyList()
+                } else {
+                    results = found
+                    if (found.isEmpty()) error = "Sin resultados para \"$q\"."
+                }
             } catch (_: Exception) {
                 error = "Sin conexión o YouTube no respondió. Revisa internet e inténtalo otra vez."
             } finally {
