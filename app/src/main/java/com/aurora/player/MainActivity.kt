@@ -86,6 +86,7 @@ import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.FavoriteEntity
+import com.aurora.player.data.FolderStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
@@ -106,6 +107,7 @@ import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.GestureAction
+import com.aurora.player.model.isInExcludedFolder
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.parseGestureAction
 import com.aurora.player.model.PlayerSettings
@@ -784,7 +786,12 @@ private fun AuroraApp(
             val picked: List<Song> = try {
                 withContext(Dispatchers.IO) {
                     val settings = playerStore.settingsFlow.first()
+                    // Ronda 17: la radio cargaba la biblioteca directa,
+                    // sin el filtro de carpetas excluidas: podía sonar
+                    // música de carpetas que el usuario escondió.
+                    val excludedFolders = FolderStore(context).excludedFlow.first()
                     val rawSongs = MusicRepository(context).loadSongs(settings.minDurationMs)
+                        .filter { !isInExcludedFolder(it.path, excludedFolders) }
                     val dao = db.libraryDao()
                     val stats = dao.statsPerSong().associateBy { it.songId }
                     val favs = dao.favoriteIdsFlow().first().toSet()
