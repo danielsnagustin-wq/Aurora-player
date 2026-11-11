@@ -69,6 +69,8 @@ fun OnlineScreen(
     // al tocar el chip Local (volver a la pestaña Canciones).
     localCount: Int = 0,
     onShowLocal: () -> Unit = {},
+    // Ronda 7 (Gemini): abrir Ajustes directo en Red.
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (!onlineMode) {
@@ -78,6 +80,12 @@ fun OnlineScreen(
                 "Activa el Modo online en Ajustes → Modo online para buscar y escuchar de YouTube. Apagado, la app no toca la red.",
                 modifier = Modifier.padding(top = 8.dp),
             )
+            // Ronda 7 (Gemini): el texto decía dónde encenderlo
+            // pero no había ningún botón para ir.
+            OutlinedButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.padding(top = 16.dp),
+            ) { Text("Activar el modo online") }
         }
         return
     }
