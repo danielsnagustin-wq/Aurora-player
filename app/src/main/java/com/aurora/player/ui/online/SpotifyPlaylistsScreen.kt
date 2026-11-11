@@ -182,12 +182,17 @@ fun SpotifyPlaylistsSection(
                 var searchErrors = 0
                 for ((index, track) in list.withIndex()) {
                     importProgress = "Buscando ${index + 1}/${list.size}…"
-                    val found = try {
+                    // RONDA 90: search() devuelve null si FALLÓ; una
+                    // lista vacía es "sin coincidencia". Antes el
+                    // fallo también era lista vacía y searchErrors
+                    // nunca se contaba (ronda 34, sin efecto).
+                    val searched = try {
                         tube.search("${track.artist} ${track.name}")
                     } catch (_: Exception) {
-                        searchErrors++
-                        emptyList()
-                    }.firstOrNull()
+                        null
+                    }
+                    if (searched == null) searchErrors++
+                    val found = searched?.firstOrNull()
                     val url = found?.let {
                         cacheStore.cachedFile(it.videoId, streamQuality)?.toURI()?.toString()
                             ?: try {
