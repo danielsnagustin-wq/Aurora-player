@@ -370,7 +370,20 @@ fun matchSongs(
     val found = mutableListOf<Pair<Long, String>>()
     val missing = mutableListOf<BackupSongRef>()
     for (ref in refs) {
-        val hit = byId[ref.id] ?: byPath[ref.path]
+        // RONDA 161: el id de MediaStore NO es estable entre
+        // teléfonos (ni tras reconstruir la biblioteca): un id del
+        // respaldo puede apuntar a OTRA canción en este teléfono. Si
+        // la referencia trae ruta, el id solo vale cuando la ruta
+        // coincide; si no, se intenta por ruta y, si tampoco está,
+        // la canción va a ausentes en vez de restaurar los favoritos,
+        // el historial o la lista en la canción equivocada. Sin ruta
+        // no se puede comprobar y el id vale como antes.
+        val byIdHit = byId[ref.id]
+        val hit = if (byIdHit != null && (ref.path.isBlank() || byIdHit.second == ref.path)) {
+            byIdHit
+        } else {
+            byPath[ref.path]
+        }
         if (hit != null) found += hit else missing += ref
     }
     return found to missing
