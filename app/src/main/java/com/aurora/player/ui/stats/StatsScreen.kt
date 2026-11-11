@@ -49,6 +49,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,6 +82,67 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private var loaded = false
     private var loadedPermission: Boolean? = null
+    private var lastSongsById: Map<Long, Song>? = null
+
+    init {
+        // RONDA 123: las cifras se quedaban viejas si una escucha se
+        // registraba con Estadísticas abierta (load() solo corría al
+        // entrar). El flujo en vivo del historial re-carga solo las
+        // consultas de Room; la biblioteca (MediaStore) no se
+        // re-escanea: lastSongsById guarda el mapa de la primera carga.
+        viewModelScope.launch {
+            db.libraryDao().statsPerSongFlow().collect {
+                val byId = lastSongsById
+                if (loaded && byId != null) {
+                    _stats.value = try {
+                        withContext(Dispatchers.IO) { loadDaoStats(byId) }
+                    } catch (e: Exception) {
+                        ErrorLog.log(getApplication(), "Cargar estadísticas", e)
+                        null
+                    }
+                }
+            }
+        }
+    }
+
+    /** Solo las consultas de Room (sin re-escanear MediaStore). */
+    private suspend fun loadDaoStats(byId: Map<Long, Song>): StatsData {
+        val dao = db.libraryDao()
+        val top = dao.mostPlayed().take(10).mapNotNull { row ->
+            byId[row.songId]?.let { it to row.c }
+        }
+        // Gráfico semanal: reproducciones por día CALENDARIO,
+        // últimos 7 días. Los intervalos fijos de 24 h desde
+        // "ahora" metían en "hoy" escuchas de ayer cerca de
+        // la medianoche (ronda 13); las medianoche se
+        // calculan con Calendar, que respeta el horario
+        // de verano.
+        val now = System.currentTimeMillis()
+        val dayStarts = (0..6).map { ago ->
+            Calendar.getInstance().apply {
+                timeInMillis = now
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+                add(Calendar.DAY_OF_YEAR, -ago)
+            }.timeInMillis
+        }
+        val perDay = MutableList(7) { 0 }
+        for (ts in dao.historyPlayedAt()) {
+            if (ts > now) continue
+            val daysAgo = dayStarts.indexOfFirst { ts >= it }
+            if (daysAgo in 0..6) perDay[6 - daysAgo]++
+        }
+        return StatsData(
+            totalPlays = dao.totalPlays(),
+            totalListenedMs = dao.totalListenedMs(),
+            mostPlayed = top,
+            favoriteCount = dao.favoriteIds().size,
+            totalSongs = byId.size,
+            playsLast7Days = perDay,
+        )
+    }
 
     fun load(hasAudioPermission: Boolean) {
         // Refinamiento: si la primera carga fue sin permiso y el usuario
@@ -98,41 +160,8 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                     val minDurationMs = playerStore.settingsFlow.first().minDurationMs
                     val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
                     val byId = songs.associateBy { it.id }
-                    val dao = db.libraryDao()
-                    val top = dao.mostPlayed().take(10).mapNotNull { row ->
-                        byId[row.songId]?.let { it to row.c }
-                    }
-                    // Gráfico semanal: reproducciones por día CALENDARIO,
-                    // últimos 7 días. Los intervalos fijos de 24 h desde
-                    // "ahora" metían en "hoy" escuchas de ayer cerca de
-                    // la medianoche (ronda 13); las medianoche se
-                    // calculan con Calendar, que respeta el horario
-                    // de verano.
-                    val now = System.currentTimeMillis()
-                    val dayStarts = (0..6).map { ago ->
-                        Calendar.getInstance().apply {
-                            timeInMillis = now
-                            set(Calendar.HOUR_OF_DAY, 0)
-                            set(Calendar.MINUTE, 0)
-                            set(Calendar.SECOND, 0)
-                            set(Calendar.MILLISECOND, 0)
-                            add(Calendar.DAY_OF_YEAR, -ago)
-                        }.timeInMillis
-                    }
-                    val perDay = MutableList(7) { 0 }
-                    for (ts in dao.historyPlayedAt()) {
-                        if (ts > now) continue
-                        val daysAgo = dayStarts.indexOfFirst { ts >= it }
-                        if (daysAgo in 0..6) perDay[6 - daysAgo]++
-                    }
-                    StatsData(
-                        totalPlays = dao.totalPlays(),
-                        totalListenedMs = dao.totalListenedMs(),
-                        mostPlayed = top,
-                        favoriteCount = dao.favoriteIds().size,
-                        totalSongs = songs.size,
-                        playsLast7Days = perDay,
-                    )
+                    lastSongsById = byId
+                    loadDaoStats(byId)
                 }
             } catch (e: Exception) {
                 // Un fallo no deja las estadísticas colgadas: se
