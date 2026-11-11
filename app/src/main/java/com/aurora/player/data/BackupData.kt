@@ -287,8 +287,8 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
             val songs = pl.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: return null
             BackupPlaylist(
                 name = name,
-                createdAt = pl.obj("createdAt").long() ?: 0L,
-                updatedAt = pl.obj("updatedAt").long() ?: 0L,
+                createdAt = pl.obj("createdAt").long() ?: return null,
+                updatedAt = pl.obj("updatedAt").long() ?: return null,
                 songs = songs,
             )
         },
@@ -298,15 +298,15 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
             BackupHistoryEntry(
                 song = song,
                 playedAt = h.obj("playedAt").long() ?: return null,
-                durationListenedMs = h.obj("durationListenedMs").long() ?: 0L,
+                durationListenedMs = h.obj("durationListenedMs").long() ?: return null,
             )
         },
         theme = themeSettingsFromJsonValue(root.obj("theme")),
         player = playerFromJson(root.obj("player")),
         queue = BackupQueue(
-            songs = queueObj.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: emptyList(),
-            index = queueObj.obj("index").long()?.toInt() ?: 0,
-            positionMs = queueObj.obj("positionMs").long() ?: 0L,
+            songs = queueObj.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: return null,
+            index = queueObj.obj("index").long()?.toInt() ?: return null,
+            positionMs = queueObj.obj("positionMs").long() ?: return null,
         ),
         eqPresets = presets.map { p ->
             val name = p.obj("name").str() ?: return null
