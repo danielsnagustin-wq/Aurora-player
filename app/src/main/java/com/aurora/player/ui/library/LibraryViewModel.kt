@@ -77,6 +77,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow<LibraryUiState>(LibraryUiState.Loading)
     val uiState: StateFlow<LibraryUiState> = _uiState
 
+    // Ronda 31: si el escaneo falló, el mensaje para la pantalla
+    // vacía. Null cuando el escaneo fue bien o no hay música de verdad.
+    private val _scanError = MutableStateFlow<String?>(null)
+    val scanError: StateFlow<String?> = _scanError
+
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
@@ -241,6 +246,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     fun load(hasAudioPermission: Boolean) {
         hasPermission = hasAudioPermission
         if (!hasAudioPermission) {
+            _scanError.value = null
             _uiState.value = LibraryUiState.Empty
             return
         }
@@ -284,6 +290,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             _uiState.value =
                 if (songs.isEmpty()) LibraryUiState.Empty
                 else LibraryUiState.Loaded(songs, albums, artists)
+            _scanError.value = repository.lastLoadError
             _stats.value = withContext(Dispatchers.IO) {
                 db.libraryDao().statsPerSong().associateBy { it.songId }
             }
