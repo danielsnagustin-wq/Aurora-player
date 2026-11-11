@@ -31,6 +31,7 @@ import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.validateBackup
 import com.aurora.player.ui.theme.auroraButtonColors
 import com.aurora.player.util.BackupManager
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.RestoreReport
 import kotlinx.coroutines.launch
 
@@ -196,8 +197,17 @@ fun SettingsBackupSection() {
                     onClick = {
                         pendingRestore = null
                         scope.launch {
-                            restoreReport = BackupManager.restoreBackup(context, data)
-                            backupMessage = null
+                            try {
+                                restoreReport = BackupManager.restoreBackup(context, data)
+                                backupMessage = null
+                            } catch (e: Exception) {
+                                // RONDA 78: si la restauración falla a
+                                // mitad, BackupManager ya devolvió los
+                                // ajustes a como estaban; aquí solo se
+                                // avisa, nunca se queda en silencio.
+                                ErrorLog.log(context, "Restaurar respaldo", e)
+                                backupMessage = "No se pudo restaurar el respaldo. Inténtalo otra vez."
+                            }
                         }
                     },
                     colors = auroraButtonColors(),
