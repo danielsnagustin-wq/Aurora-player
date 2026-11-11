@@ -138,13 +138,23 @@ fun OnlineScreen(
         if (!onlineMode || chartsLoaded) return@LaunchedEffect
         chartsLoaded = true
         chartsLoading = true
-        val loaded = client.getCharts()
-        charts = loaded
-        chartsLoading = false
-        if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
-            chartsError = "No se pudieron cargar los charts de YouTube Music."
+        // Ronda 25: sin try/catch, una excepción de red dejaba el
+        // spinner girando para siempre (chartsLoading nunca bajaba)
+        // y chartsLoaded en true impedía reintentarlo. Ahora el error
+        // se muestra y se puede reintentar al volver a entrar.
+        try {
+            val loaded = client.getCharts()
+            charts = loaded
+            if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
+                chartsError = "No se pudieron cargar los charts de YouTube Music."
+            }
+            quickPicks = client.getQuickPicks()
+        } catch (e: Exception) {
+            chartsError = "Sin conexión o YouTube Music no respondió. Revisa internet e inténtalo otra vez."
+            chartsLoaded = false
+        } finally {
+            chartsLoading = false
         }
-        quickPicks = client.getQuickPicks()
     }
 
     fun play(track: OnlineTrack) {
