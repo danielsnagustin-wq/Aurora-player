@@ -20,6 +20,28 @@ class LrcKaraokeTest {
     }
 
     @Test
+    fun `tiempos de palabra entre corchetes se leen como karaoke`() {
+        val lines = LrcParser.parse("[00:10.00]ho [00:11.00]la [00:12.00]mundo\n")
+        assertEquals(1, lines.size)
+        assertEquals("ho la mundo", lines[0].text)
+        assertEquals(10000L, lines[0].timeMs)
+        assertEquals(3, lines[0].words.size)
+        assertEquals(10000L to "ho", lines[0].words[0].timeMs to lines[0].words[0].text)
+        assertEquals(11000L to "la", lines[0].words[1].timeMs to lines[0].words[1].text)
+        assertEquals(12000L to "mundo", lines[0].words[2].timeMs to lines[0].words[2].text)
+    }
+
+    @Test
+    fun `varias etiquetas sin texto entre ellas siguen siendo multi-tiempo`() {
+        val lines = LrcParser.parse("[00:01.00][00:05.00]coro\n")
+        assertEquals(2, lines.size)
+        assertEquals("coro", lines[0].text)
+        assertEquals("coro", lines[1].text)
+        assertEquals(1000L, lines[0].timeMs)
+        assertEquals(5000L, lines[1].timeMs)
+    }
+
+    @Test
     fun `linea plana no tiene palabras`() {
         val lines = LrcParser.parse("[00:01.00]Primera línea\n")
         assertEquals(1, lines.size)
