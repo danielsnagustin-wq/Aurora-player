@@ -108,7 +108,10 @@ fun parseDsfHeader(bytes: ByteArray): DsdInfo? {
     if (u64le(bytes, 4) != 28L) return null
     if (fourCc(bytes, 28) != "fmt ") return null
     val fmtSize = u64le(bytes, 32)
-    if (fmtSize < 52L) return null
+    // El fmt no puede ser mayor que el buffer que tenemos: sin este
+    // tope, (28 + fmtSize).toInt() desbordaba con un DSF malformado
+    // y fourCc leía en offset negativo (ronda 9).
+    if (fmtSize < 52L || fmtSize > bytes.size) return null
     // fmt: version(4) + formatID(4) + channelType(4) + channelNum(4)
     //   + sampleRate(4) + bitsPerSample(4) + sampleCount(8)
     //   + blockSizePerChannel(4) + reserved(4). Offsets desde 36.
@@ -178,8 +181,13 @@ fun parseDffHeader(bytes: ByteArray): DsdInfo? {
                                 (bytes[subBody + 1].toInt() and 0xFF)
                         }
                     }
-                    p = (subBody + subSize).toInt()
-                    if (subSize % 2L == 1L) p += 1
+                    // Avance en Long: un sub-tamaño absurdo desbordaba
+                    // el Int y el bucle leía fourCc en offset negativo
+                    // (ronda 9).
+                    val nextP = subBody.toLong() + subSize +
+                        if (subSize % 2L == 1L) 1L else 0L
+                    if (nextP < 0 || nextP > end) break
+                    p = nextP.toInt()
                 }
             }
             "DSD " -> {
@@ -192,8 +200,16 @@ fun parseDffHeader(bytes: ByteArray): DsdInfo? {
                 dataSize = size
             }
         }
-        pos = (body + size).toInt()
-        if (size % 2L == 1L) pos += 1
+        // El avance usa Long: un tamaño declarado absurdo desbordaba
+        // el Int y el bucle leía fourCc en offset negativo (ronda 9).
+        // El chunk de datos sí puede ser mayor que el buffer (es el
+        // audio entero): en ese caso se corta aquí mismo.
+        val nextPos = body.toLong() + size + if (size % 2L == 1L) 1L else 0L
+        if (nextPos < 0 || nextPos > bytes.size) {
+            if (id == "DSD " || id == "DST ") break
+            return null
+        }
+        pos = nextPos.toInt()
         if (dataOffset >= 0 && sampleRate > 0 && channels > 0) break
     }
     if (sampleRate <= 0 || channels < 1 || dataOffset < 0) return null
