@@ -115,6 +115,7 @@ import com.aurora.player.ui.theme.cardBorder
 import com.aurora.player.ui.theme.cornerRadiusShape
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.listDensityToRowHeightDp
+import com.aurora.player.util.DiskArtCache
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.SongDetails
 import com.aurora.player.util.StartupTimer
@@ -1355,6 +1356,12 @@ internal object LargeArtCache {
     /** Carga la portada grande de un álbum y la guarda. */
     suspend fun loadLarge(context: Context, albumId: Long): Bitmap? {
         get(albumId)?.let { return it }
+        // Ronda 5: el disco antes que el sistema — una vez guardada,
+        // la portada grande no se vuelve a pedir nunca.
+        DiskArtCache.read(context, albumId, DiskArtCache.LARGE_PX)?.let {
+            put(albumId, it)
+            return it
+        }
         val loaded = withContext(Dispatchers.IO) {
             try {
                 context.contentResolver.loadThumbnail(
@@ -1366,7 +1373,10 @@ internal object LargeArtCache {
                 null
             }
         }
-        if (loaded != null) put(albumId, loaded)
+        if (loaded != null) {
+            put(albumId, loaded)
+            DiskArtCache.write(context, albumId, DiskArtCache.LARGE_PX, loaded)
+        }
         return loaded
     }
 }
@@ -1406,6 +1416,12 @@ internal object AlbumArtCache {
 
     suspend fun load(context: Context, albumId: Long): Bitmap? {
         get(albumId)?.let { return it }
+        // Ronda 5: el disco antes que el sistema — una vez guardada,
+        // la miniatura no se vuelve a decodificar nunca.
+        DiskArtCache.read(context, albumId, DiskArtCache.THUMB_PX)?.let {
+            put(albumId, it)
+            return it
+        }
         val deferred = inFlightMutex.withLock {
             get(albumId)?.let { return it }
             inFlight.getOrPut(albumId) {
@@ -1436,7 +1452,10 @@ internal object AlbumArtCache {
                 if (inFlight[albumId] === deferred) inFlight.remove(albumId)
             }
         }
-        if (bitmap != null) put(albumId, bitmap)
+        if (bitmap != null) {
+            put(albumId, bitmap)
+            DiskArtCache.write(context, albumId, DiskArtCache.THUMB_PX, bitmap)
+        }
         return bitmap
     }
 }
@@ -1510,7 +1529,12 @@ fun AlbumCover(
                 }
             } ?: loadEmbeddedCover(context, song.uri, maxPx = 144)
             if (loaded != null) {
-                if (useCache) AlbumArtCache.put(song.albumId, loaded)
+                if (useCache) {
+                    AlbumArtCache.put(song.albumId, loaded)
+                    // Ronda 5: la incrustada es la más cara de sacar;
+                    // una vez decodificada, queda en disco para siempre.
+                    DiskArtCache.write(context, song.albumId, DiskArtCache.THUMB_PX, loaded)
+                }
                 bitmap = loaded
             }
         }
@@ -1563,15 +1587,32 @@ fun rememberArtworkBitmap(
                 if (cachedLarge != null) {
                     if (sizePx >= cachedLarge.width) cachedLarge
                     else Bitmap.createScaledBitmap(cachedLarge, sizePx, sizePx, true)
+                } else if (albumId != null) {
+                    // Ronda 5: la grande de disco vale para cualquier
+                    // tamaño, igual que la de memoria.
+                    val diskLarge = DiskArtCache.read(context, albumId, DiskArtCache.LARGE_PX)
+                    if (diskLarge != null) {
+                        LargeArtCache.put(albumId, diskLarge)
+                        if (sizePx >= diskLarge.width) diskLarge
+                        else Bitmap.createScaledBitmap(diskLarge, sizePx, sizePx, true)
+                    } else {
+                        val loaded = try {
+                            context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
+                        } catch (_: Exception) {
+                            null
+                        } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
+                        if (loaded != null && sizePx >= 512) {
+                            LargeArtCache.put(albumId, loaded)
+                            DiskArtCache.write(context, albumId, DiskArtCache.LARGE_PX, loaded)
+                        }
+                        loaded
+                    }
                 } else {
                     val loaded = try {
                         context.contentResolver.loadThumbnail(uri, Size(sizePx, sizePx), null)
                     } catch (_: Exception) {
                         null
                     } ?: songUri?.let { loadEmbeddedCover(context, it, maxPx = sizePx) }
-                    if (loaded != null && sizePx >= 512 && albumId != null) {
-                        LargeArtCache.put(albumId, loaded)
-                    }
                     loaded
                 }
             }
