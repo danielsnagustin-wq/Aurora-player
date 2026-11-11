@@ -38,6 +38,38 @@ class DsdDopTest {
     }
 
     @Test
+    fun parseDsfHeader_fmtEnorme_devuelveNullSinRomper() {
+        // fmtSize = 0x7FFFFFE4: sin el tope, (28 + fmtSize).toInt()
+        // daba negativo y fourCc leía en offset negativo (ronda 9).
+        val bytes = DSF_MINIMO.copyOf()
+        bytes[32] = 0xE4.toByte()
+        bytes[33] = 0xFF.toByte()
+        bytes[34] = 0xFF.toByte()
+        bytes[35] = 0x7F.toByte()
+        bytes[36] = 0
+        bytes[37] = 0
+        bytes[38] = 0
+        bytes[39] = 0
+        assertNull(parseDsfHeader(bytes))
+    }
+
+    @Test
+    fun parseDffHeader_tamanoEnorme_devuelveNullSinRomper() {
+        // Tamaño del chunk FVER = 0x7FFFFFE4: sin el avance en Long,
+        // pos desbordaba a negativo y fourCc leía fuera (ronda 9).
+        val bytes = DFF_MINIMO.copyOf()
+        bytes[20] = 0
+        bytes[21] = 0
+        bytes[22] = 0
+        bytes[23] = 0
+        bytes[24] = 0x7F.toByte()
+        bytes[25] = 0xFF.toByte()
+        bytes[26] = 0xFF.toByte()
+        bytes[27] = 0xE4.toByte()
+        assertNull(parseDffHeader(bytes))
+    }
+
+    @Test
     fun parseDffHeader_leeTasaCanalesYOffset() {
         val info = parseDffHeader(DFF_MINIMO)
         assertNotNull(info)
