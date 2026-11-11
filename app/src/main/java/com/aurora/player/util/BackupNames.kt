@@ -11,10 +11,11 @@ import java.util.Locale
  * una ruta que el sistema no nos da.
  */
 fun backupFileName(createdAtMs: Long): String {
-    // Precisión de SEGUNDO: con solo minuto, dos respaldos creados
-    // en el mismo minuto colisionaban y el segundo reemplazaba al
-    // primero en la ruta File (Android 8-9, ronda 11).
-    val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(createdAtMs))
+    // Precisión de MILISEGUNDO: con solo segundo, dos respaldos
+    // creados en el mismo segundo colisionaban y el segundo
+    // reemplazaba al primero en la ruta File (Android 8-9, ronda 46;
+    // la ronda 11 solo había pasado de minuto a segundo).
+    val stamp = SimpleDateFormat("yyyyMMdd-HHmmssSSS", Locale.US).format(Date(createdAtMs))
     return "aurora-player-respaldo-$stamp.json"
 }
 
