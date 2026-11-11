@@ -1465,11 +1465,16 @@ private fun AuroraApp(
     LaunchedEffect(controller) {
         val c = controller ?: return@LaunchedEffect
         if (queueRestored || c.mediaItemCount > 0) return@LaunchedEffect
-        queueRestored = true
+        // RONDA 106: no marcar la restauración como hecha ANTES de
+        // hacerla: si leer la cola o reconstruirla fallaba, la sesión
+        // se quedaba sin cola y sin reintento (ni al reconectar el
+        // controlador). Solo se marca al terminar bien o cuando no hay
+        // nada que restaurar; si falla, el próximo controlador
+        // reintenta.
         val settings = playerStore.settingsFlow.first()
-        if (!settings.resumeWhereLeft) return@LaunchedEffect
+        if (!settings.resumeWhereLeft) { queueRestored = true; return@LaunchedEffect }
         val saved = queueStore.queueFlow.first()
-        if (saved.songIds.isEmpty()) return@LaunchedEffect
+        if (saved.songIds.isEmpty()) { queueRestored = true; return@LaunchedEffect }
         val songs = withContext(Dispatchers.IO) {
             // RONDA 4 (2026-11-09): restauraba con la duración
             // mínima por defecto (5 s), no con la del usuario: la
@@ -1477,7 +1482,7 @@ private fun AuroraApp(
             MusicRepository(context).loadSongs(settings.minDurationMs)
         }
         val ordered = saved.songIds.mapNotNull { id -> songs.firstOrNull { it.id == id } }
-        if (ordered.isEmpty()) return@LaunchedEffect
+        if (ordered.isEmpty()) { queueRestored = true; return@LaunchedEffect }
         // Ronda 18: el índice guardado es sobre la cola original;
         // si se borraron canciones anteriores, el índice numérico
         // apuntaba a otra canción. Se busca la canción actual por
@@ -1493,6 +1498,7 @@ private fun AuroraApp(
                 saved.positionMs,
             )
             c.prepare()
+            queueRestored = true
         } catch (e: Exception) {
             ErrorLog.log(context, "RESTORE-QUEUE", e)
         }
