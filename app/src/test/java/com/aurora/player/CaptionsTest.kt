@@ -38,9 +38,18 @@ class CaptionsTest {
         val lines = parseTimedText(timedText)
         assertNull(captionLineAt(lines, -1))
         assertEquals("Hola, ¿qué tal?", captionLineAt(lines, 0)?.text)
-        assertEquals("Hola, ¿qué tal?", captionLineAt(lines, 1999)?.text)
+        assertEquals("Hola, ¿qué tal?", captionLineAt(lines, 1799)?.text)
+        // Ronda 29: la línea se esconde cuando termina su duración
+        // (Hola dura 1800 ms; entre 1800 y 2000 no hay ninguna).
+        assertNull(captionLineAt(lines, 1800))
+        assertNull(captionLineAt(lines, 1999))
         assertEquals("Mundo & amigos", captionLineAt(lines, 2000)?.text)
-        assertEquals("Adiós", captionLineAt(lines, 99999)?.text)
+        assertEquals("Mundo & amigos", captionLineAt(lines, 4499)?.text)
+        assertNull(captionLineAt(lines, 4500))
+        assertEquals("Adiós", captionLineAt(lines, 5000)?.text)
+        assertEquals("Adiós", captionLineAt(lines, 6999)?.text)
+        assertNull(captionLineAt(lines, 7000))
+        assertNull(captionLineAt(lines, 99999))
     }
 
     @Test
