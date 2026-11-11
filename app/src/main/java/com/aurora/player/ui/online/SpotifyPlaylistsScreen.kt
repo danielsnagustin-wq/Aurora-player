@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -269,7 +270,14 @@ fun SpotifyPlaylistsSection(
                 Text(importProgress, modifier = Modifier.padding(top = 8.dp))
             } else {
                 LazyColumn(modifier = Modifier.height(320.dp)) {
-                    items(tracks.orEmpty()) { track ->
+                    // Ronda 5 (fluidez): sin clave estable, al cargar
+                    // la lista Compose recreaba las filas y se notaba
+                    // el tirón. SpotifyTrack no tiene id: índice +
+                    // nombre + artista (la lista se carga una vez).
+                    itemsIndexed(
+                        tracks.orEmpty(),
+                        key = { index, track -> "$index|${track.name}|${track.artist}" },
+                    ) { _, track ->
                         ListItem(
                             headlineContent = { Text(track.name) },
                             supportingContent = { Text(track.artist) },
