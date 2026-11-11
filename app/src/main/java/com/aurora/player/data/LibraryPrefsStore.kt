@@ -41,6 +41,9 @@ class LibraryPrefsStore(context: Context) {
         private val LAST_TAB_KEY = intPreferencesKey("last_tab")
         private val ROW_COVER_KEY = intPreferencesKey("row_cover_dp")
         private val IMAGE_CACHE_KEY = booleanPreferencesKey("image_cache_enabled")
+        // Ronda 19: el orden de clasificación (LibrarySort.name).
+        // Se guarda como texto para no acoplar data con ui.
+        private val SORT_KEY = stringPreferencesKey("sort_order")
     }
 
     val visibleTabsFlow: Flow<Set<Int>> =
@@ -60,6 +63,16 @@ class LibraryPrefsStore(context: Context) {
         dataStore.data
             .catch { emit(emptyPreferences()) }
             .map { prefs -> (prefs[ROW_COVER_KEY] ?: DEFAULT_ROW_COVER_DP).coerceIn(32, 96) }
+
+    /** Orden de clasificación guardado (nombre de LibrarySort; "TITLE" por defecto). */
+    val sortFlow: Flow<String> =
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> prefs[SORT_KEY] ?: "TITLE" }
+
+    suspend fun saveSort(name: String) {
+        dataStore.edit { prefs -> prefs[SORT_KEY] = name }
+    }
 
     /**
      * Asistente de configuración (estilo Namida, 2026-11-09): caché
