@@ -32,20 +32,32 @@ class MusicRepository(private val context: Context) {
      * si algún dispositivo no las conoce (la consulta lanza
      * IllegalArgumentException), sin ellas. Un fallo total devuelve
      * lista vacía y se registra, nunca cuelga la biblioteca.
+     * Ronda 31: el fallo total ya no es silencioso — queda en
+     * [lastLoadError] para que la biblioteca pueda decirle al
+     * usuario que el escaneo falló en vez de "no hay canciones".
      */
+    var lastLoadError: String? = null
+        private set
+
     fun loadSongs(minDurationMs: Long = 5_000L): List<Song> {
         return try {
-            loadSongsWithProjection(minDurationMs, extended = true)
+            loadSongsWithProjection(minDurationMs, extended = true).also {
+                lastLoadError = null
+            }
         } catch (e: IllegalArgumentException) {
             ErrorLog.log(context, "Escaneo sin columnas nuevas", e)
             try {
-                loadSongsWithProjection(minDurationMs, extended = false)
+                loadSongsWithProjection(minDurationMs, extended = false).also {
+                    lastLoadError = null
+                }
             } catch (e2: Exception) {
                 ErrorLog.log(context, "Cargar biblioteca", e2)
+                lastLoadError = "No se pudo escanear la biblioteca. Revisa el permiso de música e inténtalo otra vez."
                 emptyList()
             }
         } catch (e: Exception) {
             ErrorLog.log(context, "Cargar biblioteca", e)
+            lastLoadError = "No se pudo escanear la biblioteca. Revisa el permiso de música e inténtalo otra vez."
             emptyList()
         }
     }
