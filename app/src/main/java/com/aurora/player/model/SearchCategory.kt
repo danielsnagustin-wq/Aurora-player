@@ -25,7 +25,11 @@ enum class SearchCategory(val label: String) {
 
 private fun foldAccents(s: String): String =
     Normalizer.normalize(s, Normalizer.Form.NFD)
-        .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+        // RONDA 145: era solo el bloque InCombiningDiacriticalMarks
+        // (U+0300-U+036F): las tildes de bloques extendidos (p. ej.
+        // U+1AB0) no se quitaban y la búsqueda fallaba. \p{Mn} quita
+        // TODAS las marcas sin espaciado, en cualquier bloque.
+        .replace(Regex("\\p{Mn}+"), "")
 
 private fun containsFolded(haystack: String, needle: String): Boolean =
     foldAccents(haystack).contains(foldAccents(needle), ignoreCase = true)
