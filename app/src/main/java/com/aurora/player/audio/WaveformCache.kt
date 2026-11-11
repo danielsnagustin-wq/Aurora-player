@@ -1,6 +1,8 @@
 package com.aurora.player.audio
 
 import android.content.Context
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
@@ -20,11 +22,11 @@ object WaveformCache {
         return File(dir(context), "$safe.txt")
     }
 
-    fun read(context: Context, key: String): List<Float>? {
-        return try {
+    suspend fun read(context: Context, key: String): List<Float>? = withContext(Dispatchers.IO) {
+        return@withContext try {
             val text = fileFor(context, key).takeIf { it.exists() }
-                ?.readText()?.trim() ?: return null
-            if (text.isEmpty()) return null
+                ?.readText()?.trim() ?: return@withContext null
+            if (text.isEmpty()) return@withContext null
             val values = text.split(",").mapNotNull { it.toFloatOrNull() }
             if (values.isEmpty()) null else values
         } catch (_: Exception) {
@@ -32,11 +34,13 @@ object WaveformCache {
         }
     }
 
-    fun write(context: Context, key: String, peaks: List<Float>) {
-        try {
-            fileFor(context, key).writeText(peaks.joinToString(","))
-        } catch (_: Exception) {
-            // Sin caché no pasa nada: la próxima vez se decodifica otra vez.
+    suspend fun write(context: Context, key: String, peaks: List<Float>) {
+        withContext(Dispatchers.IO) {
+            try {
+                fileFor(context, key).writeText(peaks.joinToString(","))
+            } catch (_: Exception) {
+                // Sin caché no pasa nada: la próxima vez se decodifica otra vez.
+            }
         }
     }
 }
