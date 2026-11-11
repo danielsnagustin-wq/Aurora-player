@@ -280,46 +280,70 @@ object BackupManager {
             // escritura de ajustes fallaba, las listas/favoritos/
             // historial ya estaban borrados y la restauración quedaba
             // a medias sin vuelta atrás.
-            ThemeSettingsStore(appContext).save(data.theme)
-            PlayerSettingsStore(appContext).save(data.player)
-            QueueStore(appContext).save(
-                queueIds,
-                data.queue.index.coerceIn(0, (queueIds.size - 1).coerceAtLeast(0)),
-                data.queue.positionMs,
-            )
+            // RONDA 78: si algo falla a mitad de la restauración
+            // (una escritura de ajustes o la propia transacción), los
+            // ajustes ya aplicados se DEVUELVEN a como estaban antes:
+            // la restauración es todo o nada, nunca a medias. La
+            // biblioteca ya la revierte sola withTransaction; aquí se
+            // revierten los ajustes a mano, lo mejor que se pueda.
+            val themeStore = ThemeSettingsStore(appContext)
+            val playerStore = PlayerSettingsStore(appContext)
+            val queueStore = QueueStore(appContext)
             val presetStore = CustomPresetStore(appContext)
-            val backupNames = data.eqPresets.map { it.name.trim().take(40) }.toSet()
-            // Guardar los del respaldo ANTES de borrar los viejos: si
-            // una escritura falla, los presets viejos siguen ahí.
-            for (preset in data.eqPresets) presetStore.save(preset.name, preset.levelsDb)
-            for (preset in presetStore.presetsFlow.first()) {
-                if (preset.name !in backupNames) presetStore.delete(preset.name)
-            }
+            val prevTheme = themeStore.settingsFlow.first()
+            val prevPlayer = playerStore.settingsFlow.first()
+            val prevQueue = queueStore.queueFlow.first()
+            val prevPresets = presetStore.presetsFlow.first()
+            try {
+                themeStore.save(data.theme)
+                playerStore.save(data.player)
+                queueStore.save(
+                    queueIds,
+                    data.queue.index.coerceIn(0, (queueIds.size - 1).coerceAtLeast(0)),
+                    data.queue.positionMs,
+                )
+                val backupNames = data.eqPresets.map { it.name.trim().take(40) }.toSet()
+                // Guardar los del respaldo ANTES de borrar los viejos: si
+                // una escritura falla, los presets viejos siguen ahí.
+                for (preset in data.eqPresets) presetStore.save(preset.name, preset.levelsDb)
+                for (preset in presetStore.presetsFlow.first()) {
+                    if (preset.name !in backupNames) presetStore.delete(preset.name)
+                }
 
-            db.withTransaction {
-                val playlistDao = db.playlistDao()
-                val libraryDao = db.libraryDao()
-                playlistDao.clearAll()
-                for ((index, pl) in data.playlists.withIndex()) {
-                    val newId = playlistDao.insertPlaylist(
-                        PlaylistEntity(name = pl.name, createdAt = pl.createdAt, updatedAt = pl.updatedAt),
-                    )
-                    playlistDao.setSongs(
-                        playlistIds[index].mapIndexed { position, songId ->
-                            PlaylistSongEntity(newId, songId, position)
-                        },
-                    )
+                db.withTransaction {
+                    val playlistDao = db.playlistDao()
+                    val libraryDao = db.libraryDao()
+                    playlistDao.clearAll()
+                    for ((index, pl) in data.playlists.withIndex()) {
+                        val newId = playlistDao.insertPlaylist(
+                            PlaylistEntity(name = pl.name, createdAt = pl.createdAt, updatedAt = pl.updatedAt),
+                        )
+                        playlistDao.setSongs(
+                            playlistIds[index].mapIndexed { position, songId ->
+                                PlaylistSongEntity(newId, songId, position)
+                            },
+                        )
+                    }
+                    libraryDao.clearFavorites()
+                    for (songId in favIds) {
+                        libraryDao.addFavorite(FavoriteEntity(songId))
+                    }
+                    libraryDao.clearHistory()
+                    for ((songId, entry) in historyMatched) {
+                        libraryDao.addHistory(
+                            PlayHistoryEntity(songId, entry.playedAt, entry.durationListenedMs),
+                        )
+                    }
                 }
-                libraryDao.clearFavorites()
-                for (songId in favIds) {
-                    libraryDao.addFavorite(FavoriteEntity(songId))
+            } catch (e: Exception) {
+                runCatching { themeStore.save(prevTheme) }
+                runCatching { playerStore.save(prevPlayer) }
+                runCatching { queueStore.save(prevQueue.songIds, prevQueue.index, prevQueue.positionMs) }
+                runCatching {
+                    for (preset in presetStore.presetsFlow.first()) presetStore.delete(preset.name)
+                    for (preset in prevPresets) presetStore.save(preset.name, preset.levelsDb)
                 }
-                libraryDao.clearHistory()
-                for ((songId, entry) in historyMatched) {
-                    libraryDao.addHistory(
-                        PlayHistoryEntity(songId, entry.playedAt, entry.durationListenedMs),
-                    )
-                }
+                throw e
             }
             RestoreReport(
                 playlistsRestored = data.playlists.size,
