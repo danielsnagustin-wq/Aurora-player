@@ -137,22 +137,22 @@ class SpotifyClient {
         parseSpotifyProfile(body)
     }
 
-    /** Tus listas (necesita el token de fetchAccessToken). */
-    suspend fun fetchPlaylists(token: String): List<SpotifyPlaylist> = withContext(Dispatchers.IO) {
+    /** Tus listas (necesita el token de fetchAccessToken). Null si Spotify no respondió. */
+    suspend fun fetchPlaylists(token: String): List<SpotifyPlaylist>? = withContext(Dispatchers.IO) {
         val body = httpGet(
             "https://api.spotify.com/v1/me/playlists?limit=50",
             mapOf("Authorization" to "Bearer $token"),
-        ) ?: return@withContext emptyList()
+        ) ?: return@withContext null
         parseSpotifyPlaylists(body)
     }
 
-    /** Canciones de una lista (para importarlas por YouTube Music). */
-    suspend fun fetchPlaylistTracks(token: String, playlistId: String): List<SpotifyTrack> =
+    /** Canciones de una lista (para importarlas por YouTube Music). Null si Spotify no respondió. */
+    suspend fun fetchPlaylistTracks(token: String, playlistId: String): List<SpotifyTrack>? =
         withContext(Dispatchers.IO) {
             val body = httpGet(
                 "https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=100&fields=items(track(name,artists(name),album(name)))",
                 mapOf("Authorization" to "Bearer $token"),
-            ) ?: return@withContext emptyList()
+            ) ?: return@withContext null
             parseSpotifyPlaylistTracks(body)
         }
 
