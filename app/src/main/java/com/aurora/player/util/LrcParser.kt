@@ -15,7 +15,16 @@ package com.aurora.player.util
  */
 data class LrcWord(val timeMs: Long, val text: String)
 
-data class LrcLine(val timeMs: Long, val text: String, val words: List<LrcWord> = emptyList())
+data class LrcLine(
+    val timeMs: Long,
+    val text: String,
+    val words: List<LrcWord> = emptyList(),
+    // Duración en ms, solo para subtítulos de vídeo (srv3 `d`): sin ella
+    // la línea se queda visible hasta que empiece la siguiente. Las
+    // letras .lrc no tienen duración y dejan null (comportamiento de
+    // siempre).
+    val durationMs: Long? = null,
+)
 
 object LrcParser {
 
