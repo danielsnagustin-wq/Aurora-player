@@ -558,6 +558,8 @@ class InnerTubeClient(
     private val authCookies: String? = null,
     private val authToken: String? = null,
     private val onTokenRejected: ((String) -> Unit)? = null,
+    // Ronda 7b: sesión de cookies caducada (401 sin token OAuth).
+    private val onCookiesRejected: (() -> Unit)? = null,
 ) {
     suspend fun search(query: String): List<OnlineTrack> = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
@@ -661,8 +663,15 @@ class InnerTubeClient(
                 // Token OAuth caducado (2026-11-10): Google lo
                 // rechaza con 401 al cabo de ~1 h. Se avisa para
                 // renovarlo; sin esto la búsqueda se queda muda.
-                if (code == 401 && client.name == "WEB_REMIX" && !authToken.isNullOrBlank()) {
-                    onTokenRejected?.invoke(authToken)
+                // Ronda 7b: con cookies (sin token) el 401 también
+                // es sesión caducada; sin aviso, la búsqueda cae
+                // en el "Sin conexión…" genérico para siempre.
+                if (code == 401 && client.name == "WEB_REMIX") {
+                    if (!authToken.isNullOrBlank()) {
+                        onTokenRejected?.invoke(authToken)
+                    } else if (authCookies != null) {
+                        onCookiesRejected?.invoke()
+                    }
                 }
                 if (code != 200) return null
                 // Tope de 2 MB: la respuesta es JSON (KBs). Sin tope,
