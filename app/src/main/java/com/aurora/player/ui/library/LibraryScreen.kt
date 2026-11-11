@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -248,15 +249,16 @@ fun LibraryScreen(
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
     }
-    // RONDA 2026-11-10 (bajar rápido solo se veían las iniciales):
-    // cuando la biblioteca ya cargó, las portadas se precargan en
-    // segundo plano, una sola vez por apertura, así al bajar ya
-    // están en caché y la lista no se arrastra.
+    // RONDA NAV 2026-11-11 (navegación lenta): precargar las portadas
+    // de TODOS los álbumes saturaba el teléfono justo al abrir la
+    // biblioteca. Como las demás aplicaciones: solo las primeras 40
+    // (lo visible y un poco más); el resto carga al bajar, con la
+    // inicial como marcador, y queda en caché para la siguiente vez.
     var coversWarmed by remember { mutableStateOf(false) }
     LaunchedEffect(filtered) {
         if (coversWarmed || filtered.isEmpty()) return@LaunchedEffect
         coversWarmed = true
-        warmAlbumArtCache(context, filtered.map { it.albumId }.distinct())
+        warmAlbumArtCache(context, filtered.map { it.albumId }.distinct().take(40))
     }
 
     // RENDIMIENTO (spec 004): marca el primer dibujo real de la
@@ -383,6 +385,7 @@ fun LibraryScreen(
                     0 -> SongsTab(
                         viewModel = viewModel,
                         songs = filtered,
+                        songsListState = viewModel.songsListState,
                         favoriteIds = favoriteIds,
                         sortOrder = sortOrder,
                         artistFilter = artistFilter,
@@ -478,6 +481,7 @@ fun LibraryScreen(
 private fun SongsTab(
     viewModel: LibraryViewModel,
     songs: List<Song>,
+    songsListState: LazyListState,
     favoriteIds: Set<Long>,
     sortOrder: LibrarySort,
     artistFilter: String?,
@@ -576,7 +580,7 @@ private fun SongsTab(
             modifier = Modifier.padding(16.dp),
         )
     } else {
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
+        LazyColumn(state = songsListState, modifier = Modifier.fillMaxSize()) {
             items(songs, key = { it.id }) { song ->
                 SongRow(
                     song = song,
