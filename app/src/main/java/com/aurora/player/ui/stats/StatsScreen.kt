@@ -52,6 +52,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 /**
  * Aurora Player — estadísticas locales (ETAPA 5).
@@ -101,12 +102,27 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                     val top = dao.mostPlayed().take(10).mapNotNull { row ->
                         byId[row.songId]?.let { it to row.c }
                     }
-                    // Gráfico semanal: reproducciones por día, últimos 7 días.
+                    // Gráfico semanal: reproducciones por día CALENDARIO,
+                    // últimos 7 días. Los intervalos fijos de 24 h desde
+                    // "ahora" metían en "hoy" escuchas de ayer cerca de
+                    // la medianoche (ronda 13); las medianoche se
+                    // calculan con Calendar, que respeta el horario
+                    // de verano.
                     val now = System.currentTimeMillis()
-                    val dayMs = 24L * 60 * 60 * 1000
+                    val dayStarts = (0..6).map { ago ->
+                        Calendar.getInstance().apply {
+                            timeInMillis = now
+                            set(Calendar.HOUR_OF_DAY, 0)
+                            set(Calendar.MINUTE, 0)
+                            set(Calendar.SECOND, 0)
+                            set(Calendar.MILLISECOND, 0)
+                            add(Calendar.DAY_OF_YEAR, -ago)
+                        }.timeInMillis
+                    }
                     val perDay = MutableList(7) { 0 }
                     for (ts in dao.historyPlayedAt()) {
-                        val daysAgo = ((now - ts) / dayMs).toInt()
+                        if (ts > now) continue
+                        val daysAgo = dayStarts.indexOfFirst { ts >= it }
                         if (daysAgo in 0..6) perDay[6 - daysAgo]++
                     }
                     StatsData(
