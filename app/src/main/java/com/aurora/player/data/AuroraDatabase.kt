@@ -223,6 +223,10 @@ interface LibraryDao {
     @Query("SELECT songId, COUNT(*) AS plays, COALESCE(SUM(durationListenedMs), 0) AS listenedMs, MAX(playedAt) AS lastPlayed FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY plays DESC")
     suspend fun statsPerSong(): List<SongStatsRow>
 
+    /** Lo mismo, en vivo (ronda 17: las listas inteligentes se actualizan al escuchar sin reabrir la pestaña). */
+    @Query("SELECT songId, COUNT(*) AS plays, COALESCE(SUM(durationListenedMs), 0) AS listenedMs, MAX(playedAt) AS lastPlayed FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY plays DESC")
+    fun statsPerSongFlow(): Flow<List<SongStatsRow>>
+
     @Query("SELECT COUNT(*) FROM play_history WHERE durationListenedMs >= 30000")
     suspend fun totalPlays(): Int
 
