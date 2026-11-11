@@ -1,11 +1,14 @@
 package com.aurora.player.playback
 
 import android.content.Context
+import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
 import com.aurora.player.model.Song
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.ListenableFuture
@@ -30,7 +33,26 @@ class AuroraLibraryCallback(
     private val scope: CoroutineScope,
     private val loadSongs: suspend () -> List<Song>,
     private val loadFavoriteIds: suspend () -> Set<Long>,
+    // Pulido notificación: los botones de aleatorio y bucle de la
+    // notificación llegan aquí como comandos personalizados.
+    private val onNotificationCommand: (String) -> Boolean = { false },
 ) : MediaLibraryService.MediaLibrarySession.Callback {
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        val handled = onNotificationCommand(customCommand.customAction)
+        val result = SettableFuture.create<SessionResult>()
+        result.set(
+            SessionResult(
+                if (handled) SessionResult.RESULT_SUCCESS else SessionResult.RESULT_ERROR_UNKNOWN,
+            ),
+        )
+        return result
+    }
 
     private fun rootItem(): MediaItem =
         MediaItem.Builder()
