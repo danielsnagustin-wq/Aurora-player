@@ -1413,12 +1413,16 @@ private fun AuroraApp(
                 savedQueueMessage = "La cola actual está vacía."
                 return@launch
             }
-            if (dao.count() >= MAX_NAMED_QUEUES) {
+            // Ronda 18: el límite se comprobaba ANTES de buscar si
+            // el nombre ya existía: con 20 colas no se podía
+            // actualizar una cola existente. El límite solo vale
+            // para nombres nuevos.
+            val existing = dao.allQueues()
+                .firstOrNull { it.name.equals(name, ignoreCase = true) }
+            if (existing == null && dao.count() >= MAX_NAMED_QUEUES) {
                 savedQueueMessage = "Ya tienes $MAX_NAMED_QUEUES colas guardadas."
                 return@launch
             }
-            val existing = dao.allQueues()
-                .firstOrNull { it.name.equals(name, ignoreCase = true) }
             if (existing != null) {
                 dao.setSongs(existing.id, ids)
                 dao.touchQueue(existing.id, System.currentTimeMillis())
