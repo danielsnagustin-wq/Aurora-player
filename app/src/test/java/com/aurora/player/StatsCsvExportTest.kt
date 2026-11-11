@@ -14,7 +14,7 @@ class StatsCsvExportTest {
     fun `sin filas solo va la cabecera`() {
         val csv = buildStatsCsv(emptyList())
         assertEquals(
-            "titulo,artista,album,reproducciones,minutos_escuchados,ultima_reproduccion\n",
+            "\uFEFFtitulo,artista,album,reproducciones,minutos_escuchados,ultima_reproduccion\n",
             csv,
         )
     }
