@@ -5,6 +5,8 @@ import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
 import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 
 /**
@@ -148,20 +150,31 @@ suspend fun fetchLyricsFirst(
     artist: String,
     album: String?,
     durationSec: Long,
-): OnlineLyrics? {
-    for (provider in providers) {
-        try {
-            val result = provider.fetch(track, artist, album, durationSec)
-            if (result != null &&
-                (!result.syncedLrc.isNullOrBlank() || !result.plainText.isNullOrBlank())
-            ) {
-                return result
+): OnlineLyrics? = coroutineScope {
+    // RONDA 93: los proveedores se consultan EN PARALELO. Antes era
+    // en serie: con 3 timeouts de 6 s, la letra tardaba hasta ~18 s
+    // en aparecer (o en saberse que no hay). El orden se respeta: gana
+    // el primero de la lista que traiga letra, aunque otro termine
+    // antes; el peor caso ahora es ~6 s, no ~18 s.
+    val deferred = providers.map { provider ->
+        async {
+            try {
+                provider.fetch(track, artist, album, durationSec)
+            } catch (_: Exception) {
+                // Siguiente proveedor.
+                null
             }
-        } catch (_: Exception) {
-            // Siguiente proveedor.
         }
     }
-    return null
+    for (d in deferred) {
+        val result = d.await()
+        if (result != null &&
+            (!result.syncedLrc.isNullOrBlank() || !result.plainText.isNullOrBlank())
+        ) {
+            return@coroutineScope result
+        }
+    }
+    null
 }
 
 /** LRCLIB: coincidencia exacta primero, búsqueda difusa si da 404. */
