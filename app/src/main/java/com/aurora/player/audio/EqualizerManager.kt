@@ -72,6 +72,12 @@ class EqualizerManager(audioSessionId: Int) {
     /** true solo si el Equalizer real se pudo crear en este dispositivo. */
     val isAvailable: Boolean
 
+    /** true solo si el refuerzo de graves real se pudo crear. */
+    val bassBoostAvailable: Boolean
+
+    /** true solo si el virtualizador real se pudo crear. */
+    val virtualizerAvailable: Boolean
+
     /** Frecuencias centrales reales de las bandas, en Hz (null si no disponible). */
     val bandFrequenciesHz: List<Int>
 
@@ -91,27 +97,41 @@ class EqualizerManager(audioSessionId: Int) {
         isAvailable = eq != null
         try { bassBoost = BassBoost(0, audioSessionId) } catch (_: Exception) { bassBoost = null }
         try { virtualizer = Virtualizer(0, audioSessionId) } catch (_: Exception) { virtualizer = null }
+        // Ronda 7 (Codex): si no se crearon, la UI no muestra el deslizador.
+        bassBoostAvailable = bassBoost != null
+        virtualizerAvailable = virtualizer != null
     }
 
     fun setEnabled(enabled: Boolean) {
-        equalizer?.enabled = enabled
-        bassBoost?.enabled = enabled
-        virtualizer?.enabled = enabled
+        // Ronda 7 (Codex): los efectos pueden tirar si la sesión se
+        // invalidó; un ajuste nunca puede tumbar el servicio.
+        try {
+            equalizer?.enabled = enabled
+            bassBoost?.enabled = enabled
+            virtualizer?.enabled = enabled
+        } catch (_: Exception) {
+        }
     }
 
     /** Aplica un preset real; si el sistema tiene menos de 10 bandas, se recorta. */
     fun applyPreset(preset: Preset) {
         val eq = equalizer ?: return
-        val range = eq.bandLevelRange // en centésimas de dB
-        preset.levelsDb.forEachIndexed { index, db ->
-            if (index >= eq.numberOfBands) return@forEachIndexed
-            val milliBel = (db * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
-            eq.setBandLevel(index.toShort(), milliBel.toShort())
+        try {
+            val range = eq.bandLevelRange // en centésimas de dB
+            preset.levelsDb.forEachIndexed { index, db ->
+                if (index >= eq.numberOfBands) return@forEachIndexed
+                val milliBel = (db * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
+                eq.setBandLevel(index.toShort(), milliBel.toShort())
+            }
+        } catch (_: Exception) {
         }
     }
 
     fun setBandLevel(band: Int, milliBel: Short) {
-        equalizer?.setBandLevel(band.toShort(), milliBel)
+        try {
+            equalizer?.setBandLevel(band.toShort(), milliBel)
+        } catch (_: Exception) {
+        }
     }
 
     /** Nivel actual de una banda, en centésimas de dB (0 si no disponible). */
@@ -153,11 +173,17 @@ class EqualizerManager(audioSessionId: Int) {
     }
 
     fun setBassBoost(strength: Short) { // 0..1000
-        bassBoost?.setStrength(strength)
+        try {
+            bassBoost?.setStrength(strength)
+        } catch (_: Exception) {
+        }
     }
 
     fun setVirtualizer(strength: Short) { // 0..1000
-        virtualizer?.setStrength(strength)
+        try {
+            virtualizer?.setStrength(strength)
+        } catch (_: Exception) {
+        }
     }
 
     fun release() {
