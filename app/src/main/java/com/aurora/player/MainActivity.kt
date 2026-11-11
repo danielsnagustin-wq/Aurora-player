@@ -1127,8 +1127,8 @@ private fun AuroraApp(
             val shakeAction = parseGestureAction(playerSettings.shakeAction, GestureAction.NEXT)
             val detector = ShakeDetector {
                 when (shakeAction) {
-                    GestureAction.NEXT -> if (c.isPlaying) c.seekToNext()
-                    GestureAction.PREVIOUS -> if (c.isPlaying) c.seekToPrevious()
+                    GestureAction.NEXT -> c.seekToNext()
+                    GestureAction.PREVIOUS -> c.seekToPrevious()
                     GestureAction.PLAY_PAUSE -> if (c.isPlaying) c.pause() else c.play()
                     GestureAction.FAVORITE -> toggleFavorite()
                     // Ronda 4: ±10 s; con duración desconocida no se
