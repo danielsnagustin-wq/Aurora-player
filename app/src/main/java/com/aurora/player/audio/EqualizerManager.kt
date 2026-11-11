@@ -119,6 +119,14 @@ class EqualizerManager(audioSessionId: Int) {
      * seleccionado cuando el sonido no cambió. */
     fun applyPreset(preset: Preset): Boolean {
         val eq = equalizer ?: return false
+        // RONDA 125: si el efecto falla a mitad del preset, las bandas
+        // ya cambiadas quedaban aplicadas aunque se devolviera false.
+        // Se guarda el estado previo y se restaura al fallar.
+        val previous = try {
+            (0 until eq.numberOfBands).map { eq.getBandLevel(it.toShort()) }
+        } catch (_: Exception) {
+            null
+        }
         try {
             val range = eq.bandLevelRange // en centésimas de dB
             preset.levelsDb.forEachIndexed { index, db ->
@@ -128,6 +136,9 @@ class EqualizerManager(audioSessionId: Int) {
             }
             return true
         } catch (_: Exception) {
+            previous?.forEachIndexed { index, level ->
+                runCatching { eq.setBandLevel(index.toShort(), level) }
+            }
             return false
         }
     }
