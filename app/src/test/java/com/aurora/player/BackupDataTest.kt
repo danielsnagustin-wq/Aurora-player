@@ -124,6 +124,19 @@ class BackupDataTest {
     }
 
     @Test
+    fun `entrada danada en una lista invalida todo el respaldo`() {
+        // RONDA 36: un favorito sin ruta ya no se descarta en silencio:
+        // el archivo entero se rechaza y no se restaura nada, para no
+        // borrar los datos reales al restaurar.
+        val broken = sampleData().toJsonString().replace(
+            "\"favorites\":[{\"id\":11,\"path\":\"/Music/rock/canción 1.mp3\"}]",
+            "\"favorites\":[{\"id\":11}]",
+        )
+        val result = validateBackup(broken)
+        assertTrue(result is BackupValidation.Invalid)
+    }
+
+    @Test
     fun `ajustes invalidos caen a valores por defecto sin romper`() {
         val base = sampleData().copy(
             theme = ThemeSettings.DEFAULT.copy(accentHex = "#75D6CE"),
