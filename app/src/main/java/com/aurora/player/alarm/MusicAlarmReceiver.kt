@@ -1,5 +1,6 @@
 package com.aurora.player.alarm
 
+import android.app.AlarmManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -17,6 +18,10 @@ import kotlinx.coroutines.launch
  *   es de una vez, se apaga. Luego arranca el servicio en primer plano
  *   para que suene la música.
  * - El teléfono se reinicia: la alarma se vuelve a programar sola.
+ * - Cambia el permiso de alarmas exactas: si la alarma estaba guardada
+ *   como activa pero sin permiso (RONDA 43), al concederlo desde los
+ *   ajustes del sistema se programa sola sin tener que reabrir la
+ *   pantalla ni pulsar "Actualizar".
  * - "Apagar": le dice al servicio que pare la música.
  */
 class MusicAlarmReceiver : BroadcastReceiver() {
@@ -29,6 +34,8 @@ class MusicAlarmReceiver : BroadcastReceiver() {
                     AlarmScheduler.ACTION_ALARM -> onAlarm(context)
                     AlarmScheduler.ACTION_STOP_ALARM -> onStopAlarm(context)
                     Intent.ACTION_BOOT_COMPLETED -> onBoot(context)
+                    AlarmManager.ACTION_SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED ->
+                        onExactAlarmPermissionChanged(context)
                 }
             } finally {
                 pending.finish()
@@ -59,5 +66,12 @@ class MusicAlarmReceiver : BroadcastReceiver() {
     private suspend fun onBoot(context: Context) {
         val settings = AlarmStore(context).settingsFlow.first()
         if (settings.enabled) AlarmScheduler.schedule(context, settings)
+    }
+
+    private suspend fun onExactAlarmPermissionChanged(context: Context) {
+        val settings = AlarmStore(context).settingsFlow.first()
+        if (settings.enabled && AlarmScheduler.canScheduleExactAlarms(context)) {
+            AlarmScheduler.schedule(context, settings)
+        }
     }
 }
