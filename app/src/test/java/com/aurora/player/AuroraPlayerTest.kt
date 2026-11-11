@@ -359,6 +359,31 @@ class AuroraPlayerTest {
     }
 
     @Test
+    fun `tu anio cuenta dias distintos en hora local`() {
+        // RONDA 35: 00:30 y 23:30 del mismo dia local caen en dos
+        // bloques UTC distintos (America/Chicago, UTC-6 en enero);
+        // el conteo viejo daba 2 dias, el correcto es 1.
+        val originalTz = java.util.TimeZone.getDefault()
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Chicago"))
+            val (start, _) = yearRange(2026)
+            val cal = java.util.Calendar.getInstance()
+            cal.timeInMillis = start
+            cal.add(java.util.Calendar.DAY_OF_YEAR, 10)
+            val dayStart = cal.timeInMillis
+            val songs = mapOf(1L to SongInfo("A", "X", "Electrónica"))
+            val history = listOf(
+                PlayHistoryEntity(1, dayStart + 30 * 60_000L, 60000),
+                PlayHistoryEntity(1, dayStart + 23 * 3_600_000L + 30 * 60_000L, 60000),
+            )
+            val stats = computeYearStats(2026, history, songs)
+            assertEquals(1, stats.distinctDays)
+        } finally {
+            java.util.TimeZone.setDefault(originalTz)
+        }
+    }
+
+    @Test
     fun `tu anio cuenta canciones borradas solo en los totales`() {
         val (start, _) = yearRange(2026)
         val stats = computeYearStats(
