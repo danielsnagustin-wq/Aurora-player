@@ -274,6 +274,15 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
     val history = root.obj("history").arr() ?: return null
     val queueObj = root.obj("queue") ?: return null
     val presets = root.obj("eqPresets").arr() ?: return null
+    // RONDA 131: los objetos theme y player TAMBIÉN son obligatorios.
+    // Antes, si faltaban, los parsers rellenaban TODO con valores por
+    // defecto y el archivo pasaba la validación: al restaurarlo, los
+    // ajustes del usuario (acento, AMOLED, crossfade...) se borraban
+    // en silencio. La tolerancia a campos sueltos dentro de cada
+    // objeto se queda (ronda 36); lo que no se acepta es que falte el
+    // objeto entero, porque ningún respaldo de esta versión lo omite.
+    val themeObj = root.obj("theme") ?: return null
+    val playerObj = root.obj("player") ?: return null
     // RONDA 36: estricto con las entradas de las listas. Antes un
     // favorito, una canción de lista o una entrada de historial dañada
     // se descartaba en silencio (mapNotNull) y el archivo pasaba la
@@ -301,8 +310,8 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
                 durationListenedMs = h.obj("durationListenedMs").long() ?: return null,
             )
         },
-        theme = themeSettingsFromJsonValue(root.obj("theme")),
-        player = playerFromJson(root.obj("player")),
+        theme = themeSettingsFromJsonValue(themeObj),
+        player = playerFromJson(playerObj),
         queue = BackupQueue(
             songs = queueObj.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: return null,
             index = queueObj.obj("index").long()?.toInt() ?: return null,
