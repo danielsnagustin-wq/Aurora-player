@@ -105,6 +105,7 @@ import com.aurora.player.library.enrichSongs
 import com.aurora.player.lyrics.DEFAULT_PROVIDER_ORDER
 import com.aurora.player.lyrics.orderedProviders
 import com.aurora.player.data.QueueStore
+import com.aurora.player.data.SleepTimerStore
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.isInExcludedFolder
