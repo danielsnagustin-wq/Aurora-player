@@ -1,6 +1,7 @@
 package com.aurora.player.ui.library
 
 import android.app.Application
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aurora.player.data.AuroraDatabase
@@ -23,6 +24,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -119,6 +121,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     // biblioteca y se releen al abrir la pestaña Listas.
     private val _stats = MutableStateFlow<Map<Long, SongStatsRow>>(emptyMap())
 
+    // RONDA NAV 2026-11-11: la lista de canciones pierde su posición al
+    // cambiar de pestaña (LibraryScreen sale de la composición y su
+    // estado moría con ella). El estado vive aquí, en el ViewModel,
+    // que sobrevive al cambio de pestaña: al volver estás donde estabas.
+    val songsListState = LazyListState()
+
     /**
      * Canciones con sus datos reales de uso: favorito, nº de
      * reproducciones y última escucha. Es lo que alimentan las
@@ -136,7 +144,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     lastPlayedAt = row?.lastPlayed,
                 )
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Relee las estadísticas de Room (al abrir la pestaña Listas). */
     fun refreshStats() {
@@ -234,13 +242,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 // o nombre de archivo, útil con carpetas organizadas.
                 LibrarySort.PATH -> songs.sortedBy { it.path.lowercase() }
             }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val favoriteSongs: StateFlow<List<Song>> =
         combine(_uiState, _favoriteIds) { state, favs ->
             val songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
             songs.filter { it.id in favs }.sortedBy { it.title.lowercase() }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+        }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private var hasPermission = false
     private var loaded = false
