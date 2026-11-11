@@ -605,7 +605,7 @@ class AuroraPlayerTest {
     @Test
     fun parseSearchResultsExtraeCanciones() {
         val json = """{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Blue"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Eiffel 65"},{"text":" • "},{"text":"Europop"},{"text":" • "},{"text":"3:24"}]}}}],"playlistItemData":{"videoId":"abc123"},"thumbnail":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://i.ytimg.com/small"},{"url":"https://i.ytimg.com/big"}]}}}}}]}}]}}}}]}}}"""
-        val results = parseSearchResults(json)
+        val results = parseSearchResults(json)!!
         assertEquals(1, results.size)
         val track = results.first()
         assertEquals("abc123", track.videoId)
@@ -614,7 +614,8 @@ class AuroraPlayerTest {
         assertEquals("Europop", track.album)
         assertEquals(204L, track.durationSec)
         assertEquals("https://i.ytimg.com/big", track.thumbnailUrl)
-        assertEquals(emptyList<com.aurora.player.online.OnlineTrack>(), parseSearchResults("no es json"))
+        // RONDA 90: JSON inválido es fallo (null), no "sin resultados".
+        assertNull(parseSearchResults("no es json"))
         assertEquals(emptyList<com.aurora.player.online.OnlineTrack>(), parseSearchResults("""{"contents":{}}"""))
     }
 
