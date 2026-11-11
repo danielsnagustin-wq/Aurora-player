@@ -113,9 +113,12 @@ class EqualizerManager(audioSessionId: Int) {
         }
     }
 
-    /** Aplica un preset real; si el sistema tiene menos de 10 bandas, se recorta. */
-    fun applyPreset(preset: Preset) {
-        val eq = equalizer ?: return
+    /** Aplica un preset real; si el sistema tiene menos de 10 bandas, se recorta.
+     * RONDA 73: devuelve false si no se pudo aplicar (sin ecualizador o el
+     * efecto lo rechazó), para que la pantalla no marque un preset como
+     * seleccionado cuando el sonido no cambió. */
+    fun applyPreset(preset: Preset): Boolean {
+        val eq = equalizer ?: return false
         try {
             val range = eq.bandLevelRange // en centésimas de dB
             preset.levelsDb.forEachIndexed { index, db ->
@@ -123,7 +126,9 @@ class EqualizerManager(audioSessionId: Int) {
                 val milliBel = (db * 100).toInt().coerceIn(range[0].toInt(), range[1].toInt())
                 eq.setBandLevel(index.toShort(), milliBel.toShort())
             }
+            return true
         } catch (_: Exception) {
+            return false
         }
     }
 
