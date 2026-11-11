@@ -113,11 +113,27 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
                 _playlists.value = playlists
             }
             _canSchedule.value = AlarmScheduler.canScheduleExactAlarms(getApplication())
+            // Ronda 19: si la alarma quedó guardada como activa sin
+            // programar (sin permiso al guardar), reprogramarla al
+            // entrar con el permiso ya concedido. schedule() es
+            // idempotente (mismo PendingIntent, FLAG_UPDATE_CURRENT).
+            val loaded = _settings.value
+            if (loaded != null && loaded.enabled && _canSchedule.value) {
+                AlarmScheduler.schedule(getApplication(), loaded)
+            }
         }
     }
 
     fun refreshPermission() {
         _canSchedule.value = AlarmScheduler.canScheduleExactAlarms(getApplication())
+        // Ronda 19: lo mismo al pulsar "Actualizar" tras conceder
+        // el permiso en los ajustes del sistema.
+        if (_canSchedule.value) {
+            viewModelScope.launch(Dispatchers.IO) {
+                val saved = store.settingsFlow.first()
+                if (saved.enabled) AlarmScheduler.schedule(getApplication(), saved)
+            }
+        }
     }
 
     fun save(settings: AlarmSettings) {
