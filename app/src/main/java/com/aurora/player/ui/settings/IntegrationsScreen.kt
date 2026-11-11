@@ -51,6 +51,10 @@ import com.aurora.player.util.rememberRemoteBitmap
 @Composable
 fun IntegrationsScreen(
     spotifyConnected: Boolean,
+    // Ronda 7 (Gemini): el estado de la sesión ("Comprobando…",
+    // "Conectado.", "Esa sesión no funcionó…") vivía en Red; ahora
+    // se muestra aquí, donde vive Spotify.
+    spotifyStatus: String? = null,
     onConnectSpotify: (String) -> Unit,
     onDisconnectSpotify: () -> Unit,
     onImportTracks: (List<Pair<OnlineTrack, String>>) -> Unit,
@@ -66,6 +70,9 @@ fun IntegrationsScreen(
     val cookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val spotify = remember { SpotifyClient() }
     var profile by remember { mutableStateOf<SpotifyProfile?>(null) }
+    // Ronda 7 (OpenCode): si la cookie caducó, el token es null y
+    // la sesión está muerta aunque diga "Conectado".
+    var spotifySessionChecked by remember { mutableStateOf(false) }
     var showSpotifyLogin by remember { mutableStateOf(false) }
     var showYouTubeLogin by remember { mutableStateOf(false) }
 
@@ -73,10 +80,13 @@ fun IntegrationsScreen(
     LaunchedEffect(spotifyConnected, cookie) {
         if (!spotifyConnected || cookie.isBlank()) {
             profile = null
+            spotifySessionChecked = false
             return@LaunchedEffect
         }
+        spotifySessionChecked = false
         val token = spotify.fetchAccessToken(cookie)
         profile = token?.let { spotify.fetchProfile(it) }
+        spotifySessionChecked = true
     }
 
     if (showSpotifyLogin) {
@@ -151,9 +161,15 @@ fun IntegrationsScreen(
         }
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
             Text("Spotify", style = MaterialTheme.typography.titleMedium)
+            // Ronda 7 (OpenCode): con la sesión caducada no se
+            // finge "Conectado"; se dice claro y se vuelve a entrar.
+            // (profile es delegado: sin smart-cast, con ?. seguro.)
+            val spotifySubtitle = if (!spotifyConnected) "Inicia sesión para ver tus listas"
+            else profile?.displayName
+                ?: if (spotifySessionChecked) "Sesión caducada. Vuelve a iniciar sesión."
+                else "Comprobando la sesión…"
             Text(
-                if (spotifyConnected) profile?.displayName ?: "Conectado"
-                else "Inicia sesión para ver tus listas",
+                spotifySubtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -163,6 +179,14 @@ fun IntegrationsScreen(
         } else {
             Button(onClick = { showSpotifyLogin = true }) { Text("Conectar") }
         }
+    }
+    spotifyStatus?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
     if (spotifyConnected) {
         SpotifyPlaylistsSection(
