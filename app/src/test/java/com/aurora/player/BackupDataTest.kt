@@ -137,6 +137,19 @@ class BackupDataTest {
     }
 
     @Test
+    fun `campos de lista o cola incompletos invalidan todo el respaldo`() {
+        // RONDA 46: el escritor siempre escribe createdAt/updatedAt,
+        // durationListenedMs y los tres campos de la cola; si faltan,
+        // el archivo está dañado y ya no se completan con ceros ni con
+        // una cola vacía.
+        val base = sampleData().toJsonString()
+        val sinDuracion = base.replace(",\"durationListenedMs\":45000", "")
+        assertTrue(validateBackup(sinDuracion) is BackupValidation.Invalid)
+        val sinIndiceCola = base.replace(",\"index\":0", "")
+        assertTrue(validateBackup(sinIndiceCola) is BackupValidation.Invalid)
+    }
+
+    @Test
     fun `ajustes invalidos caen a valores por defecto sin romper`() {
         val base = sampleData().copy(
             theme = ThemeSettings.DEFAULT.copy(accentHex = "#75D6CE"),
