@@ -411,7 +411,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     _favoriteIds.value =
                         if (adding) _favoriteIds.value - songId
                         else _favoriteIds.value + songId
-                    ErrorLog.log(context, "Favorito", e)
+                    ErrorLog.log(getApplication(), "Favorito", e)
                 }
             }
         }
