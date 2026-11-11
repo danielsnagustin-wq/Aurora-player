@@ -11,6 +11,9 @@ enum class GestureAction(val label: String) {
     PREVIOUS("Canción anterior"),
     PLAY_PAUSE("Pausar / reanudar"),
     FAVORITE("Marcar favorito"),
+    FAST_FORWARD("Avanzar 10 segundos"),
+    REWIND("Retroceder 10 segundos"),
+    TOGGLE_MUTE("Silenciar / activar sonido"),
 }
 
 /** Lee una acción guardada como texto; un valor desconocido o vacío usa el defecto. */

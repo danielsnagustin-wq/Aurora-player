@@ -13,6 +13,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -784,6 +785,10 @@ private fun AuroraApp(
                 } catch (e: Exception) {
                     ErrorLog.log(context, "Radio local", e)
                 }
+            } else if (playerSettings.localRadio) {
+                // Ronda 4: el Auto-DJ se quedó sin candidatas; avisar
+                // en vez de parar en silencio.
+                Toast.makeText(context, "Auto-DJ terminó: no quedan canciones parecidas", Toast.LENGTH_SHORT).show()
             }
             radioBusy = false
         }
@@ -981,6 +986,24 @@ private fun AuroraApp(
                     GestureAction.PREVIOUS -> if (c.isPlaying) c.seekToPrevious()
                     GestureAction.PLAY_PAUSE -> if (c.isPlaying) c.pause() else c.play()
                     GestureAction.FAVORITE -> toggleFavorite()
+                    // Ronda 4: ±10 s; con duración desconocida no se
+                    // recorta (recortar contra 0 llevaría al inicio).
+                    GestureAction.FAST_FORWARD -> {
+                        val target = c.currentPosition + 10_000L
+                        c.seekTo(if (c.duration > 0) target.coerceAtMost(c.duration) else target)
+                    }
+                    GestureAction.REWIND -> c.seekTo((c.currentPosition - 10_000L).coerceAtLeast(0L))
+                    GestureAction.TOGGLE_MUTE -> {
+                        val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        if (am != null) {
+                            val action = if (am.isStreamMute(AudioManager.STREAM_MUSIC)) {
+                                AudioManager.ADJUST_UNMUTE
+                            } else {
+                                AudioManager.ADJUST_MUTE
+                            }
+                            am.adjustStreamVolume(AudioManager.STREAM_MUSIC, action, AudioManager.FLAG_SHOW_UI)
+                        }
+                    }
                 }
             }
             listener = object : SensorEventListener {
