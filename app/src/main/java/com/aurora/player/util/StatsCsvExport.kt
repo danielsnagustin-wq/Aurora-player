@@ -40,6 +40,11 @@ fun formatCsvDate(ms: Long): String =
 
 fun buildStatsCsv(rows: List<StatsCsvRow>): String {
     val out = StringBuilder()
+    // RONDA 64: BOM UTF-8 al principio. Sin él, Excel abre el CSV
+    // como ANSI en algunas configuraciones y los títulos/artistas
+    // con tildes se ven rotos. Google Sheets y LibreOffice lo
+    // ignoran; el texto sigue siendo UTF-8 válido.
+    out.append("\uFEFF")
     out.append("titulo,artista,album,reproducciones,minutos_escuchados,ultima_reproduccion\n")
     for (row in rows) {
         out.append(csvField(row.title)).append(',')
