@@ -217,9 +217,10 @@ interface LibraryDao {
     suspend fun addHistory(h: PlayHistoryEntity)
 
     // RONDA 85: actualizar la duración de una escucha ya guardada
-    // (la fila la identifica su PK: songId + playedAt).
+    // (la fila la identifica su PK: songId + playedAt). Devuelve las
+    // filas tocadas (RONDA 98: 0 si la fila aún no existe).
     @Query("UPDATE play_history SET durationListenedMs = :ms WHERE songId = :songId AND playedAt = :playedAt")
-    suspend fun updateHistoryDuration(songId: Long, playedAt: Long, ms: Long)
+    suspend fun updateHistoryDuration(songId: Long, playedAt: Long, ms: Long): Int
 
     @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")
     suspend fun mostPlayed(): List<PlayCount>
