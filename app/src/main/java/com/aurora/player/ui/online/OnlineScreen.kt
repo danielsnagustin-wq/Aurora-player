@@ -104,6 +104,9 @@ fun OnlineScreen(
     var chartsLoading by remember { mutableStateOf(false) }
     var chartsError by remember { mutableStateOf<String?>(null) }
     var chartsLoaded by remember { mutableStateOf(false) }
+    // Ronda 33: el botón Reintentar de Para ti vuelve a lanzar la
+    // carga sin salir de la pestaña.
+    var chartsRetry by remember { mutableStateOf(0) }
     // Fase 2 — Fuentes: la sección de listas de Spotify se puede
     // ocultar (solo tiene sentido conectada) y el chip de YouTube
     // pone el foco en la búsqueda con el teclado abierto.
@@ -134,7 +137,7 @@ fun OnlineScreen(
         }
     }
 
-    LaunchedEffect(onlineMode) {
+    LaunchedEffect(onlineMode, chartsRetry) {
         if (!onlineMode || chartsLoaded) return@LaunchedEffect
         chartsLoaded = true
         chartsLoading = true
@@ -148,12 +151,19 @@ fun OnlineScreen(
             if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
                 chartsError = "No se pudieron cargar los charts de YouTube Music."
             }
-            quickPicks = client.getQuickPicks()
         } catch (e: Exception) {
             chartsError = "Sin conexión o YouTube Music no respondió. Revisa internet e inténtalo otra vez."
             chartsLoaded = false
         } finally {
             chartsLoading = false
+        }
+        // Ronda 33: las recomendaciones rápidas son opcionales — si
+        // fallan, los charts se muestran igual y no se enseña un
+        // error de red por algo que no impide escuchar.
+        try {
+            quickPicks = client.getQuickPicks()
+        } catch (_: Exception) {
+            quickPicks = emptyList()
         }
     }
 
@@ -271,6 +281,11 @@ fun OnlineScreen(
                         thumbnailUrl = pick.thumbnailUrl,
                     ),
                 )
+            },
+            onRetry = {
+                chartsError = null
+                chartsLoaded = false
+                chartsRetry++
             },
         )
         if (searching) {
