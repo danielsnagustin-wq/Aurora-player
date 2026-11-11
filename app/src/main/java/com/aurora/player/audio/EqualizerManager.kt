@@ -127,9 +127,19 @@ class EqualizerManager(audioSessionId: Int) {
         }
     }
 
+    /** Nivel de una banda en centésimas de dB. RONDA 44: se limita al
+     *  rango real del efecto (applyPreset ya lo hacía; aquí un valor
+     *  fuera de rango lo rechazaba Android en silencio y la banda no
+     *  sonaba distinta). */
     fun setBandLevel(band: Int, milliBel: Short) {
         try {
-            equalizer?.setBandLevel(band.toShort(), milliBel)
+            val eq = equalizer ?: return
+            if (band !in 0 until eq.numberOfBands) return
+            val range = eq.bandLevelRange
+            eq.setBandLevel(
+                band.toShort(),
+                milliBel.toInt().coerceIn(range[0].toInt(), range[1].toInt()).toShort(),
+            )
         } catch (_: Exception) {
         }
     }
