@@ -64,6 +64,8 @@ fun OnlineScreen(
     ytMusicCookies: String? = null,
     ytMusicToken: String? = null,
     onYtTokenRejected: (String) -> Unit = {},
+    // Ronda 7b: sesión de cookies caducada (401 sin token).
+    onYtCookiesRejected: () -> Unit = {},
     streamQuality: StreamQuality = StreamQuality.HIGH,
     // Fase 2 — Fuentes: cuántas canciones locales hay y qué hacer
     // al tocar el chip Local (volver a la pestaña Canciones).
@@ -90,7 +92,7 @@ fun OnlineScreen(
         return
     }
 
-    val client = remember(ytMusicCookies, ytMusicToken) { InnerTubeClient(ytMusicCookies, ytMusicToken, onYtTokenRejected) }
+    val client = remember(ytMusicCookies, ytMusicToken) { InnerTubeClient(ytMusicCookies, ytMusicToken, onYtTokenRejected, onYtCookiesRejected) }
     val context = LocalContext.current
     val cacheStore = remember { StreamCacheStore(context) }
     val scope = rememberCoroutineScope()
