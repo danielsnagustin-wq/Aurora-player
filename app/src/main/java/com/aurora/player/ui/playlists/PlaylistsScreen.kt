@@ -91,10 +91,21 @@ fun PlaylistsScreen(
             val entries = M3u.parse(text)
             val byPath = allSongs.associateBy { it.path }
             val byFileName = allSongs.associateBy { java.io.File(it.path).name }
+            val libraryPaths = allSongs.map { it.path }
             val matched = entries.mapNotNull { entry ->
                 byPath[entry.path]
+                    // Ronda 18: las rutas relativas no se pueden
+                    // resolver contra la ubicación del M3U (el
+                    // selector no da una ruta real), así que se
+                    // compara el sufijo de la ruta.
+                    ?: M3u.matchBySuffix(entry.path, libraryPaths)?.let { byPath[it] }
                     ?: byFileName[java.io.File(entry.path).name]
                     ?: allSongs.firstOrNull { it.title == entry.title }
+                    // Ronda 18: el #EXTINF que exportamos es
+                    // "artista - título", no el título solo: sin
+                    // esta rama el rescate por título nunca casaba
+                    // con nuestros propios M3U.
+                    ?: allSongs.firstOrNull { "${it.artist} - ${it.title}" == entry.title }
             }.distinctBy { it.id }
             // RONDA 5 (2026-11-09): el nombre salía de
             // lastPathSegment, que en un Uri de contenido es un ID
