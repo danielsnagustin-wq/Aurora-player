@@ -210,6 +210,10 @@ fun PlayerScreen(
     onDeleteSavedQueue: (Long) -> Unit = {},
     onSavedQueueMessageConsumed: () -> Unit = {},
     lyrics: List<LrcLine> = emptyList(),
+    // RONDA 153: si la búsqueda online falló (sin conexión), la letra
+    // no existe como "sin letras": se avisa del fallo en vez de decir
+    // que la canción no tiene letra.
+    lyricsError: Boolean = false,
     translatedLyrics: List<String> = emptyList(),
     // RONDA 2 (2026-11-09): línea de calidad real (FLAC/kbps/kHz) y
     // si el modo online está encendido (para explicar por qué no hay
@@ -920,6 +924,7 @@ fun PlayerScreen(
             canvasUrl = canvasUrl,
             coverBlurBitmap = coverBlurBitmap,
             lyrics = lyrics,
+            lyricsError = lyricsError,
             translatedLyrics = translatedLyrics,
             showTranslation = showTranslation,
             onToggleTranslation = { showTranslation = !showTranslation },
@@ -1214,6 +1219,7 @@ private fun LyricsFullScreen(
     canvasUrl: String?,
     coverBlurBitmap: Bitmap?,
     lyrics: List<LrcLine>,
+    lyricsError: Boolean = false,
     translatedLyrics: List<String>,
     showTranslation: Boolean,
     onToggleTranslation: () -> Unit,
@@ -1346,7 +1352,9 @@ private fun LyricsFullScreen(
             if (lyrics.isEmpty()) {
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    if (onlineMode) {
+                    if (lyricsError) {
+                        "No se pudo buscar la letra. Comprueba tu conexión e inténtalo otra vez."
+                    } else if (onlineMode) {
                         "Sin letras para esta canción."
                     } else {
                         "Sin letras para esta canción. Activa el Modo online en Ajustes para buscarlas en internet, o pon un archivo .lrc junto a la canción."
