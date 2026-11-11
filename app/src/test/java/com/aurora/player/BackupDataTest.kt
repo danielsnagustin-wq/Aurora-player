@@ -182,4 +182,22 @@ class BackupDataTest {
         assertEquals(1, missing.size)
         assertEquals(77L, missing[0].id)
     }
+
+    @Test
+    fun `id que apunta a otra ruta no restaura en la cancion equivocada`() {
+        // RONDA 161: el id de MediaStore no es estable entre
+        // teléfonos: si el id existe pero con otra ruta, no vale.
+        val refs = listOf(
+            BackupSongRef(11, "/a/1.mp3"), // id existe con otra ruta -> por ruta (55)
+            BackupSongRef(22, "/b/2.mp3"), // id existe con otra ruta, sin esa ruta -> ausente
+            BackupSongRef(33, ""), // sin ruta no se puede comprobar: vale el id
+        )
+        val library = listOf(11L to "/z/otro.mp3", 22L to "/y/otro.mp3", 55L to "/a/1.mp3", 33L to "/c/3.mp3")
+        val (found, missing) = matchSongs(refs, library)
+        assertEquals(2, found.size)
+        assertEquals(55L, found[0].first)
+        assertEquals(33L, found[1].first)
+        assertEquals(1, missing.size)
+        assertEquals(22L, missing[0].id)
+    }
 }
