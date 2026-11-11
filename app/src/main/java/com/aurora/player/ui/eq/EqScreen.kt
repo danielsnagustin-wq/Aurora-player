@@ -420,37 +420,57 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             modifier = Modifier.fillMaxWidth(),
         )
 
-        Text("Refuerzo de graves: ${bass.toInt()}")
-        Slider(
-            value = bass,
-            onValueChange = {
-                if (!enabled) {
-                    enabled = true
-                    manager?.setEnabled(true)
-                }
-                bass = it
-                manager?.setBassBoost(it.toInt().toShort())
-            },
-            onValueChangeFinished = { persist() },
-            valueRange = 0f..1000f,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        // Ronda 7 (Codex): sin el efecto, el deslizador no se muestra:
+        // un valor guardado sin efecto sería un ajuste que no hace nada.
+        if (manager == null || manager.bassBoostAvailable) {
+            Text("Refuerzo de graves: ${bass.toInt()}")
+            Slider(
+                value = bass,
+                onValueChange = {
+                    if (!enabled) {
+                        enabled = true
+                        manager?.setEnabled(true)
+                    }
+                    bass = it
+                    manager?.setBassBoost(it.toInt().toShort())
+                },
+                onValueChangeFinished = { persist() },
+                valueRange = 0f..1000f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            Text(
+                "Refuerzo de graves no disponible en este dispositivo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
 
-        Text("Virtualizador: ${virtualizer.toInt()}")
-        Slider(
-            value = virtualizer,
-            onValueChange = {
-                if (!enabled) {
-                    enabled = true
-                    manager?.setEnabled(true)
-                }
-                virtualizer = it
-                manager?.setVirtualizer(it.toInt().toShort())
-            },
-            onValueChangeFinished = { persist() },
-            valueRange = 0f..1000f,
-            modifier = Modifier.fillMaxWidth(),
-        )
+        if (manager == null || manager.virtualizerAvailable) {
+            Text("Virtualizador: ${virtualizer.toInt()}")
+            Slider(
+                value = virtualizer,
+                onValueChange = {
+                    if (!enabled) {
+                        enabled = true
+                        manager?.setEnabled(true)
+                    }
+                    virtualizer = it
+                    manager?.setVirtualizer(it.toInt().toShort())
+                },
+                onValueChangeFinished = { persist() },
+                valueRange = 0f..1000f,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        } else {
+            Text(
+                "Virtualizador no disponible en este dispositivo.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
 
         Text("Presets", modifier = Modifier.padding(top = 16.dp))
         FlowRow(
