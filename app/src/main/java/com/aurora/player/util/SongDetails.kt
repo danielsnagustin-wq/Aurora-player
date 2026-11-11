@@ -157,6 +157,12 @@ suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
                 val idCol = cursor.getColumnIndex(MediaStore.Files.FileColumns._ID)
                 val pathCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
                 var firstId: Long? = null
+                // RONDA 75: si MediaStore SÍ da la carpeta y ninguna
+                // coincide, no se adivina: el primero podría ser la
+                // letra de OTRA canción con el mismo nombre. Solo se
+                // usa el primero cuando no hay info de carpeta (Android
+                // viejo, sin RELATIVE_PATH) y no hay nada con qué elegir.
+                var sawFolderInfo = false
                 while (cursor.moveToNext()) {
                     if (idCol < 0) break
                     val id = cursor.getLong(idCol)
@@ -167,6 +173,7 @@ suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
                         ""
                     }
                     val relNorm = rel.trimEnd('/')
+                    if (relNorm.isNotEmpty()) sawFolderInfo = true
                     if (twoSeg.isNotEmpty() && relNorm.endsWith(twoSeg)) {
                         chosenId = id
                         break
@@ -175,7 +182,7 @@ suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
                         oneSegId = id
                     }
                 }
-                if (chosenId == null) chosenId = oneSegId ?: firstId
+                if (chosenId == null) chosenId = oneSegId ?: if (sawFolderInfo) null else firstId
             }
             val lrcUri = chosenId?.let {
                 MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL, it)
