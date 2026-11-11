@@ -2067,9 +2067,6 @@ private fun AuroraApp(
                 onConnectYouTubeMusic = { cookies ->
                     scope.launch { ytMusicStore.setCookies(cookies) }
                 },
-                onConnectYouTubeMusicToken = { token ->
-                    scope.launch { ytMusicStore.setToken(token) }
-                },
                 onDisconnectYouTubeMusic = {
                     scope.launch { ytMusicStore.clear() }
                 },
