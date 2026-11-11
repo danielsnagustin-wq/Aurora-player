@@ -608,6 +608,10 @@ private fun AuroraApp(
     var listenedMs by remember { mutableStateOf(0L) }
     var listenedId by remember { mutableStateOf<Long?>(null) }
     var historyDone by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    // Ronda 14: escuchas con la inserción en Room en curso (evita el
+    // doble insert si finalizeHistory se llama dos veces seguidas, y
+    // que un insert fallido deje el id marcado como hecho).
+    var historyPending by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var queueRestored by remember { mutableStateOf(false) }
     // Último estado guardado en el widget, para no reescribirlo en
     // cada cambio de estado del reproductor.
@@ -742,13 +746,19 @@ private fun AuroraApp(
     fun finalizeHistory() {
         val id = listenedId ?: return
         val ms = listenedMs
-        if (ms < 30_000L || id in historyDone) return
-        historyDone = historyDone + id
+        if (ms < 30_000L || id in historyDone || id in historyPending) return
+        // Ronda 14: el id se marca como hecho DESPUÉS de que el insert
+        // tenga éxito (antes se marcaba antes de lanzar la corrutina y
+        // un insert fallido dejaba la escucha perdida sin reintento).
+        historyPending = historyPending + id
         scope.launch(Dispatchers.IO) {
             try {
                 db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
+                historyDone = historyDone + id
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
+            } finally {
+                historyPending = historyPending - id
             }
         }
     }
@@ -1044,8 +1054,16 @@ private fun AuroraApp(
     // batería; la corrutina en sí no consume nada mientras duerme).
     LaunchedEffect(controller, isPlaying) {
         val c = controller ?: return@LaunchedEffect
+        // Reloj monótono para medir el tiempo REAL entre iteraciones
+        // (ronda 14): el bucle duerme 500 ms pero puede tardar más por
+        // carga; contar 500 fijos infravaloraba lo escuchado y el
+        // temporizador corría también en pausa.
+        var lastTickMs = SystemClock.elapsedRealtime()
         while (true) {
             try {
+                val tickNow = SystemClock.elapsedRealtime()
+                val tickDelta = (tickNow - lastTickMs).coerceAtLeast(0L)
+                lastTickMs = tickNow
                 if (c.isPlaying || showPlayer) {
                     positionMs = c.currentPosition
                 durationMs = c.duration
@@ -1061,16 +1079,22 @@ private fun AuroraApp(
                         // "Más escuchadas" ni en reproducciones).
                         historyDone = historyDone - id
                     } else if (id != null) {
-                        listenedMs += 500L
+                        listenedMs += tickDelta
                     }
                 }
                 // Temporizador de apagado (ETAPA 5): por minutos o al final
                 // de la canción. Nunca se activa solo.
                 val until = sleepUntilMs
-                if (until != null && System.currentTimeMillis() >= until) {
-                    c.pause()
-                    sleepUntilMs = null
-                    sleepTimer = SleepTimerOption.OFF
+                if (until != null) {
+                    if (!c.isPlaying) {
+                        // En pausa el temporizador no corre: el plazo se
+                        // desplaza lo mismo que duró la pausa.
+                        sleepUntilMs = until + tickDelta
+                    } else if (System.currentTimeMillis() >= until) {
+                        c.pause()
+                        sleepUntilMs = null
+                        sleepTimer = SleepTimerOption.OFF
+                    }
                 }
                 if (sleepAtSongEnd && c.isPlaying && c.duration > 0 &&
                     c.duration - c.currentPosition < 1000
