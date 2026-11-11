@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.size
@@ -846,7 +847,7 @@ fun PlayerScreen(
             }
         }
         if (showQueue && queueTitles.isNotEmpty()) {
-            LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+            LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
                 itemsIndexed(queueTitles) { index, queueTitle ->
                     val isCurrent = index == queueIndex
                     ListItem(
@@ -1019,7 +1020,7 @@ private fun SavedQueuesDialog(
                         modifier = Modifier.padding(top = 8.dp),
                     )
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxWidth().height(240.dp)) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
                         itemsIndexed(savedQueues) { _, item ->
                             ListItem(
                                 headlineContent = { Text(item.queue.name) },
