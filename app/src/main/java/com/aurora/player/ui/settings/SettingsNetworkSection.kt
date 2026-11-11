@@ -1,18 +1,7 @@
 package com.aurora.player.ui.settings
 
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aurora.player.model.PlayerSettings
@@ -20,38 +9,18 @@ import com.aurora.player.model.StreamQuality
 import com.aurora.player.ui.design.AuroraOptionChips
 import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.ui.design.AuroraSwitchRow
-import com.aurora.player.ui.theme.auroraButtonColors
 
 /**
  * Sección Red, partida de SettingsScreen (2026-11-09, paso
- * estructural 3c): modo online, orden de proveedores de letras y
- * conexión de Spotify por cookie sp_dc. La lógica de Spotify (el
- * cliente y la tienda) sigue en SettingsScreen; aquí solo llega
- * como callbacks, para que la sección sea solo interfaz.
+ * estructural 3c): modo online, calidad de streaming y orden de
+ * proveedores de letras. Spotify vive solo en Cuenta e
+ * integraciones (ronda 7: estaba duplicado aquí).
  */
 @Composable
 fun SettingsNetworkSection(
     player: PlayerSettings,
     onSavePlayer: (PlayerSettings) -> Unit,
-    spotifyConnected: Boolean,
-    spotifyCookieText: String,
-    onSpotifyCookieTextChange: (String) -> Unit,
-    spotifyStatus: String?,
-    onDisconnectSpotify: () -> Unit,
-    onConnectSpotify: (String) -> Unit,
 ) {
-    // Inicio de sesión con Spotify dentro de la app (como BitChord,
-    // 2026-11-10): nada de copiar la cookie a mano.
-    var showSpotifyLogin by remember { mutableStateOf(false) }
-    LaunchedEffect(spotifyConnected) {
-        if (spotifyConnected) showSpotifyLogin = false
-    }
-    if (showSpotifyLogin) {
-        SpotifyLoginDialog(
-            onConnect = onConnectSpotify,
-            onDismiss = { showSpotifyLogin = false },
-        )
-    }
     // RONDA 7 P2 + 002-online-youtube: modo online. Apagado por
     // defecto: con el interruptor apagado la app no toca la red
     // jamás. Con él encendido: letras online (LRCLIB, solo si no
@@ -84,51 +53,5 @@ fun SettingsNetworkSection(
     // Letras automáticas (2026-11-10, como BitChord): el orden
     // LRCLIB → BetterLyrics → BiniLyrics es fijo y el primero que
     // encuentre la letra gana. Sin hoja para elegir proveedor.
-    // Fase 2 — Spotify como BitChord: se inicia sesión con la
-    // cuenta dentro de la app y Aurora guarda la sesión sola. Con
-    // ella se cargan TUS listas; la música suena por YouTube Music.
-    AuroraSectionHeader(title = "Spotify")
-    if (spotifyConnected) {
-        SettingsGroupDescription(
-            "Conectado con tu cuenta de Spotify. Tus listas se cargan de Spotify y suenan por YouTube Music.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        OutlinedButton(
-            onClick = onDisconnectSpotify,
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text("Desconectar Spotify")
-        }
-    } else {
-        SettingsGroupDescription(
-            "Inicia sesión con tu cuenta de Spotify y Aurora guarda la sesión en tu teléfono. Sin copiar nada a mano.",
-            modifier = Modifier.padding(top = 4.dp),
-        )
-        Button(
-            onClick = { showSpotifyLogin = true },
-            colors = auroraButtonColors(),
-            modifier = Modifier.padding(top = 8.dp),
-        ) {
-            Text("Iniciar sesión con Spotify")
-        }
-        // Respaldo manual, por si el inicio dentro de la app falla.
-        OutlinedTextField(
-            value = spotifyCookieText,
-            onValueChange = onSpotifyCookieTextChange,
-            label = { Text("Cookie sp_dc (solo si el inicio falla)") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        )
-        Button(
-            onClick = { onConnectSpotify(spotifyCookieText) },
-            colors = auroraButtonColors(),
-            modifier = Modifier.padding(top = 8.dp),
-            enabled = spotifyCookieText.isNotBlank(),
-        ) {
-            Text("Conectar Spotify")
-        }
-    }
-    spotifyStatus?.let {
-        SettingsGroupDescription(it, modifier = Modifier.padding(top = 4.dp))
-    }
+    // Spotify vive solo en Cuenta e integraciones.
 }
