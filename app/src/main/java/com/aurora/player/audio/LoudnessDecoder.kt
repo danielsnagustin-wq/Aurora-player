@@ -114,16 +114,26 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
             } else {
                 return@withContext null
             }
-            val channelCount = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
-                format.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceIn(1, 8)
+            // Conteo REAL de canales para agrupar las muestras: el
+            // acumulador solo usa 8 como máximo (BS.1770); en archivos
+            // de más de 8 canales los extra se descartan para la medida,
+            // pero agrupar con 8 rompía el alineado (ronda 9).
+            val streamChannels = if (format.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) {
+                format.getInteger(MediaFormat.KEY_CHANNEL_COUNT).coerceIn(1, 64)
             } else {
                 2
             }
+            val lufsChannels = minOf(streamChannels, 8)
             codec = MediaCodec.createDecoderByType(mime)
             codec.configure(format, null, null, 0)
             codec.start()
 
-            val accumulator = LufsAccumulator(channelCount)
+            val accumulator = LufsAccumulator(lufsChannels)
+            // La tasa y la codificación PCM son las del formato de
+            // SALIDA y pueden cambiar: se actualizan en
+            // INFO_OUTPUT_FORMAT_CHANGED (ronda 9).
+            var outSampleRate = sampleRate
+            var outEncoding = 2 // ENCODING_PCM_16BIT
             val bufferInfo = MediaCodec.BufferInfo()
             var inputEos = false
             var outputEos = false
@@ -153,8 +163,9 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
                     val outBuffer = codec.getOutputBuffer(outIndex)
                     if (outBuffer != null && bufferInfo.size > 0) {
                         decodePcmChunk(
-                            outBuffer, bufferInfo, channelCount,
-                            sampleRate, accumulator,
+                            outBuffer, bufferInfo, streamChannels,
+                            lufsChannels, outSampleRate, outEncoding,
+                            accumulator,
                         )
                     }
                     codec.releaseOutputBuffer(outIndex, false)
@@ -162,8 +173,21 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
                         outputEos = true
                     }
                 } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    // El formato de salida puede cambiar la tasa: se lee
-                    // en cada trozo desde bufferInfo, no se cachea.
+                    // El formato de salida SÍ se lee: la tasa y la
+                    // codificación PCM pueden cambiar (algunos
+                    // decodificadores entregan PCM float). Sin esto el
+                    // LUFS se medía con la tasa de entrada y tratando
+                    // todo como 16-bit (ronda 9).
+                    try {
+                        val outFormat = codec.outputFormat
+                        if (outFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                            outSampleRate = outFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        }
+                        if (outFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                            outEncoding = outFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                        }
+                    } catch (_: Exception) {
+                    }
                 }
             }
             accumulator.finish()
@@ -177,34 +201,61 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
     }
 
 /**
- * Un trozo PCM 16-bit del decodificador a muestras 48 kHz en el
+ * Un trozo PCM del decodificador a muestras 48 kHz en el
  * acumulador. El remuestreo se hace por trozo: la discontinuidad en
  * el borde es despreciable para una sonoridad integrada.
+ *
+ * Codificaciones (literales de AudioFormat, que en los tests JVM
+ * valen 0): 2 = PCM 16-bit, 4 = PCM float, 21 = PCM 24-bit
+ * empaquetado. Cualquier otra se salta: mejor sin LUFS que con un
+ * LUFS basura (ronda 9). [streamChannels] agrupa las muestras;
+ * [lufsChannels] (<= 8) es lo que mide el acumulador.
  */
 private fun decodePcmChunk(
     buffer: ByteBuffer,
     info: MediaCodec.BufferInfo,
-    channelCount: Int,
+    streamChannels: Int,
+    lufsChannels: Int,
     sampleRate: Int,
+    pcmEncoding: Int,
     accumulator: LufsAccumulator,
 ) {
+    val bytesPerSample = when (pcmEncoding) {
+        4 -> 4
+        21 -> 3
+        2 -> 2
+        else -> return
+    }
     val bytes = ByteArray(info.size)
     buffer.position(info.offset)
     buffer.get(bytes)
     val shorts = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-    val frameCount = bytes.size / 2 / channelCount
+    val floats = ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    val frameCount = bytes.size / bytesPerSample / streamChannels
     if (frameCount <= 0) return
-    val resampledChannels = List(channelCount) { ch ->
+    val resampledChannels = List(lufsChannels) { ch ->
         val mono = FloatArray(frameCount) { f ->
-            shorts[f * channelCount + ch] / 32768f
+            val idx = f * streamChannels + ch
+            when (pcmEncoding) {
+                4 -> floats.get(idx)
+                21 -> {
+                    val o = idx * 3
+                    val v = (bytes[o].toInt() and 0xFF) or
+                        ((bytes[o + 1].toInt() and 0xFF) shl 8) or
+                        (bytes[o + 2].toInt() shl 16)
+                    val signed = if (v and 0x800000 != 0) v or -0x1000000 else v
+                    signed / 8388608f
+                }
+                else -> shorts[idx] / 32768f
+            }
         }
         resampleLinear(mono, sampleRate)
     }
     val frames = resampledChannels[0].size
-    val interleaved = FloatArray(frames * channelCount)
+    val interleaved = FloatArray(frames * lufsChannels)
     for (f in 0 until frames) {
-        for (ch in 0 until channelCount) {
-            interleaved[f * channelCount + ch] =
+        for (ch in 0 until lufsChannels) {
+            interleaved[f * lufsChannels + ch] =
                 resampledChannels[ch].getOrElse(f) { 0f }
         }
     }
