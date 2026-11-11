@@ -147,22 +147,22 @@ class BiniLyricsProvider : LyricsProvider {
         ttmlToOnlineLyrics(ttml)
     }
 
+    // RONDA 153: un error de red NO es "sin letra": se propaga (el
+    // que busca cuenta los fallos) y solo un código distinto de 200
+    // devuelve null. Antes el catch tragaba timeouts y conexiones
+    // caídas como si el proveedor hubiera contestado "no hay letra".
     private fun httpGet(url: String, accept: String): String? {
-        return try {
-            val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
-            conn.setRequestProperty("Accept", accept)
-            conn.connectTimeout = 6000
-            conn.readTimeout = 6000
-            try {
-                if (conn.responseCode != 200) return null
-                conn.inputStream.bufferedReader().use { it.readText() }
-            } finally {
-                conn.disconnect()
-            }
-        } catch (_: Exception) {
-            null
+        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
+        conn.setRequestProperty("Accept", accept)
+        conn.connectTimeout = 6000
+        conn.readTimeout = 6000
+        try {
+            if (conn.responseCode != 200) return null
+            return conn.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            conn.disconnect()
         }
     }
 }
