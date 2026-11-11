@@ -463,6 +463,12 @@ fun PlayerScreen(
                             }
                             dragTotal = 0f
                         },
+                        // RONDA 86: si el gesto se cancela (otro gesto
+                        // se lo queda, se interrumpe el toque), el
+                        // total acumulado se tira: si no, quedaba para
+                        // el siguiente deslizamiento y uno corto podía
+                        // cambiar de canción sin querer.
+                        onDragCancel = { dragTotal = 0f },
                         onHorizontalDrag = { _, dragAmount -> dragTotal += dragAmount },
                     )
                 }
