@@ -20,7 +20,8 @@ package com.aurora.player.audio
  * los bits van LSB-first dentro de cada byte; los datos vienen
  * por bloques de blockSize bytes POR CANAL (primero el bloque
  * entero del canal 0, luego el del 1...).
- * DFF (spec DSDIFF 1.5): TODO big-endian; "FRM8" + chunks
+ * DFF (spec DSDIFF 1.5): todo big-endian (tamaños, tasas y canales
+ * se leen con u32be/u64be); "FRM8" + chunks
  * ("FVER", "PROP" -> "SND " -> "FS  " tasa, "CHNL" canales,
  * "DSD " datos). Channel Byte = 8 muestras de 1 canal, el bit
  * más significativo es el más antiguo (MSB-first). Los datos van
