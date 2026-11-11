@@ -274,11 +274,17 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
     val history = root.obj("history").arr() ?: return null
     val queueObj = root.obj("queue") ?: return null
     val presets = root.obj("eqPresets").arr() ?: return null
+    // RONDA 36: estricto con las entradas de las listas. Antes un
+    // favorito, una canción de lista o una entrada de historial dañada
+    // se descartaba en silencio (mapNotNull) y el archivo pasaba la
+    // validación; al restaurar, restoreBackup borra primero los datos
+    // reales y solo guarda lo que sobrevivió. Ahora cualquier entrada
+    // dañada invalida el archivo entero y no se restaura nada.
     return BackupData(
         createdAtMs = createdAt,
-        playlists = playlists.mapNotNull { pl ->
-            val name = pl.obj("name").str() ?: return@mapNotNull null
-            val songs = pl.obj("songs").arr()?.mapNotNull(::refFromJson) ?: return@mapNotNull null
+        playlists = playlists.map { pl ->
+            val name = pl.obj("name").str() ?: return null
+            val songs = pl.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: return null
             BackupPlaylist(
                 name = name,
                 createdAt = pl.obj("createdAt").long() ?: 0L,
@@ -286,25 +292,25 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
                 songs = songs,
             )
         },
-        favorites = favorites.mapNotNull(::refFromJson),
-        history = history.mapNotNull { h ->
-            val song = refFromJson(h.obj("song")) ?: return@mapNotNull null
+        favorites = favorites.map { refFromJson(it) ?: return null },
+        history = history.map { h ->
+            val song = refFromJson(h.obj("song")) ?: return null
             BackupHistoryEntry(
                 song = song,
-                playedAt = h.obj("playedAt").long() ?: return@mapNotNull null,
+                playedAt = h.obj("playedAt").long() ?: return null,
                 durationListenedMs = h.obj("durationListenedMs").long() ?: 0L,
             )
         },
         theme = themeSettingsFromJsonValue(root.obj("theme")),
         player = playerFromJson(root.obj("player")),
         queue = BackupQueue(
-            songs = queueObj.obj("songs").arr()?.mapNotNull(::refFromJson) ?: emptyList(),
+            songs = queueObj.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: emptyList(),
             index = queueObj.obj("index").long()?.toInt() ?: 0,
             positionMs = queueObj.obj("positionMs").long() ?: 0L,
         ),
-        eqPresets = presets.mapNotNull { p ->
-            val name = p.obj("name").str() ?: return@mapNotNull null
-            val levels = p.obj("levelsDb").arr()?.mapNotNull { it.double()?.toFloat() } ?: return@mapNotNull null
+        eqPresets = presets.map { p ->
+            val name = p.obj("name").str() ?: return null
+            val levels = p.obj("levelsDb").arr()?.map { it.double()?.toFloat() ?: return null } ?: return null
             BackupEqPreset(name, levels)
         },
     )
