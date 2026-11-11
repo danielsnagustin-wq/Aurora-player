@@ -84,7 +84,7 @@ class EqStateStore(context: Context) {
         val parts = raw.split("|")
         if (parts.size !in 4..5) return null
         val levels = parts[1].split(",").mapNotNull { it.toFloatOrNull() }
-            .takeIf { it.size == 10 } ?: return null
+            .takeIf { it.size == 10 }?.map { it.coerceIn(-15f, 15f) } ?: return null
         val tone = if (parts.size == 5) {
             parts[4].split(",").mapNotNull { it.toFloatOrNull() }
                 .takeIf { it.size == 2 } ?: return null
