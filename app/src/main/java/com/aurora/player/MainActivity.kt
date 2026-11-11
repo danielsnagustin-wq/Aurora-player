@@ -775,7 +775,31 @@ private fun AuroraApp(
     fun finalizeHistory() {
         val id = listenedId ?: return
         val ms = listenedMs
-        if (ms < 30_000L || id in historyDone || id in historyPending) return
+        if (ms < 30_000L || id in historyDone) return
+        if (id in historyPending) {
+            // RONDA 98: la inserción periódica está en curso: si se
+            // vuelve sin más, la fila queda hasta 10 s corta (la
+            // duración final nunca se escribe). Se espera a que la
+            // inserción aterrice y se actualiza entonces; si no hay
+            // fila (la inserción falló), se crea.
+            val at = historyFlushedAt
+            if (at != null && historyFlushedId == id) {
+                val finalMs = ms
+                scope.launch(Dispatchers.IO) {
+                    delay(500)
+                    try {
+                        val updated = db.libraryDao().updateHistoryDuration(id, at, finalMs)
+                        if (updated == 0) {
+                            db.libraryDao().addHistory(PlayHistoryEntity(id, at, finalMs))
+                        }
+                        historyDone = historyDone + id
+                    } catch (e: Exception) {
+                        ErrorLog.log(context, "Historial", e)
+                    }
+                }
+            }
+            return
+        }
         val at = historyFlushedAt
         if (at != null && historyFlushedId == id) {
             // RONDA 85: esta escucha ya está en Room (el bucle la
