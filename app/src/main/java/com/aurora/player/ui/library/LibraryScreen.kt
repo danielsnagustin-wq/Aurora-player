@@ -1021,7 +1021,12 @@ private fun DuplicatesDialog(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 LazyColumn(modifier = Modifier.fillMaxWidth().height(300.dp)) {
-                    items(groups) { group ->
+                    // Ronda 5 (fluidez): clave estable por grupo
+                    // (título + artista + duración lo identifican).
+                    items(
+                        groups,
+                        key = { "${it.title}|${it.artist}|${it.durationMs}" },
+                    ) { group ->
                         ListItem(
                             headlineContent = {
                                 Text(
