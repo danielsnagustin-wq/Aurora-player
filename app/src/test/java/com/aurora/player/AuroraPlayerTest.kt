@@ -112,6 +112,32 @@ class AuroraPlayerTest {
     }
 
     @Test
+    fun `M3U resuelve rutas relativas por sufijo`() {
+        val library = listOf(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            "/storage/emulated/0/Música/pop/tema.flac",
+        )
+        assertEquals(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            M3u.matchBySuffix("rock/cancion.mp3", library),
+        )
+        assertEquals(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            M3u.matchBySuffix("../Música/rock/cancion.mp3", library),
+        )
+        assertEquals(
+            "/storage/emulated/0/Música/pop/tema.flac",
+            M3u.matchBySuffix("Música\\pop\\tema.flac", library),
+        )
+        assertEquals(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            M3u.matchBySuffix("cancion.mp3", library),
+        )
+        assertNull(M3u.matchBySuffix("otra/cancion.mp3", library))
+        assertNull(M3u.matchBySuffix("", library))
+    }
+
+    @Test
     fun `M3U ignora directivas desconocidas y lineas vacias`() {
         val parsed = M3u.parse("#EXTM3U\n#EXTINF:120,A - B\n\n/song.mp3\n#UNKNOWN:1\n")
         assertEquals(1, parsed.size)
