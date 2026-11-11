@@ -143,7 +143,16 @@ suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
             )
             val selection = "${MediaStore.Files.FileColumns.DISPLAY_NAME} = ?"
             val folder = audio.parentFile?.name.orEmpty()
+            // RONDA 67: comparar los dos últimos segmentos de la
+            // carpeta ("Música/Álbum") antes que solo el último
+            // ("Álbum"): dos carpetas con el mismo nombre final en
+            // rutas distintas ya no se confunden. Si no hay dos
+            // segmentos útiles, se usa el nombre final como antes.
+            val twoSeg = audio.parentFile?.path.orEmpty()
+                .split('/').filter { it.isNotEmpty() }.takeLast(2)
+                .takeIf { it.size == 2 }?.joinToString("/") ?: ""
             var chosenId: Long? = null
+            var oneSegId: Long? = null
             resolver.query(uri, projection, selection, arrayOf(lrcName), null)?.use { cursor ->
                 val idCol = cursor.getColumnIndex(MediaStore.Files.FileColumns._ID)
                 val pathCol = cursor.getColumnIndex(MediaStore.Files.FileColumns.RELATIVE_PATH)
@@ -157,12 +166,16 @@ suspend fun loadLyricsForPath(context: Context, path: String): List<LrcLine> =
                     } else {
                         ""
                     }
-                    if (folder.isNotEmpty() && rel.trimEnd('/').endsWith(folder)) {
+                    val relNorm = rel.trimEnd('/')
+                    if (twoSeg.isNotEmpty() && relNorm.endsWith(twoSeg)) {
                         chosenId = id
                         break
                     }
+                    if (oneSegId == null && folder.isNotEmpty() && relNorm.endsWith(folder)) {
+                        oneSegId = id
+                    }
                 }
-                if (chosenId == null) chosenId = firstId
+                if (chosenId == null) chosenId = oneSegId ?: firstId
             }
             val lrcUri = chosenId?.let {
                 MediaStore.Files.getContentUri(MediaStore.VOLUME_EXTERNAL, it)
