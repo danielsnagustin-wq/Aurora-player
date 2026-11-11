@@ -573,6 +573,17 @@ private fun AuroraApp(
             }
         }
     }
+    // Ronda 7b: cookies de YouTube Music caducadas (401 sin token
+    // OAuth): no hay refresco silencioso, se borran para que la
+    // búsqueda caiga a anónimo y se avisa para volver a entrar.
+    val onYtCookiesRejected: () -> Unit = {
+        scope.launch { ytMusicStore.setCookies("") }
+        Toast.makeText(
+            context,
+            "Tu sesión de YouTube Music caducó. Vuelve a iniciar sesión en Ajustes → Cuenta.",
+            Toast.LENGTH_LONG,
+        ).show()
+    }
     val queueStore = remember { QueueStore(context) }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
@@ -1736,6 +1747,7 @@ private fun AuroraApp(
                 ytMusicCookies = ytMusicCookies,
                 ytMusicToken = ytMusicToken,
                 onYtTokenRejected = onYtTokenRejected,
+                onYtCookiesRejected = onYtCookiesRejected,
                 streamQuality = playerSettings.streamQuality,
                 onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
                 modifier = Modifier.padding(padding),
