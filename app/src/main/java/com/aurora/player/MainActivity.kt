@@ -587,6 +587,26 @@ private fun AuroraApp(
         ).show()
     }
     val queueStore = remember { QueueStore(context) }
+    // RONDA 39: guardar la cola periódicamente mientras suena —
+    // antes solo se guardaba al cambiar de pista o al pausar, así que
+    // cerrar la app a la fuerza a mitad de una canción retomaba desde
+    // un minuto viejo. Se escribe como mucho cada 10 s (ver el bucle
+    // de progreso), no en cada tick de 500 ms.
+    val persistQueue: (MediaController) -> Unit = { c ->
+        scope.launch {
+            try {
+                queueStore.save(
+                    (0 until c.mediaItemCount).mapNotNull {
+                        c.getMediaItemAt(it).mediaId.toLongOrNull()
+                    },
+                    c.currentMediaItemIndex,
+                    c.currentPosition,
+                )
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Guardar cola", e)
+            }
+        }
+    }
     // SPEC 005 FR-004: respaldo automático al abrir (si está activo
     // y pasaron más de 24 h desde el último). Nunca tumba el arranque.
     LaunchedEffect(Unit) {
@@ -921,21 +941,7 @@ private fun AuroraApp(
             }
 
             /** Guarda la cola actual (ids + índice + posición). */
-            private fun saveQueue(c: MediaController) {
-                scope.launch {
-                    try {
-                        queueStore.save(
-                            (0 until c.mediaItemCount).mapNotNull {
-                                c.getMediaItemAt(it).mediaId.toLongOrNull()
-                            },
-                            c.currentMediaItemIndex,
-                            c.currentPosition,
-                        )
-                    } catch (e: Exception) {
-                        ErrorLog.log(context, "Guardar cola", e)
-                    }
-                }
-            }
+            private fun saveQueue(c: MediaController) { persistQueue(c) }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 finalizeHistory()
@@ -1066,6 +1072,7 @@ private fun AuroraApp(
         // carga; contar 500 fijos infravaloraba lo escuchado y el
         // temporizador corría también en pausa.
         var lastTickMs = SystemClock.elapsedRealtime()
+        var lastQueueSaveMs = SystemClock.elapsedRealtime()
         while (true) {
             try {
                 val tickNow = SystemClock.elapsedRealtime()
@@ -1087,6 +1094,14 @@ private fun AuroraApp(
                         historyDone = historyDone - id
                     } else if (id != null) {
                         listenedMs += tickDelta
+                    }
+                    // RONDA 39: guardar la posición cada 10 s mientras
+                    // suena, para que un cierre forzoso retome cerca de
+                    // donde iba (antes solo se guardaba al cambiar de
+                    // pista o al pausar).
+                    if (tickNow - lastQueueSaveMs >= 10_000L) {
+                        lastQueueSaveMs = tickNow
+                        persistQueue(c)
                     }
                 }
                 // Temporizador de apagado (ETAPA 5): por minutos o al final
