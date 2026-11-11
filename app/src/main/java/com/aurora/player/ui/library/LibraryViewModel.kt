@@ -146,6 +146,15 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 _favoriteIds.value = ids.toSet()
             }
         }
+        // Ronda 17: estadísticas en vivo — las listas inteligentes
+        // ("Más escuchadas", "Escuchadas recientemente") se
+        // actualizaban solo al reabrir la pestaña Listas; ahora Room
+        // avisa de cada escucha nueva y enrichedSongs se recalcula.
+        viewModelScope.launch(Dispatchers.IO) {
+            db.libraryDao().statsPerSongFlow().collect { rows ->
+                _stats.value = rows.associateBy { it.songId }
+            }
+        }
         // SPEC 005 FR-006: si las carpetas excluidas cambian (desde
         // la pestaña Carpetas o desde Ajustes), recargar la
         // biblioteca con el nuevo conjunto. La primera emisión no
