@@ -258,6 +258,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             // escaneo, para filtrarlas fuera de todo.
             val excluded = folderStore.excludedFlow.first()
             lastExcluded = excluded
+            var loadFailed = false
             val (songs, albums, artists) = try {
                 withContext(Dispatchers.IO) {
                     // ETAPA 4: la duración mínima guardada en Ajustes sí se
@@ -279,6 +280,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 // La biblioteca nunca se queda en "Cargando…" para
                 // siempre: un fallo muestra el estado vacío.
                 ErrorLog.log(getApplication(), "Cargar biblioteca", e)
+                loadFailed = true
                 Triple(emptyList(), emptyList(), emptyList())
             }
             _duplicateGroups.value = songs
@@ -291,6 +293,10 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (songs.isEmpty()) LibraryUiState.Empty
                 else LibraryUiState.Loaded(songs, albums, artists)
             _scanError.value = repository.lastLoadError
+                // RONDA 54: si falló otra cosa del try (leer ajustes,
+                // agrupar álbumes/artistas), lastLoadError no lo cubre
+                // y la pantalla diría "biblioteca vacía" en vez de avisar.
+                ?: if (loadFailed) "No se pudo escanear la biblioteca. Revisa el permiso de música e inténtalo otra vez." else null
             _stats.value = withContext(Dispatchers.IO) {
                 db.libraryDao().statsPerSong().associateBy { it.songId }
             }
