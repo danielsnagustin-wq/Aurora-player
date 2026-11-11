@@ -274,6 +274,28 @@ object BackupManager {
             }
             val queueIds = matchedIds(data.queue.songs)
 
+            // RONDA 63: primero lo que NO se puede deshacer dentro de
+            // la transacción (ajustes, cola, presets) y la transacción
+            // de la biblioteca AL FINAL. Antes era al revés: si una
+            // escritura de ajustes fallaba, las listas/favoritos/
+            // historial ya estaban borrados y la restauración quedaba
+            // a medias sin vuelta atrás.
+            ThemeSettingsStore(appContext).save(data.theme)
+            PlayerSettingsStore(appContext).save(data.player)
+            QueueStore(appContext).save(
+                queueIds,
+                data.queue.index.coerceIn(0, (queueIds.size - 1).coerceAtLeast(0)),
+                data.queue.positionMs,
+            )
+            val presetStore = CustomPresetStore(appContext)
+            val backupNames = data.eqPresets.map { it.name.trim().take(40) }.toSet()
+            // Guardar los del respaldo ANTES de borrar los viejos: si
+            // una escritura falla, los presets viejos siguen ahí.
+            for (preset in data.eqPresets) presetStore.save(preset.name, preset.levelsDb)
+            for (preset in presetStore.presetsFlow.first()) {
+                if (preset.name !in backupNames) presetStore.delete(preset.name)
+            }
+
             db.withTransaction {
                 val playlistDao = db.playlistDao()
                 val libraryDao = db.libraryDao()
@@ -299,17 +321,6 @@ object BackupManager {
                     )
                 }
             }
-            ThemeSettingsStore(appContext).save(data.theme)
-            PlayerSettingsStore(appContext).save(data.player)
-            QueueStore(appContext).save(
-                queueIds,
-                data.queue.index.coerceIn(0, (queueIds.size - 1).coerceAtLeast(0)),
-                data.queue.positionMs,
-            )
-            val presetStore = CustomPresetStore(appContext)
-            val existing = presetStore.presetsFlow.first()
-            for (preset in existing) presetStore.delete(preset.name)
-            for (preset in data.eqPresets) presetStore.save(preset.name, preset.levelsDb)
             RestoreReport(
                 playlistsRestored = data.playlists.size,
                 favoritesRestored = favIds.size,
