@@ -156,7 +156,7 @@ class ThemeTest {
     fun `Claro con tarjeta de fabrica es clara, no negra`() {
         val def = ThemeSettings.DEFAULT
         assertEquals(Color(0xFFF2F2F2), resolveSurfaceColor(def, useDark = false))
-        assertEquals(Color(0xFF111111), resolveSurfaceColor(def, useDark = true))
+        assertEquals(Color(0xFF17171B), resolveSurfaceColor(def, useDark = true))
         val custom = def.copy(cardHex = "#223344")
         assertEquals(Color(0xFF223344), resolveSurfaceColor(custom, useDark = false))
     }
