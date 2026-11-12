@@ -25,4 +25,26 @@
         <item name="android:textColorPrimary">@color/silver</item>
         <item name="android:textColor">@color/silver</item>
     </style>
+
+    <!-- CAST (2026-11-12): tema propio del botón de Chromecast. El
+         constructor de MediaRouteButton re-tematiza su contexto por
+         dentro (createThemedButtonContext) y lo que resuelve es el
+         colorPrimary de AppCompat (verificado en el bytecode de
+         mediarouter 1.6.0: getControllerColor → getThemeColor(ctx, 0,
+         colorPrimary) → calculateContrast(blanco, colorPrimary)); si
+         resuelve a #0 transparente, calculateContrast tira
+         IllegalArgumentException y la app se cierra al abrir el
+         reproductor (12 FATAL en el log del 11 nov, CastButton.kt:28).
+         Theme.AuroraPlayer ya define colorPrimary opaco, pero el
+         botón no debe depender del tema de la actividad: este overlay
+         fija aquí mismo, opacos, todos los atributos que el botón y
+         sus diálogos resuelven. -->
+    <style name="ThemeOverlay.Aurora.CastButton" parent="Theme.MediaRouter">
+        <item name="colorPrimary">@color/ice_blue</item>
+        <item name="colorPrimaryDark">@color/amoled_background</item>
+        <item name="colorAccent">@color/ice_blue</item>
+        <item name="android:colorBackground">@color/amoled_background</item>
+        <item name="android:textColorPrimary">@color/silver</item>
+        <item name="android:textColor">@color/silver</item>
+    </style>
 </resources>
