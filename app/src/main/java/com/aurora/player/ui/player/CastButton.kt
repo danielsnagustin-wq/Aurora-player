@@ -6,6 +6,7 @@ import android.view.View
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -14,18 +15,21 @@ import com.aurora.player.util.ErrorLog
 import com.google.android.gms.cast.framework.CastButtonFactory
 
 /**
- * Cast (Fase 2 app), Serie B: el botón del Chromecast en la
- * cabecera del reproductor. Es el MediaRouteButton del framework:
- * descubre los dispositivos de la red y abre su selector al tocar.
- * Sin Play Services o sin dispositivos, el botón simplemente no
- * muestra nada: nunca se finge un dispositivo.
+ * Cast (Fase 2 app), Serie B: el botón del Chromecast en el
+ * reproductor. Es el MediaRouteButton del framework: descubre los
+ * dispositivos de la red y abre su selector al tocar. Sin Play
+ * Services o sin dispositivos, el botón simplemente no muestra nada:
+ * nunca se finge un dispositivo.
  *
  * En cast-framework 21.4.0 la versión síncrona de
  * setUpMediaRouteButton(context, button) no está; se usa la que
  * devuelve Task con un Executor (el principal).
+ *
+ * MENÚ ⋮ (2026-11-11): el botón vive en la fila de acciones (24 dp,
+ * como los demás iconos), no en la cabecera.
  */
 @Composable
-fun CastButton(modifier: Modifier = Modifier) {
+fun CastButton(modifier: Modifier = Modifier, size: Dp = 48.dp) {
     AndroidView(
         factory = { ctx: Context ->
             // RONDA CAST-CRASH 2026-11-11: el constructor de
@@ -56,6 +60,6 @@ fun CastButton(modifier: Modifier = Modifier) {
                 View(ctx)
             }
         },
-        modifier = modifier.size(48.dp),
+        modifier = modifier.size(size),
     )
 }
