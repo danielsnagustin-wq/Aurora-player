@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -33,6 +32,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.filled.PlaylistAdd
+import com.aurora.player.data.PlaylistEntity
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
@@ -54,9 +56,22 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Album
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BugReport
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.HeartBroken
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QueueMusic
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
@@ -93,6 +108,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
@@ -118,6 +134,7 @@ import com.aurora.player.ui.theme.contrastOn
 import com.aurora.player.playback.AudioEffects
 import com.aurora.player.ui.theme.coverShapeToCornerPercent
 import com.aurora.player.ui.theme.dominantColor
+import com.aurora.player.ui.theme.relativeLuminance
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
 import com.aurora.player.util.shareVerse
@@ -151,14 +168,6 @@ fun swipeDirection(totalPx: Float, threshold: Float = 100f): Int = when {
     totalPx > threshold -> -1
     else -> 0
 }
-
-/**
- * Gesto de volumen: deslizamiento vertical sobre la portada.
- * Cada umbral recorrido es un paso de volumen (negativo = subir,
- * el dedo sube; positivo = bajar, el dedo baja). 0 = sin paso.
- */
-fun volumeStepsForDrag(totalPx: Float, threshold: Float): Int =
-    (totalPx / threshold).toInt()
 
 /**
  * AUDITORÍA (2026-11-09): la velocidad se mostraba con "%.2g", que
@@ -224,6 +233,30 @@ fun PlayerScreen(
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
     isFavorite: Boolean = false,
     onToggleFavorite: () -> Unit = {},
+    // MENÚ ⋮ (2026-11-11, como BitChord): la fila superior (Me
+    // gusta / No me gusta / Compartir) y las acciones de la pista
+    // actual. Lo que ya se muestra como botón (Favorito, Letras,
+    // Ecualizador) NO se duplica en el menú. Dormir vive solo en el
+    // menú (desde 2026-11-11 ya no tiene botón propio).
+    isOnline: Boolean = false,
+    isDisliked: Boolean = false,
+    isCached: Boolean = false,
+    songPath: String? = null,
+    onShareSong: () -> Unit = {},
+    onPlayNextCurrent: () -> Unit = {},
+    onAddToQueueCurrent: () -> Unit = {},
+    onStartRadio: () -> Unit = {},
+    onShowVideo: () -> Unit = {},
+    onImproveQuality: () -> Unit = {},
+    onDownload: () -> Unit = {},
+    onRemoveFromCache: () -> Unit = {},
+    onOpenAlbum: () -> Unit = {},
+    onOpenArtist: () -> Unit = {},
+    onToggleDislike: () -> Unit = {},
+    onShareErrorLog: () -> Unit = {},
+    playlists: List<PlaylistEntity> = emptyList(),
+    onAddToPlaylist: (Long) -> Unit = {},
+    onCreatePlaylistAndAdd: (String) -> Unit = {},
     lyricsOffsetMs: Int = 0,
     onLyricsOffsetChange: (Int) -> Unit = {},
     onSaveLyrics: (List<LrcLine>) -> Unit = {},
@@ -237,7 +270,6 @@ fun PlayerScreen(
     // Fase 2 app — Cast: nombre del dispositivo al que se está
     // enviando (null = sin sesión activa).
     castDeviceName: String? = null,
-    volumeGestureEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     // REFINAMIENTO (2026-11-10, como BitChord): "A continuación"
@@ -247,12 +279,11 @@ fun PlayerScreen(
     var showLyrics by remember { mutableStateOf(false) }
     var showTranslation by remember { mutableStateOf(true) }
     var sleepMenuOpen by remember { mutableStateOf(false) }
+    // MENÚ ⋮ (2026-11-11, como BitChord).
+    var songMenuOpen by remember { mutableStateOf(false) }
+    var showSongInfo by remember { mutableStateOf(false) }
+    var showAddToPlaylist by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
-    var dragTotalY by remember { mutableStateOf(0f) }
-    // Posición mientras se arrastra la barra: se busca UNA sola vez al
-    // soltar, no en cada paso del arrastre (antes se pedían decenas de
-    // seeks por segundo y el sonido se entrecortaba).
-    var sliderPosition by remember { mutableStateOf<Float?>(null) }
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
     // de caché o medidos en segundo plano al cambiar de pista. Las
     // pistas online (https) no se miden: nunca se dibuja una onda
@@ -381,14 +412,31 @@ fun PlayerScreen(
         }
         // Sobre la portada de fondo, un degradado a negro para que el
         // texto y los controles se lean siempre.
+        // RONDA LETRAS 2026-11-11 (brillo): el velo era 0.35 arriba /
+        // TRANSPARENTE en el centro / 0.8 abajo, y el título y el
+        // artista van justo en el centro: con una portada clara se
+        // veían lavados (captura "Fuze (Kotori Remix)"). Ahora el
+        // velo es oscuro en toda la pantalla.
+        // UI-2 (2026-11-11): el velo era fijo (0.6/0.55/0.85) y con
+        // portadas oscuras apagaba el color para nada; con portadas
+        // claras hacía falta oscuro (RONDA LETRAS: el título se
+        // lavaba). Ahora se gradúa por la luminosidad del color
+        // dominante de la portada: oscura → velo ligero, clara →
+        // velo fuerte (nunca más flojo que el probado con claras).
+        val veilLum = remember(coverBlurBitmap) {
+            coverBlurBitmap?.let { dominantColor(it) }?.let { relativeLuminance(it) } ?: 0.5f
+        }
+        val veilTop = 0.35f + 0.3f * veilLum
+        val veilMid = 0.3f + 0.3f * veilLum
+        val veilBottom = 0.6f + 0.3f * veilLum
         if (playerBackground == PlayerBackground.COVER && coverBlurBitmap != null) {
             Box(
                 modifier = Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
                         listOf(
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.35f),
-                            Color.Transparent,
-                            MaterialTheme.colorScheme.background.copy(alpha = 0.8f),
+                            MaterialTheme.colorScheme.background.copy(alpha = veilTop),
+                            MaterialTheme.colorScheme.background.copy(alpha = veilMid),
+                            MaterialTheme.colorScheme.background.copy(alpha = veilBottom),
                         ),
                     ),
                 ),
@@ -409,7 +457,88 @@ fun PlayerScreen(
             IconButton(onClick = onClose) {
                 Icon(Icons.Filled.Close, contentDescription = "Cerrar")
             }
-            CastButton()
+            Box {
+                IconButton(onClick = { songMenuOpen = true }) {
+                    Icon(Icons.Filled.MoreVert, contentDescription = "Más opciones")
+                }
+                SongOptionsMenu(
+                    expanded = songMenuOpen,
+                    onDismiss = { songMenuOpen = false },
+                    title = title,
+                    artist = artist,
+                    album = album,
+                    isFavorite = isFavorite,
+                    isDisliked = isDisliked,
+                    isOnline = isOnline,
+                    isCached = isCached,
+                    accent = accent,
+                    onToggleFavorite = onToggleFavorite,
+                    onToggleDislike = onToggleDislike,
+                    onShareSong = onShareSong,
+                    onImproveQuality = onImproveQuality,
+                    onShowVideo = onShowVideo,
+                    onStartRadio = onStartRadio,
+                    onPlayNextCurrent = onPlayNextCurrent,
+                    onAddToQueueCurrent = onAddToQueueCurrent,
+                    onDownload = onDownload,
+                    onRemoveFromCache = onRemoveFromCache,
+                    onOpenAlbum = onOpenAlbum,
+                    onOpenArtist = onOpenArtist,
+                    onShowSongInfo = { showSongInfo = true },
+                    onShowAddToPlaylist = { showAddToPlaylist = true },
+                    onOpenSleepMenu = { sleepMenuOpen = true },
+                    onOpenLyrics = { showLyrics = true },
+                    onShareErrorLog = onShareErrorLog,
+                )
+                // MENÚ ⋮ (2026-11-11): Dormir ya no tiene botón propio;
+                // su desplegable vive aquí, anclado al ⋮.
+                DropdownMenu(
+                    expanded = sleepMenuOpen,
+                    onDismissRequest = { sleepMenuOpen = false },
+                ) {
+                    SleepTimerOption.entries.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (option == sleepTimer) "✓ ${option.label}" else option.label,
+                                )
+                            },
+                            onClick = {
+                                onSleepTimerSelected(option)
+                                sleepMenuOpen = false
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        // MENÚ ⋮ Stage 2: añadir la pista actual a una lista.
+        if (showAddToPlaylist) {
+            AddToPlaylistDialog(
+                playlists = playlists,
+                onDismiss = { showAddToPlaylist = false },
+                onAddToPlaylist = { id ->
+                    showAddToPlaylist = false
+                    onAddToPlaylist(id)
+                },
+                onCreatePlaylistAndAdd = { name ->
+                    showAddToPlaylist = false
+                    onCreatePlaylistAndAdd(name)
+                },
+            )
+        }
+        // MENÚ ⋮: información de la canción.
+        if (showSongInfo) {
+            SongInfoDialog(
+                title = title,
+                artist = artist,
+                album = album,
+                durationMs = durationMs,
+                qualityText = qualityText,
+                songPath = songPath,
+                isOnline = isOnline,
+                onDismiss = { showSongInfo = false },
+            )
         }
         if (castDeviceName != null) {
             Text(
@@ -516,35 +645,11 @@ fun PlayerScreen(
                         onTap = { canvasControlsVisible = true; canvasHideKey++ },
                     )
                 }
-                .pointerInput(volumeGestureEnabled) {
-                    // Fase 1b: deslizar vertical sobre la portada
-                    // sube/baja el volumen; la barra del sistema
-                    // (FLAG_SHOW_UI) es la que da la respuesta visual.
-                    detectVerticalDragGestures(
-                        onDragEnd = { dragTotalY = 0f },
-                        onVerticalDrag = { _, dragAmount ->
-                            if (!volumeGestureEnabled) return@detectVerticalDragGestures
-                            dragTotalY += dragAmount
-                            val steps = volumeStepsForDrag(dragTotalY, swipeThresholdPx)
-                            if (steps != 0) {
-                                val direction = if (steps > 0) AudioManager.ADJUST_LOWER
-                                else AudioManager.ADJUST_RAISE
-                                repeat(kotlin.math.abs(steps)) {
-                                    audioManager.adjustStreamVolume(
-                                        AudioManager.STREAM_MUSIC,
-                                        direction,
-                                        AudioManager.FLAG_SHOW_UI,
-                                    )
-                                }
-                                dragTotalY -= steps * swipeThresholdPx
-                            }
-                        },
-                    )
-                },
         ) {
             if (canvasUrl != null) {
                 CanvasVideo(
                     url = canvasUrl,
+                    isPlaying = isPlaying,
                     modifier = Modifier.fillMaxSize().clip(coverCorner),
                 )
             } else {
@@ -572,7 +677,9 @@ fun PlayerScreen(
         Text(
             title,
             style = MaterialTheme.typography.titleLarge.copy(
-                fontSize = 26.sp,
+                // UI-2 (2026-11-11): 26.sp ExtraBold se sentía pesado
+                // y poco refinado; 24.sp mantiene la jerarquía.
+                fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold,
             ),
             maxLines = 2,
@@ -583,13 +690,15 @@ fun PlayerScreen(
             Text(
                 artist,
                 style = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 17.sp,
+                    // UI-2 (2026-11-11): el artista baja de tamaño y
+                    // de contraste para que el título mande.
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
@@ -669,38 +778,19 @@ fun PlayerScreen(
                 )
             }
         }
-        val duration = durationMs.coerceAtLeast(0L)
-        val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
-        WaveformSeekBar(
-            peaks = waveformPeaks,
-            value = shownPosition,
-            onValueChange = { sliderPosition = it },
-            onValueChangeFinished = {
-                sliderPosition?.let { onSeek(it.toLong()) }
-                sliderPosition = null
-            },
-            valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
+        PlayerSeekBar(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            waveformPeaks = waveformPeaks,
             accent = accent,
-            dimmed = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            onSeek = onSeek,
+            songUri = songUri,
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp).alpha(controlsAlpha),
         )
+        // UI-2 (2026-11-11): más aire alrededor del grupo principal
+        // (play/pausa, anterior, siguiente, aleatorio, repetir).
         Row(
-            modifier = Modifier.fillMaxWidth().alpha(controlsAlpha),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                TimeFormat.formatDuration(shownPosition.toLong()),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                TimeFormat.formatDuration(duration),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp).alpha(controlsAlpha),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp).alpha(controlsAlpha),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -804,50 +894,25 @@ fun PlayerScreen(
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
-            Box {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.clickable { sleepMenuOpen = true },
-                ) {
-                    Icon(
-                        Icons.Filled.Timer,
-                        contentDescription = "Temporizador de apagado",
-                        tint = if (sleepTimer == SleepTimerOption.OFF) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            accent
-                        },
-                    )
-                    Text(
-                        "Dormir",
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                }
-                DropdownMenu(
-                    expanded = sleepMenuOpen,
-                    onDismissRequest = { sleepMenuOpen = false },
-                ) {
-                    SleepTimerOption.entries.forEach { option ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    if (option == sleepTimer) "✓ ${option.label}" else option.label,
-                                )
-                            },
-                            onClick = {
-                                onSleepTimerSelected(option)
-                                sleepMenuOpen = false
-                            },
-                        )
-                    }
-                }
+            // MENÚ ⋮ (2026-11-11): Dormir se mudó al menú ⋮ y su hueco
+            // lo ocupa el Chromecast (el botón ya no está en la cabecera).
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CastButton(size = 24.dp)
+                Text(
+                    "Chromecast",
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
         // ETAPA 4: velocidad real y cola visible (tocar salta a esa pista).
         // RONDA 6: tono independiente, al lado de la velocidad.
+        // UI-2 (2026-11-11): velocidad/tono/cola son acciones
+        // secundarias: se separan visualmente del grupo principal.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 20.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1130,6 +1195,67 @@ private fun karaokeLineText(
 }
 
 /**
+ * RONDA LENTITUD (2026-11-11): la barra de progreso con sus tiempos.
+ * El estado del arrastre (sliderPosition) vive AQUÍ, no en la
+ * pantalla: antes cada movimiento del dedo recomponía TODA la
+ * pantalla del reproductor (portada, cola, letras...) a 60 Hz y
+ * recorrer la música se sentía super lento. Ahora el arrastre solo
+ * recompone esta barra; la pantalla solo se actualiza con el tick
+ * de 500 ms y al soltar se hace un solo seek.
+ */
+@Composable
+private fun PlayerSeekBar(
+    positionMs: Long,
+    durationMs: Long,
+    waveformPeaks: List<Float>,
+    accent: Color,
+    onSeek: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+    // R180 (2026-11-11): el arrastre vivía en un remember sin clave:
+    // si la canción cambiaba a mitad del arrastre, al soltar se hacía
+    // seek en la canción NUEVA con la posición de la VIEJA. La clave
+    // es la canción (mismo patrón que LaunchedEffect(songUri)).
+    songUri: Uri? = null,
+) {
+    var sliderPosition by remember(songUri) { mutableStateOf<Float?>(null) }
+    val duration = durationMs.coerceAtLeast(0L)
+    val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
+    Column(modifier = modifier) {
+        WaveformSeekBar(
+            peaks = waveformPeaks,
+            value = shownPosition,
+            onValueChange = { sliderPosition = it },
+            onValueChangeFinished = {
+                sliderPosition?.let { onSeek(it.toLong()) }
+                sliderPosition = null
+            },
+            valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
+            accent = accent,
+            dimmed = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // UI-2 (2026-11-11): los tiempos iban pegados a la forma de
+        // onda; 4 dp de aire y el transcurrido en acento (la
+        // posición se lee sin saturar la barra de color).
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                TimeFormat.formatDuration(shownPosition.toLong()),
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                color = accent,
+            )
+            Text(
+                TimeFormat.formatDuration(duration),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
  * Lineas de la letra (sincronizadas + karaoke palabra por palabra +
  * traduccion debajo). Compartida por la vista a pantalla completa;
  * antes vivia incrustada en el reproductor.
@@ -1161,7 +1287,23 @@ private fun LyricsLines(
             key = { index, line -> "$index|${line.timeMs}" },
         ) { index, line ->
             val isCurrent = index == currentLine
-            Column(modifier = Modifier.fillMaxWidth()) {
+            // RONDA LETRAS 2026-11-11 (como BitChord): alineadas a la
+            // izquierda, la que suena grande y en blanco, su traducción
+            // justo debajo en pequeño, y aire generoso entre grupos.
+            // UI-2 (2026-11-11): la línea que suena con más aire y
+            // las cercanas atenuadas de forma gradual por distancia
+            // (antes todas las demás tenían el mismo gris).
+            val lineFade = when {
+                isCurrent || currentLine < 0 -> 1f
+                kotlin.math.abs(index - currentLine) == 1 -> 0.7f
+                kotlin.math.abs(index - currentLine) == 2 -> 0.55f
+                else -> 0.4f
+            }
+            Column(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(vertical = if (isCurrent) 16.dp else 8.dp)
+                    .alpha(lineFade),
+            ) {
                 // Fase 2 — modos de karaoke: las palabras solo se
                 // colorean cuando el modo lo permite en esta vista.
                 if (isCurrent && line.words.isNotEmpty() &&
@@ -1169,41 +1311,59 @@ private fun LyricsLines(
                 ) {
                     Text(
                         karaokeLineText(line, positionMs, lyricsOffsetMs, accent),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        style = if (fullscreen) {
+                            MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp)
+                        } else {
+                            MaterialTheme.typography.titleLarge
+                        },
+                        fontWeight = FontWeight.Bold,
                     )
                 } else {
                     Text(
                         line.text,
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
                         color = if (isCurrent) {
                             if (fullscreen) Color.White else accent
                         } else MaterialTheme.colorScheme.onSurfaceVariant,
                         style = if (isCurrent) {
-                            MaterialTheme.typography.titleLarge
+                            if (fullscreen) {
+                                MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp)
+                            } else {
+                                MaterialTheme.typography.titleLarge
+                            }
                         } else if (fullscreen) {
                             MaterialTheme.typography.bodyLarge
                         } else {
                             MaterialTheme.typography.bodyMedium
                         },
-                        fontWeight = if (isCurrent && fullscreen) FontWeight.Bold
+                        fontWeight = if (isCurrent) FontWeight.Bold
                         else FontWeight.Normal,
                     )
                 }
-                // Traduccion bajo la linea original, en pequeno y
-                // apagada; solo si hay una y es distinta.
+                // Traduccion bajo la linea original, en pequeno; la de
+                // la linea que suena en blanco suave (como BitChord),
+                // las demas en gris. Solo si hay una y es distinta.
                 val translation = translatedLyrics.getOrNull(index)
                 if (showTranslation && translation != null &&
                     translation.isNotBlank() && translation != line.text
                 ) {
                     Text(
                         translation,
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        textAlign = TextAlign.Start,
+                        color = if (isCurrent && fullscreen) {
+                            Color.White.copy(alpha = 0.85f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        style = if (isCurrent && fullscreen) {
+                            MaterialTheme.typography.bodyMedium
+                        } else {
+                            MaterialTheme.typography.bodySmall
+                        },
                     )
                 }
             }
@@ -1252,7 +1412,6 @@ private fun LyricsFullScreen(
     onAccent: Color,
     listState: LazyListState,
 ) {
-    var sliderPosition by remember { mutableStateOf<Float?>(null) }
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
     // de caché o medidos en segundo plano al cambiar de pista. Las
     // pistas online (https) no se miden: nunca se dibuja una onda
@@ -1285,7 +1444,7 @@ private fun LyricsFullScreen(
     }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (canvasUrl != null) {
-            CanvasVideo(url = canvasUrl, modifier = Modifier.fillMaxSize())
+            CanvasVideo(url = canvasUrl, isPlaying = isPlaying, modifier = Modifier.fillMaxSize())
         } else if (coverBlurBitmap != null) {
             Image(
                 bitmap = coverBlurBitmap.asImageBitmap(),
@@ -1296,13 +1455,20 @@ private fun LyricsFullScreen(
         }
         // Velo oscuro para que las letras se lean sobre el Canvas o
         // la portada, igual que en BitChord.
+        // RONDA LETRAS 2026-11-11 (brillo): el velo anterior era
+        // 0.55 arriba / TRANSPARENTE en el centro / 0.85 abajo — justo
+        // donde van las letras no había nada y el brillo de una
+        // portada clara se comía el texto blanco. Ahora el velo es
+        // oscuro en toda la pantalla (0.78 arriba, 0.72 en el centro,
+        // 0.88 abajo): la portada se sigue viendo difuminada detrás,
+        // pero el texto siempre se lee.
         Box(
             modifier = Modifier.fillMaxSize().background(
                 Brush.verticalGradient(
                     listOf(
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
-                        Color.Transparent,
-                        MaterialTheme.colorScheme.background.copy(alpha = 0.85f),
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.78f),
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.72f),
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.88f),
                     ),
                 ),
             ),
@@ -1431,36 +1597,15 @@ private fun LyricsFullScreen(
             }
             // Transporte abajo, como en BitChord: barra + anterior /
             // play / siguiente.
-            val duration = durationMs.coerceAtLeast(0L)
-            val shownPosition = sliderPosition ?: positionMs.coerceIn(0L, duration).toFloat()
-            WaveformSeekBar(
-                peaks = waveformPeaks,
-                value = shownPosition,
-                onValueChange = { sliderPosition = it },
-                onValueChangeFinished = {
-                    sliderPosition?.let { onSeek(it.toLong()) }
-                    sliderPosition = null
-                },
-                valueRange = 0f..duration.coerceAtLeast(1L).toFloat(),
+            PlayerSeekBar(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                waveformPeaks = waveformPeaks,
                 accent = accent,
-                dimmed = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                onSeek = onSeek,
+                songUri = songUri,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    TimeFormat.formatDuration(shownPosition.toLong()),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    TimeFormat.formatDuration(duration),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
@@ -1489,4 +1634,291 @@ private fun LyricsFullScreen(
             }
         }
     }
+}
+
+/**
+ * MENÚ ⋮ (2026-11-11, como BitChord): las opciones de la pista
+ * actual. La fila superior (Me gusta / No me gusta / Compartir)
+ * imita la de BitChord; el resto son filas normales. Lo que ya se
+ * muestra como botón en el reproductor (Favorito, Letras,
+ * Ecualizador) no se duplica aquí. Dormir vive solo en el menú
+ * (desde 2026-11-11 ya no tiene botón propio).
+ */
+@Composable
+private fun SongOptionsMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    title: String?,
+    artist: String?,
+    album: String?,
+    isFavorite: Boolean,
+    isDisliked: Boolean,
+    isOnline: Boolean,
+    isCached: Boolean,
+    accent: Color,
+    onToggleFavorite: () -> Unit,
+    onToggleDislike: () -> Unit,
+    onShareSong: () -> Unit,
+    onImproveQuality: () -> Unit,
+    onShowVideo: () -> Unit,
+    onShowAddToPlaylist: () -> Unit,
+    onStartRadio: () -> Unit,
+    onPlayNextCurrent: () -> Unit,
+    onAddToQueueCurrent: () -> Unit,
+    onDownload: () -> Unit,
+    onRemoveFromCache: () -> Unit,
+    onOpenAlbum: () -> Unit,
+    onOpenArtist: () -> Unit,
+    onShowSongInfo: () -> Unit,
+    onOpenSleepMenu: () -> Unit,
+    onOpenLyrics: () -> Unit,
+    onShareErrorLog: () -> Unit,
+) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            MenuTopAction(
+                icon = Icons.Filled.Favorite,
+                label = "Me gusta",
+                tinted = isFavorite,
+                accent = accent,
+                onClick = { onDismiss(); onToggleFavorite() },
+            )
+            MenuTopAction(
+                icon = Icons.Filled.HeartBroken,
+                label = "No me gusta",
+                tinted = isDisliked,
+                accent = accent,
+                onClick = { onDismiss(); onToggleDislike() },
+            )
+            MenuTopAction(
+                icon = Icons.Filled.Share,
+                label = "Compartir",
+                tinted = false,
+                accent = accent,
+                onClick = { onDismiss(); onShareSong() },
+            )
+        }
+        HorizontalDivider()
+        if (isOnline) {
+            DropdownMenuItem(
+                text = { Text("Mejorar calidad") },
+                leadingIcon = { Icon(Icons.Filled.AutoAwesome, contentDescription = null) },
+                onClick = { onDismiss(); onImproveQuality() },
+            )
+            DropdownMenuItem(
+                text = { Text("Ver vídeo") },
+                leadingIcon = { Icon(Icons.Filled.Videocam, contentDescription = null) },
+                onClick = { onDismiss(); onShowVideo() },
+            )
+        }
+        // MENÚ ⋮ Stage 2: las listas solo guardan música local (sus
+        // canciones son ids de MediaStore); un tema online no tiene
+        // id local y no cabe en una lista.
+        if (!isOnline) {
+            DropdownMenuItem(
+                text = { Text("Añadir a la lista") },
+                leadingIcon = { Icon(Icons.Filled.PlaylistAdd, contentDescription = null) },
+                onClick = { onDismiss(); onShowAddToPlaylist() },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("Iniciar radio") },
+            leadingIcon = { Icon(Icons.Filled.Radio, contentDescription = null) },
+            onClick = { onDismiss(); onStartRadio() },
+        )
+        DropdownMenuItem(
+            text = { Text("Reproducir después") },
+            leadingIcon = { Icon(Icons.Filled.PlaylistPlay, contentDescription = null) },
+            onClick = { onDismiss(); onPlayNextCurrent() },
+        )
+        DropdownMenuItem(
+            text = { Text("Agregar a la cola") },
+            leadingIcon = { Icon(Icons.Filled.QueueMusic, contentDescription = null) },
+            onClick = { onDismiss(); onAddToQueueCurrent() },
+        )
+        if (isOnline && !isCached) {
+            DropdownMenuItem(
+                text = { Text("Descargar") },
+                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                onClick = { onDismiss(); onDownload() },
+            )
+        }
+        if (isOnline && isCached) {
+            DropdownMenuItem(
+                text = { Text("Quitar de la caché") },
+                leadingIcon = { Icon(Icons.Filled.Delete, contentDescription = null) },
+                onClick = { onDismiss(); onRemoveFromCache() },
+            )
+        }
+        if (album != null) {
+            DropdownMenuItem(
+                text = { Text("Abrir álbum") },
+                supportingText = { Text(album, maxLines = 1) },
+                leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) },
+                onClick = { onDismiss(); onOpenAlbum() },
+            )
+        }
+        if (artist != null) {
+            DropdownMenuItem(
+                text = { Text("Abrir artista") },
+                supportingText = { Text(artist, maxLines = 1) },
+                leadingIcon = { Icon(Icons.Filled.Mic, contentDescription = null) },
+                onClick = { onDismiss(); onOpenArtist() },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("Información de la canción") },
+            leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
+            onClick = { onDismiss(); onShowSongInfo() },
+        )
+        DropdownMenuItem(
+            text = { Text("Temporizador") },
+            leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) },
+            onClick = { onDismiss(); onOpenSleepMenu() },
+        )
+        DropdownMenuItem(
+            text = { Text("Lyrics offset") },
+            leadingIcon = { Icon(Icons.Filled.Tune, contentDescription = null) },
+            onClick = { onDismiss(); onOpenLyrics() },
+        )
+        DropdownMenuItem(
+            text = { Text("Copiar registro") },
+            leadingIcon = { Icon(Icons.Filled.BugReport, contentDescription = null) },
+            onClick = { onDismiss(); onShareErrorLog() },
+        )
+    }
+}
+
+/** Una acción de la fila superior del menú ⋮ (icono + nombre debajo). */
+@Composable
+private fun MenuTopAction(
+    icon: ImageVector,
+    label: String,
+    tinted: Boolean,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable { onClick() }.padding(horizontal = 12.dp, vertical = 6.dp),
+    ) {
+        Icon(
+            icon,
+            contentDescription = label,
+            tint = if (tinted) accent else MaterialTheme.colorScheme.onSurface,
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+    }
+}
+
+/** MENÚ ⋮: ficha de la pista actual (título, artista, álbum, duración, calidad, ruta). */
+@Composable
+private fun SongInfoDialog(
+    title: String?,
+    artist: String?,
+    album: String?,
+    durationMs: Long,
+    qualityText: String?,
+    songPath: String?,
+    isOnline: Boolean,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+        title = { Text("Información de la canción") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                SongInfoRow("Título", title ?: "—")
+                SongInfoRow("Artista", artist ?: "—")
+                SongInfoRow("Álbum", album ?: "—")
+                SongInfoRow("Duración", formatInfoDuration(durationMs))
+                if (qualityText != null) SongInfoRow("Calidad", qualityText)
+                if (isOnline) {
+                    SongInfoRow("Origen", "YouTube Music")
+                } else if (songPath != null) {
+                    SongInfoRow("Ruta", songPath)
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun SongInfoRow(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelSmall)
+        Text(value, style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private fun formatInfoDuration(ms: Long): String {
+    val totalSec = (ms / 1000L).coerceAtLeast(0L)
+    return String.format(java.util.Locale.US, "%d:%02d", totalSec / 60, totalSec % 60)
+}
+
+/**
+ * MENÚ ⋮ Stage 2 (2026-11-11): añadir la pista actual a una lista.
+ * Solo música local: las listas guardan ids de MediaStore y un tema
+ * online no tiene id local (la fila no se muestra cuando suena online).
+ */
+@Composable
+private fun AddToPlaylistDialog(
+    playlists: List<PlaylistEntity>,
+    onDismiss: () -> Unit,
+    onAddToPlaylist: (Long) -> Unit,
+    onCreatePlaylistAndAdd: (String) -> Unit,
+) {
+    var newName by remember { mutableStateOf("") }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Añadir a la lista") },
+        text = {
+            Column {
+                if (playlists.isEmpty()) {
+                    Text("Aún no tienes listas: crea una abajo.")
+                } else {
+                    LazyColumn(modifier = Modifier.heightIn(max = 280.dp)) {
+                        items(playlists, key = { it.id }) { playlist ->
+                            DropdownMenuItem(
+                                text = { Text(playlist.name) },
+                                leadingIcon = {
+                                    Icon(Icons.Filled.PlaylistAdd, contentDescription = null)
+                                },
+                                onClick = { onAddToPlaylist(playlist.id) },
+                            )
+                        }
+                    }
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                OutlinedTextField(
+                    value = newName,
+                    onValueChange = { newName = it },
+                    label = { Text("Nueva lista") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                enabled = newName.isNotBlank(),
+                onClick = { onCreatePlaylistAndAdd(newName.trim()) },
+            ) {
+                Text("Crear")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        },
+    )
 }
