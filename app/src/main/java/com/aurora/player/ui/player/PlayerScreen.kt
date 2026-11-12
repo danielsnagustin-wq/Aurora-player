@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.PlaylistPlay
 import com.aurora.player.data.PlaylistEntity
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1755,16 +1756,34 @@ private fun SongOptionsMenu(
         }
         if (album != null) {
             DropdownMenuItem(
-                text = { Text("Abrir álbum") },
-                supportingText = { Text(album, maxLines = 1) },
+                text = {
+                    Column {
+                        Text("Abrir álbum")
+                        Text(
+                            album,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 leadingIcon = { Icon(Icons.Filled.Album, contentDescription = null) },
                 onClick = { onDismiss(); onOpenAlbum() },
             )
         }
         if (artist != null) {
             DropdownMenuItem(
-                text = { Text("Abrir artista") },
-                supportingText = { Text(artist, maxLines = 1) },
+                text = {
+                    Column {
+                        Text("Abrir artista")
+                        Text(
+                            artist,
+                            maxLines = 1,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                },
                 leadingIcon = { Icon(Icons.Filled.Mic, contentDescription = null) },
                 onClick = { onDismiss(); onOpenArtist() },
             )
