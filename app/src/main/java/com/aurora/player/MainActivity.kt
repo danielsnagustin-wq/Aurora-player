@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.NavigationBar
@@ -64,10 +66,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -85,6 +89,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.aurora.player.data.AuroraDatabase
+import com.aurora.player.data.DislikedStore
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.FolderStore
 import com.aurora.player.data.MusicRepository
@@ -93,9 +98,13 @@ import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.IntroStore
 import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.LibraryPrefsStore
 import com.aurora.player.online.GoogleAccountAuth
+import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.StreamCacheStore
+import com.aurora.player.ui.library.LibraryViewModel
 import com.aurora.player.cast.CastManager
 import com.aurora.player.cast.CastState
 import com.aurora.player.data.SpotifyStore
@@ -123,11 +132,14 @@ import com.aurora.player.online.selectCaptionTrack
 import com.aurora.player.ui.online.VideoPlayerDialog
 import com.aurora.player.playback.songToMediaItem
 import com.aurora.player.ui.eq.EqScreen
+import com.aurora.player.ui.library.AlbumArtCache
 import com.aurora.player.ui.library.ArtworkImage
+import com.aurora.player.ui.library.LargeArtCache
 import com.aurora.player.ui.library.LibraryScreen
 import com.aurora.player.ui.player.PlayerScreen
 import com.aurora.player.ui.player.SleepTimerOption
 import com.aurora.player.ui.playlists.PlaylistsScreen
+import com.aurora.player.ui.playlists.PlaylistsViewModel
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.settings.SettingsSection
 import com.aurora.player.ui.setup.SetupWizardScreen
@@ -248,6 +260,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        super.onStop()
+        // RONDA LAG (2026-11-11): al salir de la app, las portadas en
+        // RAM (AlbumArtCache 32 MB + LargeArtCache 12 MB) se sueltan:
+        // con la música sonando en segundo plano el proceso retenía
+        // decenas de MB de bitmaps que nadie veía y el teléfono se
+        // notaba lento fuera de la app. Al volver, las portadas se
+        // recargan desde la caché de disco.
+        AlbumArtCache.clear()
+        LargeArtCache.clear()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installCrashHandler()
         ErrorLog.log(this, "BOOT: onCreate", null)
@@ -322,6 +346,25 @@ class MainActivity : ComponentActivity() {
                     }
                     onDispose { applicationContext.unregisterReceiver(receiver) }
                 }
+                // Botón X de la notificación (2026-11-11): el servicio
+                // avisa y la actividad se cierra del todo (sale hasta
+                // de Recientes). Si la actividad ya no existe, no hay
+                // nada que cerrar: parar el servicio basta.
+                DisposableEffect(Unit) {
+                    val receiver = object : BroadcastReceiver() {
+                        override fun onReceive(context: Context?, intent: Intent?) {
+                            this@MainActivity.finishAndRemoveTask()
+                        }
+                    }
+                    val filter = IntentFilter(PlaybackService.ACTION_CLOSE_APP)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        applicationContext.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        applicationContext.registerReceiver(receiver, filter)
+                    }
+                    onDispose { applicationContext.unregisterReceiver(receiver) }
+                }
                 DisposableEffect(Unit) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         val listener = PowerManager.OnThermalStatusChangedListener { status ->
@@ -340,6 +383,18 @@ class MainActivity : ComponentActivity() {
                             Lifecycle.Event.ON_RESUME -> appVisible = true
                             Lifecycle.Event.ON_PAUSE -> appVisible = false
                             else -> Unit
+                        }
+                        // AUTO-CERRAR (2026-11-11): avisar al servicio
+                        // de si la app se ve o no (Musicolet solo
+                        // cierra si no está visible). Broadcast, no
+                        // startService: si el servicio está muerto no
+                        // hay nada que cerrar y no se arranca nada.
+                        if (event == Lifecycle.Event.ON_RESUME || event == Lifecycle.Event.ON_PAUSE) {
+                            this@MainActivity.sendBroadcast(
+                                Intent(PlaybackService.ACTION_APP_VISIBILITY)
+                                    .setPackage(packageName)
+                                    .putExtra(PlaybackService.EXTRA_APP_VISIBLE, appVisible),
+                            )
                         }
                     }
                     lifecycle.addObserver(observer)
@@ -369,6 +424,7 @@ class MainActivity : ComponentActivity() {
                             onWidgetActionHandled = { pendingWidgetAction = null },
                             notificationsGranted = hasNotificationPermission,
                             onRequestNotificationPermission = { requestNotificationPermission() },
+                            appVisible = appVisible,
                         )
                     } else {
                         WelcomeScreen(
@@ -517,6 +573,9 @@ private fun AuroraApp(
     onWidgetActionHandled: () -> Unit = {},
     notificationsGranted: Boolean = false,
     onRequestNotificationPermission: () -> Unit = {},
+    // RONDA LAG (2026-11-11): si la app está en segundo plano, el
+    // bucle de progreso duerme 5 s y no lee la posición (nadie la ve).
+    appVisible: Boolean = true,
 ) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
@@ -590,23 +649,36 @@ private fun AuroraApp(
         ).show()
     }
     val queueStore = remember { QueueStore(context) }
+    // RONDA 172: este estado vive aquí arriba (antes que persistQueue)
+    // porque persistQueue lo lee: Kotlin no deja usar una variable
+    // declarada después.
+    var queueRestored by remember { mutableStateOf(false) }
     // RONDA 39: guardar la cola periódicamente mientras suena —
     // antes solo se guardaba al cambiar de pista o al pausar, así que
     // cerrar la app a la fuerza a mitad de una canción retomaba desde
     // un minuto viejo. Se escribe como mucho cada 10 s (ver el bucle
     // de progreso), no en cada tick de 500 ms.
     val persistQueue: (MediaController) -> Unit = { c ->
-        scope.launch {
-            try {
-                queueStore.save(
-                    (0 until c.mediaItemCount).mapNotNull {
-                        c.getMediaItemAt(it).mediaId.toLongOrNull()
-                    },
-                    c.currentMediaItemIndex,
-                    c.currentPosition,
-                )
-            } catch (e: Exception) {
-                ErrorLog.log(context, "Guardar cola", e)
+        // RONDA 172 (2026-11-11): no pisar la cola guardada con una cola
+        // VACÍA antes de restaurarla. Al conectar, el controlador llega
+        // vacío y refresh() guarda la cola en cada cambio; ese guardado
+        // corría en paralelo a la lectura de restauración y podía
+        // ganarle, borrando la cola que el usuario esperaba reanudar.
+        // Tras restaurar (o descartar la restauración), guardar vacío
+        // sí vale: es que el usuario vació la cola a propósito.
+        if (c.mediaItemCount > 0 || queueRestored) {
+            scope.launch {
+                try {
+                    queueStore.save(
+                        (0 until c.mediaItemCount).mapNotNull {
+                            c.getMediaItemAt(it).mediaId.toLongOrNull()
+                        },
+                        c.currentMediaItemIndex,
+                        c.currentPosition,
+                    )
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Guardar cola", e)
+                }
             }
         }
     }
@@ -644,7 +716,6 @@ private fun AuroraApp(
     // solo actualiza esa misma fila con la duración final.
     var historyFlushedId by remember { mutableStateOf<Long?>(null) }
     var historyFlushedAt by remember { mutableStateOf<Long?>(null) }
-    var queueRestored by remember { mutableStateOf(false) }
     // Último estado guardado en el widget, para no reescribirlo en
     // cada cambio de estado del reproductor.
     var lastWidgetTitle by remember { mutableStateOf<String?>(null) }
@@ -694,18 +765,24 @@ private fun AuroraApp(
     // plazo de minutos ya vencido se descarta: caducó con la app
     // muerta y no castiga la siguiente sesión; el de fin de canción
     // sí se restaura, sigue teniendo sentido.
+    // RONDA 164: el plazo es monótono (elapsedRealtime), así que la
+    // comparación es contra el mismo reloj. Y una opción por minutos
+    // SIN plazo ya no se restaura: antes la condición aceptaba
+    // untilMs == null para cualquier opción y dejaba un temporizador
+    // activo que no se disparaba nunca (el bucle solo actúa si el
+    // plazo no es nulo). El fin de canción nunca lleva plazo.
     LaunchedEffect(Unit) {
         val saved = sleepTimerStore.timerFlow.first()
         if (saved != null) {
             val option = runCatching { SleepTimerOption.valueOf(saved.optionName) }.getOrNull()
             if (option == null || option == SleepTimerOption.OFF) {
                 sleepTimerStore.clear()
-            } else if (option == SleepTimerOption.END_OF_SONG || saved.untilMs == null ||
-                saved.untilMs > System.currentTimeMillis()
+            } else if (option == SleepTimerOption.END_OF_SONG ||
+                (saved.untilMs != null && saved.untilMs > SystemClock.elapsedRealtime())
             ) {
                 sleepTimer = option
                 sleepAtSongEnd = saved.atSongEnd
-                sleepUntilMs = saved.untilMs
+                sleepUntilMs = if (option == SleepTimerOption.END_OF_SONG) null else saved.untilMs
             } else {
                 sleepTimerStore.clear()
             }
@@ -720,6 +797,27 @@ private fun AuroraApp(
     // biblioteca siempre dicen lo mismo.
     var favoriteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     val offsetStore = remember { LyricsOffsetStore(context) }
+    // MENÚ ⋮ (2026-11-11, como BitChord): "No me gusta" y el estado
+    // online/caché de la pista actual, para el menú del reproductor.
+    val dislikedStore = remember { DislikedStore(context) }
+    var dislikedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var isCurrentOnline by remember { mutableStateOf(false) }
+    var currentVideoId by remember { mutableStateOf<String?>(null) }
+    var isCurrentCached by remember { mutableStateOf(false) }
+    // La biblioteca comparte su ViewModel con esta pantalla (el mismo
+    // que usa LibraryScreen): así el menú puede filtrar por álbum o
+    // artista y cambiar de pestaña.
+    val libraryViewModel: LibraryViewModel = viewModel()
+    val playlistsViewModel: PlaylistsViewModel = viewModel()
+    val playlists by playlistsViewModel.playlists.collectAsState()
+    // MENÚ ⋮ Stage 2: el diálogo "Añadir a la lista" necesita las
+    // listas aunque nunca se haya abierto la pestaña Listas. load()
+    // tiene guarda (no recarga si ya cargó con el mismo permiso).
+    // RONDA 174: la clave es el permiso, no Unit — si se concede
+    // después, load(true) vuelve a correr (con Unit se quedaba lo
+    // cargado sin permiso).
+    LaunchedEffect(hasAudioPermission) { playlistsViewModel.load(hasAudioPermission) }
+    val libraryPrefs = remember { LibraryPrefsStore(context) }
     // RONDA 2 (2026-11-09): la intro solo se muestra la primera vez
     // (IntroStore); antes se repetía al volver tras un rato porque
     // Android había matado el proceso en segundo plano.
@@ -728,6 +826,11 @@ private fun AuroraApp(
     // Favoritos en vivo (Room avisa de cada cambio, venga de donde venga).
     LaunchedEffect(Unit) {
         db.libraryDao().favoriteIdsFlow().collect { favoriteIds = it.toSet() }
+    }
+
+    // MENÚ ⋮: "No me gusta" en vivo, igual que los favoritos.
+    LaunchedEffect(Unit) {
+        dislikedStore.keysFlow.collect { dislikedKeys = it }
     }
 
     /** Llamadas al controlador protegidas (auditoría Gemini, ronda 2):
@@ -770,10 +873,12 @@ private fun AuroraApp(
         }
     }
 
-    /** Siguiente (2026-11-10): con repetición de una canción, el
-     * "siguiente" de ExoPlayer reinicia la misma canción (así lo
-     * define Media3); como Spotify y YouTube Music, aquí avanza a
-     * la siguiente de la cola. En la última, no hace nada. */
+    /** Siguiente (2026-11-10): con repetición de una canción se
+     * avanza a mano y se empieza a sonar: seekToNextMediaItem()
+     * avanza igual (Media3 trata REPEAT_MODE_ONE como OFF para
+     * navegar, BasePlayer.getRepeatModeForNavigation), pero no
+     * arranca la reproducción si estaba en pausa. En la última, no
+     * hace nada. */
     fun skipToNext() {
         controllerCall("Siguiente") {
             if (repeatMode == Player.REPEAT_MODE_ONE) {
@@ -817,8 +922,10 @@ private fun AuroraApp(
     fun onSleepTimerSelected(option: SleepTimerOption) {
         sleepTimer = option
         sleepAtSongEnd = option == SleepTimerOption.END_OF_SONG
+        // RONDA 164: plazo monótono (elapsedRealtime), no reloj de
+        // pared: un cambio de hora o de zona horaria no lo mueve.
         sleepUntilMs = if (option.minutes > 0) {
-            System.currentTimeMillis() + option.minutes * 60_000L
+            SystemClock.elapsedRealtime() + option.minutes * 60_000L
         } else {
             null
         }
@@ -978,7 +1085,13 @@ private fun AuroraApp(
                     val current = songs.firstOrNull { it.id == currentId }
                     val inQueue = (0 until c.mediaItemCount)
                         .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }.toSet()
-                    val excluded = inQueue + radioRecentIds.toSet()
+                    // MENÚ ⋮: la radio nunca repite una canción con
+                    // "No me gusta" (claves local:<id>).
+                    val dislikedLocalIds = dislikedStore.keysFlow.first()
+                        .filter { it.startsWith("local:") }
+                        .mapNotNull { it.removePrefix("local:").toLongOrNull() }
+                        .toSet()
+                    val excluded = inQueue + radioRecentIds.toSet() + dislikedLocalIds
                     autoDjQueue(current, songs, count = 10, recentlyPlayedIds = excluded)
                 }
             } catch (e: Exception) {
@@ -1093,6 +1206,21 @@ private fun AuroraApp(
                 currentMediaId = c.currentMediaItem?.mediaId
                 // La ruta de la canción actual, para las letras (.lrc).
                 currentSongPath = meta?.extras?.getString("aurora_path")
+                // MENÚ ⋮: la pista actual es online si su MediaItem
+                // lleva el extra aurora_online (onlineMediaItem).
+                isCurrentOnline = meta?.extras?.getBoolean("aurora_online") == true
+                currentVideoId = if (isCurrentOnline) {
+                    c.currentMediaItem?.mediaId?.removePrefix("yt:")
+                } else {
+                    null
+                }
+                // MENÚ ⋮: ¿está el audio en caché? (para mostrar
+                // Descargar o Quitar de la caché).
+                val vid = currentVideoId
+                scope.launch(Dispatchers.IO) {
+                    isCurrentCached = vid != null &&
+                        StreamCacheStore(context).listCached().any { it.videoId == vid }
+                }
                 // Cola persistente (SPEC 005 FR-002): se guarda aquí
                 // y en cada cambio de cola o al pausar (ver saveQueue).
                 saveQueue(c)
@@ -1165,8 +1293,8 @@ private fun AuroraApp(
     }
 
     // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
-    // Solo salta si está sonando. El sensor se registra solo
-    // mientras la app está en primer plano (DisposableEffect).
+    // Funciona también en pausa (ronda 119). El sensor se registra
+    // solo mientras la app está en primer plano (DisposableEffect).
     // Fase 2 — gestos configurables: agitar hace lo que el usuario
     // eligió (siguiente, anterior, pausar/reanudar o favorito).
     DisposableEffect(playerSettings.shakeToNext, playerSettings.shakeAction, controller) {
@@ -1220,6 +1348,10 @@ private fun AuroraApp(
     }
 
     // Reloj de progreso: actualiza la barra mientras suena.
+    // RONDA LAG (2026-11-11): el valor vigente de appVisible para el
+    // bucle (el parámetro es de la composición que arrancó el efecto;
+    // sin rememberUpdatedState el bucle vería siempre el primer valor).
+    val latestAppVisible by rememberUpdatedState(appVisible)
     // ETAPA 7: en pausa y con el reproductor cerrado no hay nada que
     // actualizar: el bucle duerme sin leer el reproductor (ahorra
     // batería; la corrutina en sí no consume nada mientras duerme).
@@ -1242,9 +1374,20 @@ private fun AuroraApp(
                 val tickNow = SystemClock.elapsedRealtime()
                 val tickDelta = (tickNow - lastTickMs).coerceAtLeast(0L)
                 lastTickMs = tickNow
-                if (c.isPlaying || showPlayer) {
+                // RONDA LAG (2026-11-11): fuera de la app nadie ve la
+                // posición: no se lee (y el bucle duerme 5 s, no 500 ms).
+                // R181 (2026-11-11): la posición de la UI solo se
+                // lee con la app visible (es lo que recompone la
+                // pantalla); lo demás — escuchas, cola cada 10 s,
+                // temporizador de apagado — corre también en
+                // segundo plano. Antes TODO estaba dentro del if
+                // de visibilidad: con la app en segundo plano el
+                // temporizador no apagaba nunca la música y la
+                // cola no se guardaba.
+                if (latestAppVisible && (c.isPlaying || showPlayer)) {
                     positionMs = c.currentPosition
-                durationMs = c.duration
+                    durationMs = c.duration
+                }
                 if (c.isPlaying) {
                     val id = c.currentMediaItem?.mediaId?.toLongOrNull()
                     if (id != null && id != listenedId) {
@@ -1318,7 +1461,7 @@ private fun AuroraApp(
                             lastSleepSaveMs = tickNow
                             persistSleepTimer()
                         }
-                    } else if (System.currentTimeMillis() >= until) {
+                    } else if (SystemClock.elapsedRealtime() >= until) {
                         c.pause()
                         sleepUntilMs = null
                         sleepTimer = SleepTimerOption.OFF
@@ -1338,14 +1481,17 @@ private fun AuroraApp(
                     // RONDA 143: el temporizador se disparó, se borra.
                     persistSleepTimer()
                 }
-            }
             } catch (e: Exception) {
                 // El controlador murió entre medias: se sale del bucle;
                 // el efecto se reinicia cuando cambia el controlador.
                 ErrorLog.log(context, "Progreso", e)
                 break
             }
-            delay(500)
+            // RONDA LAG: fuera de la app el bucle duerme 5 s: la cola
+            // (10 s), el historial y el temporizador usan tiempo real,
+            // así que siguen exactos; solo se deja de leer la posición
+            // 2 veces por segundo para nada.
+            delay(if (latestAppVisible) 500 else 5000)
         }
     }
 
@@ -1493,35 +1639,44 @@ private fun AuroraApp(
                 }
             }
         }
-        // Canvas de Spotify (Fase 2): si el modo online está
-        // encendido y Spotify conectado, busca el id de la canción
-        // y pide su Canvas; solo vídeo (la imagen no aporta nada
-        // sobre la portada). Si cambia la canción, el efecto se
-        // reinicia y la búsqueda vieja se cancela.
+        // Traducción automática (2026-11-10, como BitChord).
+        if (playerSettings.onlineMode && lyrics.isNotEmpty()) {
+            translatedLyrics = LyricsTranslator.translateLines(
+                context, id.toString(), lyrics.map { it.text },
+            ) ?: emptyList()
+        }
+    }
+
+    // Canvas de Spotify (Fase 2): efecto PROPIO, no dentro del de
+    // letras (R182, 2026-11-11): antes solo se buscaba al cambiar de
+    // canción; encender el modo online o conectar Spotify con la
+    // misma canción no traía el Canvas hasta la siguiente. Con las
+    // tres claves, cualquier cambio lo reintenta; sin modo online
+    // o sin Spotify no hay Canvas. Si cambia la canción, el efecto
+    // se reinicia y la búsqueda vieja se cancela.
+    LaunchedEffect(currentMediaId, playerSettings.onlineMode, spotifyConnected) {
+        if (currentMediaId == null) return@LaunchedEffect
+        if (!playerSettings.onlineMode || !spotifyConnected) {
+            canvasUrl = null
+            return@LaunchedEffect
+        }
         try {
-            if (playerSettings.onlineMode && spotifyConnected) {
-                val meta = controller?.currentMediaItem?.mediaMetadata
-                val track = meta?.title?.toString().orEmpty()
-                val artist = meta?.artist?.toString().orEmpty()
-                if (track.isNotBlank() && artist.isNotBlank()) {
-                    val token = SpotifyClient().fetchAccessToken(spotifyCookie)
-                    if (token != null) {
-                        val trackId = SpotifyCanvasClient().searchTrackId(token, track, artist)
-                        val canvas = trackId?.let { SpotifyCanvasClient().fetchCanvas(token, it) }
-                        if (canvas?.isVideo == true) canvasUrl = canvas.url
-                    }
+            val meta = controller?.currentMediaItem?.mediaMetadata
+            val track = meta?.title?.toString().orEmpty()
+            val artist = meta?.artist?.toString().orEmpty()
+            if (track.isNotBlank() && artist.isNotBlank()) {
+                val token = SpotifyClient().fetchAccessToken(spotifyCookie)
+                if (token != null) {
+                    val trackId = SpotifyCanvasClient().searchTrackId(token, track, artist)
+                    val canvas = trackId?.let { SpotifyCanvasClient().fetchCanvas(token, it) }
+                    // Solo vídeo (la imagen no aporta nada sobre la portada).
+                    if (canvas?.isVideo == true) canvasUrl = canvas.url
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             ErrorLog.log(context, "CANVAS", e)
-        }
-        // Traducción automática (2026-11-10, como BitChord).
-        if (playerSettings.onlineMode && lyrics.isNotEmpty()) {
-            translatedLyrics = LyricsTranslator.translateLines(
-                context, id.toString(), lyrics.map { it.text },
-            ) ?: emptyList()
         }
     }
 
@@ -1808,6 +1963,216 @@ private fun AuroraApp(
         )
     }
 
+    // MENÚ ⋮ (2026-11-11, como BitChord): acciones sobre la pista
+    // actual. Van DESPUÉS de playVideo y refillRadio: una función
+    // local no puede llamar a otra que se declara después.
+    /** La pista online actual reconstruida (para vídeo y calidad). */
+    fun currentOnlineTrack(): OnlineTrack? {
+        val videoId = currentVideoId ?: return null
+        return OnlineTrack(
+            videoId = videoId,
+            title = currentTitle ?: "",
+            artist = currentArtist ?: "",
+            album = currentAlbum,
+            durationSec = durationMs / 1000L,
+            thumbnailUrl = null,
+        )
+    }
+
+    fun innerTubeClient() = InnerTubeClient(
+        ytMusicCookies, ytMusicToken, onYtTokenRejected, onYtCookiesRejected,
+    )
+
+    /** Clave de "No me gusta" de la pista actual (local:<id> o yt:<videoId>). */
+    fun currentDislikeKey(): String? {
+        if (!isCurrentOnline) {
+            val localId = currentSongId ?: return null
+            return "local:$localId"
+        }
+        val videoId = currentVideoId ?: return null
+        return "yt:$videoId"
+    }
+
+    /** MENÚ ⋮: "No me gusta" (la radio no la vuelve a poner). */
+    fun toggleCurrentDislike() {
+        val key = currentDislikeKey() ?: return
+        scope.launch { dislikedStore.toggle(key) }
+    }
+
+    /** MENÚ ⋮: compartir la canción (con enlace de YouTube Music si es online). */
+    fun shareCurrentSong() {
+        val t = currentTitle.orEmpty()
+        val a = currentArtist.orEmpty()
+        val text = if (isCurrentOnline && currentVideoId != null) {
+            "$t — $a\nhttps://music.youtube.com/watch?v=${currentVideoId}"
+        } else {
+            listOfNotNull(
+                a.takeIf { it.isNotBlank() },
+                t.takeIf { it.isNotBlank() },
+            ).joinToString(" — ")
+        }
+        if (text.isBlank()) return
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+        context.startActivity(Intent.createChooser(intent, "Compartir canción"))
+    }
+
+    /**
+     * MENÚ ⋮: "Reproducir después" y "Agregar a la cola" duplican el
+     * MediaItem actual: vale igual para local y para online, sin
+     * tener que resolver la canción de nuevo.
+     */
+    fun playCurrentNext() {
+        controllerCall("Cola") {
+            val item = currentMediaItem ?: return@controllerCall
+            val at = (currentMediaItemIndex + 1).coerceIn(0, mediaItemCount)
+            addMediaItem(at, item)
+        }
+    }
+
+    fun addCurrentToQueueEnd() {
+        controllerCall("Cola") {
+            currentMediaItem?.let { addMediaItem(it) }
+        }
+    }
+
+    /** MENÚ ⋮: radio (Auto-DJ local) desde la pista actual. */
+    fun startRadioFromCurrent() {
+        refillRadio()
+    }
+
+    /** MENÚ ⋮: ver el vídeo de YouTube de la pista online actual. */
+    fun showCurrentVideo() {
+        val track = currentOnlineTrack() ?: return
+        val videoId = currentVideoId ?: return
+        scope.launch {
+            val video = innerTubeClient().resolveVideo(videoId)
+            if (video == null) {
+                Toast.makeText(
+                    context,
+                    "No se encontró versión de vídeo para esta canción",
+                    Toast.LENGTH_SHORT,
+                ).show()
+            } else {
+                playVideo(track, video)
+            }
+        }
+    }
+
+    /**
+     * MENÚ ⋮: "Mejorar calidad" — resuelve el audio en Alta y vuelve
+     * a cargar la pista donde iba. Solo afecta a esta pista, no cambia
+     * el ajuste de calidad.
+     */
+    fun improveCurrentQuality() {
+        val track = currentOnlineTrack() ?: return
+        val videoId = currentVideoId ?: return
+        val index = controller?.currentMediaItemIndex ?: return
+        val position = controller?.currentPosition ?: 0L
+        scope.launch {
+            val resolved = innerTubeClient().resolveStream(videoId, StreamQuality.HIGH)
+            if (resolved == null) {
+                Toast.makeText(context, "No se pudo mejorar la calidad", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            controllerCall("Calidad") {
+                replaceMediaItem(index, onlineMediaItem(track, resolved.url))
+                seekTo(index, position)
+                play()
+            }
+        }
+    }
+
+    /** MENÚ ⋮: descargar el audio online actual a la caché. */
+    fun downloadCurrent() {
+        val videoId = currentVideoId ?: return
+        scope.launch {
+            val quality = playerSettings.streamQuality
+            val resolved = innerTubeClient().resolveStream(videoId, quality)
+            if (resolved == null) {
+                Toast.makeText(context, "No se pudo descargar: sin conexión o sin audio", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            val file = StreamCacheStore(context).download(
+                videoId, resolved.itag, resolved.url, quality,
+            )
+            if (file != null) {
+                isCurrentCached = true
+                Toast.makeText(context, "Descargada a la caché", Toast.LENGTH_SHORT).show()
+            } else {
+                Toast.makeText(context, "No se pudo descargar", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** MENÚ ⋮: quitar el audio online actual de la caché. */
+    fun removeCurrentFromCache() {
+        val videoId = currentVideoId ?: return
+        scope.launch {
+            withContext(Dispatchers.IO) { StreamCacheStore(context).delete(videoId) }
+            isCurrentCached = false
+            Toast.makeText(context, "Quitado de la caché", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** MENÚ ⋮ Stage 2: añadir la pista actual a una lista. */
+    fun addCurrentToPlaylist(playlistId: Long) {
+        val songId = currentSongId ?: return
+        scope.launch {
+            val playlistName = playlists.firstOrNull { it.id == playlistId }?.name
+            when (playlistsViewModel.addSongToPlaylist(playlistId, songId)) {
+                true -> Toast.makeText(context, "Añadida a ${playlistName ?: "la lista"}", Toast.LENGTH_SHORT).show()
+                false -> Toast.makeText(context, "Ya está en esa lista", Toast.LENGTH_SHORT).show()
+                null -> Toast.makeText(context, "No se pudo añadir", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** MENÚ ⋮ Stage 2: crear la lista y añadir la pista actual. */
+    fun createPlaylistAndAddCurrent(name: String) {
+        val songId = currentSongId ?: return
+        scope.launch {
+            when (playlistsViewModel.addSongToNewPlaylist(name, songId)) {
+                true -> Toast.makeText(context, "Añadida a $name", Toast.LENGTH_SHORT).show()
+                false -> Toast.makeText(context, "Ya está en esa lista", Toast.LENGTH_SHORT).show()
+                null -> Toast.makeText(context, "No se pudo crear la lista", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** MENÚ ⋮: abrir el álbum de la pista actual en Biblioteca. */
+    fun openCurrentAlbum() {
+        val albumName = currentAlbum?.takeIf { it.isNotBlank() } ?: return
+        scope.launch {
+            val albums = withContext(Dispatchers.IO) {
+                val songs = MusicRepository(context).loadSongs(playerSettings.minDurationMs)
+                MusicRepository(context).loadAlbums(songs)
+            }
+            val id = albums.firstOrNull { it.name == albumName }?.id
+            if (id == null) {
+                Toast.makeText(context, "Álbum no encontrado en la biblioteca", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            libraryViewModel.filterByAlbum(id)
+            libraryPrefs.saveLastTab(2)
+            tab = Tab.LIBRARY
+            showPlayer = false
+        }
+    }
+
+    /** MENÚ ⋮: abrir el artista de la pista actual en Biblioteca. */
+    fun openCurrentArtist() {
+        val name = currentArtist?.takeIf { it.isNotBlank() } ?: return
+        scope.launch {
+            libraryViewModel.filterByArtist(name)
+            libraryPrefs.saveLastTab(1)
+            tab = Tab.LIBRARY
+            showPlayer = false
+        }
+    }
+
     if (showEq) {
         EqScreen(onClose = { showEq = false })
         return
@@ -1875,6 +2240,26 @@ private fun AuroraApp(
             onSleepTimerSelected = { onSleepTimerSelected(it) },
             isFavorite = currentSongId in favoriteIds,
             onToggleFavorite = { toggleFavorite() },
+            // MENÚ ⋮ (2026-11-11, como BitChord).
+            isOnline = isCurrentOnline,
+            isDisliked = currentDislikeKey() in dislikedKeys,
+            isCached = isCurrentCached,
+            songPath = currentSongPath,
+            onShareSong = { shareCurrentSong() },
+            onPlayNextCurrent = { playCurrentNext() },
+            onAddToQueueCurrent = { addCurrentToQueueEnd() },
+            onStartRadio = { startRadioFromCurrent() },
+            onShowVideo = { showCurrentVideo() },
+            onImproveQuality = { improveCurrentQuality() },
+            onDownload = { downloadCurrent() },
+            onRemoveFromCache = { removeCurrentFromCache() },
+            onOpenAlbum = { openCurrentAlbum() },
+            onOpenArtist = { openCurrentArtist() },
+            onToggleDislike = { toggleCurrentDislike() },
+            onShareErrorLog = { shareErrorLog() },
+            playlists = playlists,
+            onAddToPlaylist = { addCurrentToPlaylist(it) },
+            onCreatePlaylistAndAdd = { createPlaylistAndAddCurrent(it) },
             lyricsOffsetMs = lyricsOffsetMs,
             onLyricsOffsetChange = { newOffset ->
                 val id = currentSongId ?: return@PlayerScreen
@@ -1885,7 +2270,6 @@ private fun AuroraApp(
             doubleTapEnabled = playerSettings.doubleTapToFavorite,
             doubleTapAction = parseGestureAction(playerSettings.doubleTapAction, GestureAction.FAVORITE),
             karaokeMode = playerSettings.karaokeMode,
-            volumeGestureEnabled = playerSettings.volumeGesture,
             onSaveLyrics = { edited ->
                 // Fase 1b: editor de letras. Guarda el .lrc junto a
                 // la canción y recarga para mostrar lo guardado.
@@ -1942,6 +2326,7 @@ private fun AuroraApp(
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                             .clickable { showPlayer = true },
                     ) {
+                    Column {
                     Row(
                         modifier = Modifier.fillMaxWidth()
                             .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -1985,6 +2370,20 @@ private fun AuroraApp(
                                 contentDescription = "Siguiente",
                             )
                         }
+                    }
+                    // RONDA 162: la mini-barra muestra el progreso
+                    // (como Musicolet/BitChord): positionMs y
+                    // durationMs ya se actualizaban pero no se
+                    // dibujaban en la barra. Sin duración conocida
+                    // no se muestra nada.
+                    if (durationMs > 0) {
+                        LinearProgressIndicator(
+                            progress = { (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) },
+                            modifier = Modifier.fillMaxWidth().height(2.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                    }
                     }
                     }
                 }
