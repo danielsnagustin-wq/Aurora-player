@@ -230,7 +230,10 @@ private fun decodePcmChunk(
     buffer.position(info.offset)
     buffer.get(bytes)
     val shorts = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-    val floats = ByteBuffer.wrap(bytes).order(ByteOrder.nativeOrder()).asFloatBuffer()
+    // RONDA 167: el PCM float también es little-endian (MediaCodec);
+    // antes usaba nativeOrder(), que en Android es lo mismo pero
+    // dejaba la suposición implícita. Igual que el búfer de shorts.
+    val floats = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
     val frameCount = bytes.size / bytesPerSample / streamChannels
     if (frameCount <= 0) return
     val resampledChannels = List(lufsChannels) { ch ->
