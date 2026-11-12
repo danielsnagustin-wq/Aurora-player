@@ -122,6 +122,7 @@ import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.parseGestureAction
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.Song
+import com.aurora.player.model.StreamQuality
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.playback.PlaybackService
 import com.aurora.player.playback.PlayerControls
