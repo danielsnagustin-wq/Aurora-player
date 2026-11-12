@@ -27,6 +27,9 @@ import com.google.common.collect.ImmutableList
  * (si queda uno vacío, se recorta todo lo que sigue). Por eso se
  * rellenan los 3: anterior (0), reproducir/pausa (1) y cerrar (2).
  */
+/** La acción de cerrar (mismo valor que PlaybackService.ACTION_STOP_ALL, que aún no está pusheado). */
+private const val ACTION_STOP_ALL = "aurora_stop_all"
+
 class AuroraNotificationProvider(context: Context) :
     DefaultMediaNotificationProvider(context) {
 
@@ -43,7 +46,7 @@ class AuroraNotificationProvider(context: Context) :
             val compactIndex = when {
                 button.playerCommand == Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM -> 0
                 button.playerCommand == Player.COMMAND_PLAY_PAUSE -> 1
-                button.sessionCommand?.customAction == PlaybackService.ACTION_STOP_ALL -> 2
+                button.sessionCommand?.customAction == ACTION_STOP_ALL -> 2
                 else -> C.INDEX_UNSET
             }
             if (compactIndex == C.INDEX_UNSET) {
@@ -56,11 +59,13 @@ class AuroraNotificationProvider(context: Context) :
                     .setDisplayName(button.displayName)
                     .setExtras(extras)
                     .setEnabled(button.isEnabled)
-                if (button.iconUri != null) {
-                    builder.setIconUri(button.iconUri)
+                val iconUri = button.iconUri
+                if (iconUri != null) {
+                    builder.setIconUri(iconUri)
                 }
-                if (button.sessionCommand != null) {
-                    builder.setSessionCommand(button.sessionCommand)
+                val sessionCommand = button.sessionCommand
+                if (sessionCommand != null) {
+                    builder.setSessionCommand(sessionCommand)
                 } else {
                     builder.setPlayerCommand(button.playerCommand)
                 }
