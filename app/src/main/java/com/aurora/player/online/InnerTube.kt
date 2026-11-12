@@ -3,6 +3,7 @@ package com.aurora.player.online
 import com.aurora.player.model.StreamQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * RONDA 7 (002-online-youtube): cliente InnerTube propio para escuchar
@@ -292,8 +293,9 @@ fun parsePlayerFormats(json: String): List<AudioFormat>? {
 
 /**
  * Parsea los formatos PROGRESIVOS de vídeo de una respuesta de
- * player: solo los adaptativos con URL directa que traen vídeo y
- * audio a la vez (mime video/ + audioChannels). Null si la
+ * player: los de streamingData.formats (progresivos: vídeo y audio
+ * en una sola pista) más los adaptativos con URL directa que traen
+ * vídeo y audio a la vez (mime video/ + audioChannels). Null si la
  * respuesta no trae nada usable o el estado no es OK.
  */
 fun parsePlayerVideoFormats(json: String): List<VideoFormat>? {
@@ -303,21 +305,35 @@ fun parsePlayerVideoFormats(json: String): List<VideoFormat>? {
         return null
     }
     if (root.obj("playabilityStatus")?.obj("status")?.str() != "OK") return null
-    val formats = root.obj("streamingData")?.obj("adaptiveFormats")?.arr() ?: return null
-    return formats.mapNotNull { format ->
-        val url = format.obj("url")?.str() ?: return@mapNotNull null
-        val mime = format.obj("mimeType")?.str() ?: return@mapNotNull null
-        if (!mime.startsWith("video/")) return@mapNotNull null
-        // Progresivo = trae audio: sin audioChannels sería mudo.
-        if (format.obj("audioChannels") == null) return@mapNotNull null
-        VideoFormat(
-            itag = format.obj("itag")?.long() ?: return@mapNotNull null,
+    val streamingData = root.obj("streamingData") ?: return null
+    // R185 (2026-11-11): antes solo se miraba adaptiveFormats, donde
+    // YouTube entrega casi siempre pistas SEPARADAS (vídeo mudo o
+    // audio solo): el filtro de audioChannels dejaba la lista vacía
+    // y "Ver vídeo" decía que no había vídeo aunque sí lo hubiera.
+    // Los progresivos viven en streamingData.formats: esos van
+    // primero; los adaptativos con audio se añaden después, sin
+    // duplicar itags (si un itag está en los dos, manda el
+    // progresivo, que es audio+vídeo seguro).
+    val seen = mutableSetOf<Long>()
+    fun addFormat(format: JsonValue, requireAudio: Boolean): VideoFormat? {
+        val url = format.obj("url")?.str() ?: return null
+        val mime = format.obj("mimeType")?.str() ?: return null
+        if (!mime.startsWith("video/")) return null
+        if (requireAudio && format.obj("audioChannels") == null) return null
+        val itag = format.obj("itag")?.long() ?: return null
+        if (!seen.add(itag)) return null
+        return VideoFormat(
+            itag = itag,
             mimeType = mime,
             url = url,
             width = format.obj("width")?.long()?.toInt() ?: 0,
             height = format.obj("height")?.long()?.toInt() ?: 0,
         )
     }
+    val out = mutableListOf<VideoFormat>()
+    streamingData.obj("formats")?.arr()?.forEach { addFormat(it, requireAudio = false)?.let(out::add) }
+    streamingData.obj("adaptiveFormats")?.arr()?.forEach { addFormat(it, requireAudio = true)?.let(out::add) }
+    return if (out.isEmpty()) null else out
 }
 
 /**
@@ -512,7 +528,12 @@ fun parseQuickPicks(json: String): List<QuickPick> {
             ?.obj("musicCarouselShelfBasicHeaderRenderer")
             ?.obj("title")?.obj("runs")?.arr()?.firstOrNull()?.obj("text")?.str()
             ?: continue
-        val lower = headerTitle.lowercase()
+        // RONDA 170: la comparación es contra cadenas fijas
+        // ("quick", "rápida"): con lowercase() sin locale, un
+        // encabezado en mayúsculas con 'I' en turco daba "quıck"
+        // y el carrusel se omitía. (El "Quick picks" actual, con
+        // la 'i' ya en minúscula, no lo disparaba: endurecimiento.)
+        val lower = headerTitle.lowercase(Locale.ROOT)
         if (!lower.contains("quick") && !lower.contains("rápida")) continue
         val items = shelf.obj("contents")?.arr() ?: return emptyList()
         val picks = mutableListOf<QuickPick>()
