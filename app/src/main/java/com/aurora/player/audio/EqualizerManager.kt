@@ -89,12 +89,22 @@ class EqualizerManager(audioSessionId: Int) {
             val count = eq.numberOfBands.toInt().coerceAtMost(10)
             freqs = (0 until count).map { eq.getCenterFreq(it.toShort()) / 1000 }
         } catch (_: Exception) {
+            // RONDA EQ: este fallo era mudo — el manager existía sin
+            // efecto, la pantalla ofrecía deslizadores que no hacían
+            // nada y el registro no decía por qué. El manager no tiene
+            // acceso al registro de errores: lo reporta con
+            // isAvailable=false (sin efecto o sin bandas) y quien lo
+            // crea (PlaybackService, que sí lo tiene) lo escribe en el
+            // registro. Ver setupEqualizer / setupOverlapEqualizer.
             eq?.release()
             eq = null
         }
         equalizer = eq
         bandFrequenciesHz = freqs
-        isAvailable = eq != null
+        // RONDA EQ: un efecto con 0 bandas no es un ecualizador: las
+        // 10 barras se mostrarían (el fallback de la UI) y applyPreset
+        // devolvería true sin tocar nada. Sin bandas, no disponible.
+        isAvailable = eq != null && freqs.isNotEmpty()
         try { bassBoost = BassBoost(0, audioSessionId) } catch (_: Exception) { bassBoost = null }
         try { virtualizer = Virtualizer(0, audioSessionId) } catch (_: Exception) { virtualizer = null }
         // Ronda 7 (Codex): si no se crearon, la UI no muestra el deslizador.
@@ -102,14 +112,28 @@ class EqualizerManager(audioSessionId: Int) {
         virtualizerAvailable = virtualizer != null
     }
 
-    fun setEnabled(enabled: Boolean) {
+    /** Enciende o apaga el efecto. RONDA EQ: devuelve true solo si el
+     *  ecualizador principal quedó en el estado pedido; false si el
+     *  efecto no existe o Android rechazó el cambio. Antes tragaba el
+     *  fallo en silencio y la pantalla mostraba "activado" aunque el
+     *  sonido no cambiara. Quien llama decide qué mostrar y lo escribe
+     *  en el registro (el manager no tiene acceso a él). */
+    fun setEnabled(enabled: Boolean): Boolean {
         // Ronda 7 (Codex): los efectos pueden tirar si la sesión se
         // invalidó; un ajuste nunca puede tumbar el servicio.
-        try {
-            equalizer?.enabled = enabled
+        return try {
+            val eq = equalizer ?: return false
+            eq.enabled = enabled
             bassBoost?.enabled = enabled
             virtualizer?.enabled = enabled
+            // RONDA EQ-NINGUNO (Codex, 2026-11-11): Android puede
+            // ignorar la asignación sin tirar: se relee el estado
+            // final y solo se devuelve true si el efecto quedó como
+            // se pidió. Sin esta lectura, un rechazo silencioso se
+            // reportaba como éxito y el registro no tenía errores.
+            eq.enabled == enabled
         } catch (_: Exception) {
+            false
         }
     }
 
