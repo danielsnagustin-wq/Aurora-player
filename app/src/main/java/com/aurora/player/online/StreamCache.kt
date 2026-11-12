@@ -8,10 +8,11 @@ import com.aurora.player.model.StreamQuality
  * La primera vez que suena una canción online se baja su audio y se
  * guarda en cacheDir/stream-cache; la siguiente vez suena del disco,
  * sin gastar datos. La descarga escribe a un archivo .part y solo al
- * terminar lo renombra: un archivo final siempre está completo (un
- * corte a medias nunca se da por bueno). Cuando el total pasa del
- * límite, se borran primero los que llevan más tiempo sin sonar
- * (LRU); nada se borra mientras suena.
+ * terminar lo renombra: un archivo final pasa la comprobación de
+ * longitud (si el servidor la da) y de magia del contenedor antes
+ * del renombre (ronda 175). Cuando el total pasa del límite, se
+ * borran primero los que llevan más tiempo sin sonar (LRU); el
+ * vídeo que suena se protege y nunca se poda (ronda 175).
  *
  * Esta clase es lógica pura (sin Android) para poder probarla en JVM:
  * recibe la lista de archivos y dice cuáles borrar. El acceso a disco
@@ -55,8 +56,15 @@ fun totalCacheSize(files: List<CachedStream>): Long =
  * Qué archivos borrar para volver bajo [maxBytes], los más viejos
  * sin usar primero. Devuelve la lista a borrar (vacía si ya cabe).
  * Nunca borra nada si el límite es 0 o negativo (sin límite).
+ * Los vídeos de [protectedVideoIds] nunca se borran (ronda 175:
+ * el que suena ahora mismo; sin esto la poda podía borrarlo en
+ * mitad de la reproducción).
  */
-fun filesToEvict(files: List<CachedStream>, maxBytes: Long): List<CachedStream> {
+fun filesToEvict(
+    files: List<CachedStream>,
+    maxBytes: Long,
+    protectedVideoIds: Set<String> = emptySet(),
+): List<CachedStream> {
     if (maxBytes <= 0L) return emptyList()
     val total = totalCacheSize(files)
     if (total <= maxBytes) return emptyList()
@@ -64,6 +72,7 @@ fun filesToEvict(files: List<CachedStream>, maxBytes: Long): List<CachedStream> 
     val toDelete = mutableListOf<CachedStream>()
     for (file in files.sortedBy { it.lastUsedMs }) {
         if (total - freed <= maxBytes) break
+        if (file.videoId in protectedVideoIds) continue
         toDelete.add(file)
         freed += file.sizeBytes.coerceAtLeast(0L)
     }
