@@ -8,6 +8,21 @@
              IllegalArgumentException al abrir el reproductor.
              El fondo es el mismo negro opaco del windowBackground. -->
         <item name="android:colorBackground">@color/amoled_background</item>
+        <!-- RONDA CAST-CRASH 2 (2026-11-11 16:05): el arreglo anterior
+             NO bastó — el registro del teléfono (15:44-15:53, 5 veces,
+             CastButton.kt:43) prueba que el constructor sigue tirando.
+             Verificado en el bytecode de mediarouter 1.6.0
+             (MediaRouterThemeHelper.getControllerColor): lo que lee es
+             el colorPrimary de AppCompat (NO android:colorBackground)
+             y calcula su contraste contra blanco; al no existir en
+             nuestro tema (plataforma, sin attrs AppCompat) resolvía a
+             #0 transparente y calculateContrast tiraba. Theme_MediaRouter
+             tampoco lo define, por eso el ContextThemeWrapper no salvó
+             nada. Se definen los colores AppCompat opacos aquí mismo. -->
+        <item name="colorPrimary">@color/ice_blue</item>
+        <item name="colorPrimaryDark">@color/amoled_background</item>
+        <item name="colorAccent">@color/ice_blue</item>
+        <item name="android:textColorPrimary">@color/silver</item>
         <item name="android:textColor">@color/silver</item>
     </style>
 </resources>
