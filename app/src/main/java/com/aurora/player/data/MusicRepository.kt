@@ -155,7 +155,15 @@ class MusicRepository(private val context: Context) {
             Album(
                 id = albumId,
                 name = list.first().album,
-                artist = list.first().artist,
+                // RONDA 169: el artista del álbum es albumArtist
+                // (MediaStore, columna de Android 11+): en una
+                // recopilación el albumArtist es "Varios artistas"
+                // y cada pista tiene su cantante. Antes se ponía el
+                // artista de la primera canción y el álbum quedaba
+                // asociado a quien no era. Sin albumArtist (API
+                // vieja o columna vacía), la primera pista.
+                artist = list.firstNotNullOfOrNull { it.albumArtist?.takeIf { a -> a.isNotBlank() } }
+                    ?: list.first().artist,
                 songCount = list.size,
                 year = list.mapNotNull { it.year }.minOrNull(),
             )
