@@ -106,6 +106,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     var perOutput by remember { mutableStateOf(false) }
     // RONDA 7 P1: asistente de EQ + gráfica de respuesta.
     var showWizard by remember { mutableStateOf(false) }
+    // RONDA EQ: true si el teléfono rechazó activar o aplicar el EQ
+    // (setEnabled o applyPreset devolvieron false). Antes la pantalla
+    // mostraba "activado" y las barras se quedaban puestas aunque el
+    // sonido no cambiara: ahora lo dice claro, sin fingir.
+    var eqApplyFailed by remember { mutableStateOf(false) }
 
     /** Aplica las 10 bandas + Tone 2D al manager real. Sin sesión
      * todavía devuelve true: los niveles quedan guardados y se aplican
@@ -114,6 +119,23 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         return manager?.applyPreset(
             EqualizerManager.Preset("EQ", applyTone2d(levels, toneBassDb, toneTrebleDb)),
         ) ?: true
+    }
+
+    /** Enciende el EQ si está apagado. RONDA EQ: devuelve true si el
+     *  efecto quedó encendido (o si todavía no hay sesión: se aplica
+     *  en cuanto suene la primera canción); false si el teléfono lo
+     *  rechazó, y entonces marca el aviso. Todos los deslizadores y
+     *  presets pasan por aquí, para que ninguno finja que suena
+     *  distinto cuando el efecto no se encendió. */
+    fun ensureEnabled(): Boolean {
+        if (enabled) return true
+        val ok = manager?.setEnabled(true) ?: true
+        if (ok) {
+            enabled = true
+        } else {
+            eqApplyFailed = true
+        }
+        return ok
     }
 
     /** Guarda el estado actual del EQ: sobrevive al reinicio del servicio. */
@@ -131,7 +153,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
     /** Carga un estado en los deslizadores y en el manager real. */
     fun loadState(state: EqState) {
         val m = manager ?: return
-        m.setEnabled(state.enabled)
+        // RONDA EQ: si el teléfono rechaza encender el efecto, la
+        // pantalla lo dice en vez de mostrar el interruptor en
+        // "activado" con el sonido igual.
+        if (state.enabled && !m.setEnabled(true)) eqApplyFailed = true
+        if (!state.enabled) m.setEnabled(false)
         enabled = state.enabled
         levels = state.levelsDb
         bass = state.bassBoost.toFloat()
@@ -282,12 +308,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                 manager = manager,
                 onClose = { showWizard = false },
                 onApplyCurve = { curve ->
-                    if (!enabled) {
-                        enabled = true
-                        manager?.setEnabled(true)
-                    }
+                    // RONDA EQ: si el teléfono rechaza el efecto, la
+                    // curva no se marca como aplicada.
+                    val enabledOk = ensureEnabled()
                     levels = curve
-                    applyToManager()
+                    eqApplyFailed = !enabledOk || !applyToManager()
                     selectedPreset = null
                     persist()
                 },
@@ -391,10 +416,17 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Text("Ecualizador activado")
             Switch(
                 checked = enabled,
-                onCheckedChange = {
-                    enabled = it
-                    manager?.setEnabled(it)
-                    persist()
+                onCheckedChange = { want ->
+                    // RONDA EQ: si el teléfono rechaza encender el
+                    // efecto, el interruptor no se queda en "activado"
+                    // fingiendo que suena distinto.
+                    val ok = manager?.setEnabled(want) ?: true
+                    if (ok) {
+                        enabled = want
+                        persist()
+                    } else {
+                        eqApplyFailed = true
+                    }
                 },
             )
         }
@@ -408,6 +440,18 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             }
         }
 
+        // RONDA EQ: si el teléfono rechazó el efecto, la pantalla ya no
+        // finge que todo va bien. Los cambios se guardan igual y se
+        // reaplican en cuanto haya sesión.
+        if (eqApplyFailed) {
+            Text(
+                "El ecualizador no se pudo activar en este teléfono: los cambios se guardan, pero el sonido no cambia.",
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+
         val freqs = manager?.bandFrequenciesHz?.takeIf { it.isNotEmpty() }
             ?: listOf(31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000)
         val bandCount = (manager?.getBandCount()?.takeIf { it > 0 } ?: levels.size).coerceAtMost(10)
@@ -419,15 +463,16 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Slider(
                 value = levels.getOrNull(band) ?: 0f,
                 onValueChange = { db ->
-                    if (!enabled) {
-                        enabled = true
-                        manager?.setEnabled(true)
-                    }
+                    // RONDA EQ: antes el auto-encendido y el preset se
+                    // llamaban sin mirar si el efecto los aceptó: la
+                    // barra se quedaba puesta y el sonido no cambiaba.
+                    var failed = !ensureEnabled()
                     levels = levels.toMutableList().also {
                         while (it.size <= band) it.add(0f)
                         it[band] = db
                     }
-                    applyToManager()
+                    if (!applyToManager()) failed = true
+                    eqApplyFailed = failed
                     selectedPreset = null
                 },
                 onValueChangeFinished = { persist() },
@@ -446,12 +491,12 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         Slider(
             value = toneBassDb,
             onValueChange = {
-                if (!enabled) {
-                    enabled = true
-                    manager?.setEnabled(true)
-                }
+                // RONDA EQ: el auto-encendido pasa por ensureEnabled,
+                // que marca el aviso si el teléfono lo rechaza.
+                var failed = !ensureEnabled()
                 toneBassDb = it
-                applyToManager()
+                if (!applyToManager()) failed = true
+                eqApplyFailed = failed
                 selectedPreset = null
             },
             onValueChangeFinished = { persist() },
@@ -462,12 +507,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         Slider(
             value = toneTrebleDb,
             onValueChange = {
-                if (!enabled) {
-                    enabled = true
-                    manager?.setEnabled(true)
-                }
+                var failed = !ensureEnabled()
                 toneTrebleDb = it
-                applyToManager()
+                if (!applyToManager()) failed = true
+                eqApplyFailed = failed
                 selectedPreset = null
             },
             onValueChangeFinished = { persist() },
@@ -482,10 +525,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Slider(
                 value = bass,
                 onValueChange = {
-                    if (!enabled) {
-                        enabled = true
-                        manager?.setEnabled(true)
-                    }
+                    // RONDA EQ: si el teléfono rechaza encender el
+                    // efecto, el aviso aparece aunque el refuerzo de
+                    // graves sea otro efecto aparte.
+                    if (!ensureEnabled()) eqApplyFailed = true
                     bass = it
                     manager?.setBassBoost(it.toInt().toShort())
                 },
@@ -507,10 +550,8 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             Slider(
                 value = virtualizer,
                 onValueChange = {
-                    if (!enabled) {
-                        enabled = true
-                        manager?.setEnabled(true)
-                    }
+                    // RONDA EQ: igual que el refuerzo de graves.
+                    if (!ensureEnabled()) eqApplyFailed = true
                     virtualizer = it
                     manager?.setVirtualizer(it.toInt().toShort())
                 },
@@ -541,10 +582,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                         // EQ apagado cambiaba los niveles en silencio,
                         // sin que se oyera nada distinto. Un preset se
                         // toca para oírlo: enciende el EQ.
-                        if (!enabled) {
-                            enabled = true
-                            manager?.setEnabled(true)
-                        }
+                        // RONDA EQ: ensureEnabled marca el aviso si el
+                        // teléfono rechaza encender el efecto.
+                        ensureEnabled()
                         // RONDA 140: antes se mostraban y guardaban los
                         // niveles aunque el efecto no los hubiera aplicado
                         // (solo se protegía la marca del preset): la
@@ -558,6 +598,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             persist()
                         } else {
                             levels = oldLevels
+                            eqApplyFailed = true
                         }
                     },
                 )
@@ -601,10 +642,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                     name = model.name,
                     selected = selectedPreset == "AutoEq: ${model.name}",
                     onClick = {
-                        if (!enabled) {
-                            enabled = true
-                            manager?.setEnabled(true)
-                        }
+                        // RONDA EQ: ensureEnabled marca el aviso si el
+                        // teléfono rechaza encender el efecto.
+                        ensureEnabled()
                         val oldLevels = levels
                         levels = model.levelsDb
                         if (applyToManager()) {
@@ -612,6 +652,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             persist()
                         } else {
                             levels = oldLevels
+                            eqApplyFailed = true
                         }
                     },
                 )
@@ -630,10 +671,9 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                             name = preset.name,
                             selected = selectedPreset == preset.name,
                             onClick = {
-                                if (!enabled) {
-                                    enabled = true
-                                    manager?.setEnabled(true)
-                                }
+                                // RONDA EQ: ensureEnabled marca el aviso
+                                // si el teléfono rechaza encender el efecto.
+                                ensureEnabled()
                                 val oldLevels = levels
                                 levels = preset.levelsDb
                                 if (applyToManager()) {
@@ -641,6 +681,7 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
                                     persist()
                                 } else {
                                     levels = oldLevels
+                                    eqApplyFailed = true
                                 }
                             },
                         )
