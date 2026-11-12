@@ -312,7 +312,13 @@ fun SetupWizardScreen(
                 enabled = step > 0,
             ) { Text("Atrás") }
             if (step < SETUP_STEP_COUNT - 1) {
-                TextButton(onClick = onFinish) { Text("Saltar") }
+                // RONDA 171 (2026-11-11): "Saltar" salta SOLO este paso,
+                // no todo el asistente. Antes llamaba a onFinish y marcaba
+                // el setup como hecho: pulsar "Saltar" en "Tema" se saltaba
+                // también el permiso de música y el resto de pasos, y el
+                // asistente no volvía a aparecer (IntroStore dice que solo
+                // "Empezar" marca el setup como hecho).
+                TextButton(onClick = { step = clampSetupStep(step + 1) }) { Text("Saltar") }
                 Button(onClick = { step = clampSetupStep(step + 1) }) {
                     Text("Siguiente")
                 }
