@@ -208,6 +208,12 @@ data class PlayerSettings(
     // teléfono. NEXT por defecto, como hasta ahora. Guardado como
     // texto, validado al leer (un valor desconocido usa NEXT).
     val shakeAction: String = "next",
+    // Fase 1b: gesto de volumen — deslizar vertical sobre la
+    // portada sube/baja el volumen (como los otros gestos, activo).
+    // TEMPORAL (cola 161, #707): el MainActivity y el
+    // SettingsControlSection remotos todavía lo leen; la definición
+    // se quita con el push de esos dos archivos (definición al final).
+    val volumeGesture: Boolean = true,
     val doubleTapToFavorite: Boolean = true,
     // Fase 2 — gestos configurables: qué hace el doble toque en la
     // portada. FAVORITE por defecto, como hasta ahora.
