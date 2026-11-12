@@ -76,4 +76,17 @@ class StreamCacheTest {
         val files = listOf(cached("a", 900, 1L))
         assertTrue(filesToEvict(files, 0L).isEmpty())
     }
+
+    @Test
+    fun elArchivoQueSuenaNoSeBorra() {
+        // RONDA 175: el más viejo es el que suena; se salta y se
+        // borra el siguiente más viejo hasta caber.
+        val files = listOf(
+            cached("sonando", 300, 1L),
+            cached("medio", 300, 2L),
+            cached("nuevo", 100, 3L),
+        )
+        val evicted = filesToEvict(files, 500L * 1024L * 1024L, setOf("sonando"))
+        assertEquals(listOf("medio"), evicted.map { it.videoId })
+    }
 }
