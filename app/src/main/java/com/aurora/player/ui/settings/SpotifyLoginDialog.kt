@@ -13,13 +13,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -122,39 +119,65 @@ fun SpotifyLoginDialog(
         }
     }
 
+    // RONDA LOGIN 2026-11-11 (como BitChord, captura del usuario):
+    // a PANTALLA COMPLETA, con cabecera propia ("Usar este perfil"
+    // arriba a la derecha) y la web ocupando todo lo demás. El diálogo
+    // pequeño (94% x 88%) recortaba la página y el WebView se veía
+    // negro y feo. El UA de escritorio se conserva: con el UA móvil
+    // Spotify sirve otro flujo (o rechaza) y el formulario no aparece.
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.88f)
-                .background(
-                    MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(16.dp),
-                )
-                .padding(16.dp),
+            modifier = Modifier.fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Iniciar sesión con Spotify",
-                    modifier = Modifier.weight(1f),
-                    style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
-                )
                 IconButton(onClick = onDismiss) {
                     Icon(Icons.Filled.Close, contentDescription = "Cerrar")
                 }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "Iniciar sesión con Spotify",
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge,
+                    )
+                    Text(
+                        "Entra con tu cuenta de Spotify. Cuando la sesión esté puesta, pulsa «Usar este perfil».",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = { tryConnect() }) {
+                    Text("Usar este perfil")
+                }
             }
-            Text(
-                "Entra con tu cuenta de Spotify. Aurora solo guarda la sesión en tu teléfono, no sube nada.",
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
+            hint?.let {
+                Text(
+                    it,
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Box(modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp)) {
                 AndroidView(
                     factory = { context ->
                         WebView(context).apply {
                             webView = this
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
+                            // RONDA LOGIN: la página a pantalla completa
+                            // y ajustada al ancho (antes, sin viewport,
+                            // la web de escritorio se veía recortada).
+                            settings.useWideViewPort = true
+                            settings.loadWithOverviewMode = true
+                            settings.setSupportZoom(true)
+                            settings.builtInZoomControls = true
+                            settings.displayZoomControls = false
+                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
                             CookieManager.getInstance().setAcceptCookie(true)
                             // RONDA LOGIN 2026-11-11: Spotify pone la
                             // cookie sp_dc desde otro dominio al iniciar
@@ -288,14 +311,6 @@ fun SpotifyLoginDialog(
                     }
                 }
             }
-            Spacer(Modifier.height(12.dp))
-            Button(
-                onClick = { tryConnect() },
-                colors = auroraButtonColors(),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Ya inicié sesión")
-            }
             TextButton(
                 onClick = { manual = !manual },
                 modifier = Modifier.fillMaxWidth(),
@@ -318,15 +333,6 @@ fun SpotifyLoginDialog(
                 ) {
                     Text("Conectar Spotify")
                 }
-            }
-            hint?.let {
-                Text(it, modifier = Modifier.padding(top = 8.dp))
-            }
-            TextButton(
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Cerrar")
             }
         }
     }
