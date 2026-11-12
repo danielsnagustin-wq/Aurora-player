@@ -337,6 +337,9 @@ fun LibraryScreen(
                 Tab(selected = tab == index, onClick = { tab = index }, text = { Text(label) })
             }
         }
+        // UI-1 (2026-11-11): el encabezado (buscar + chips + pestañas)
+        // se pegaba al contenido; el divisor separa las dos zonas.
+        Divider()
         // 002-online-youtube: la pestaña Online no depende de la
         // biblioteca local (funciona hasta sin canciones en el teléfono).
         if (tab == 6) {
@@ -951,7 +954,14 @@ private fun SongRow(
             Column(
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
             ) {
-                Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // UI-1 (2026-11-11) + revisión Aurora: el título era
+                // bodyLarge Regular y no se distinguía del metadato.
+                Text(
+                    song.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                )
                 Text(
                     "${song.artist} · ${song.album}",
                     maxLines = 1,
@@ -978,7 +988,13 @@ private fun SongRow(
     }
     ListItem(
         headlineContent = {
-            Text(song.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // UI-1 (2026-11-11): mismo peso que la fila compacta.
+            Text(
+                song.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
         },
         supportingContent = {
             Text(
