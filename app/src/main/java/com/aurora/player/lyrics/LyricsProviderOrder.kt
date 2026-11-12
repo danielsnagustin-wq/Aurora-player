@@ -6,13 +6,18 @@ package com.aurora.player.lyrics
  * la letra gana; si falla, pasa al siguiente. Funciones puras, sin
  * Android, para probarlas en la JVM.
  */
-val DEFAULT_PROVIDER_ORDER: List<String> = listOf("LRCLIB", "BetterLyrics", "BiniLyrics")
+val DEFAULT_PROVIDER_ORDER: List<String> = listOf("LRCLIB", "BetterLyrics", "BiniLyrics", "LyricsOvh", "QQMusic", "Unison", "LiriQo", "Kugou")
 
 /** Nombres conocidos -> instancia del proveedor. */
 fun providerByName(name: String): LyricsProvider? = when (name) {
     "LRCLIB" -> LrclibProvider()
     "BetterLyrics" -> BetterLyricsProvider()
     "BiniLyrics" -> BiniLyricsProvider()
+    "LyricsOvh" -> LyricsOvhProvider()
+    "QQMusic" -> QqLyricsProvider()
+    "Unison" -> UnisonLyricsProvider()
+    "LiriQo" -> LiriqoLyricsProvider()
+    "Kugou" -> KugouLyricsProvider()
     else -> null
 }
 
