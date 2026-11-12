@@ -79,6 +79,11 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _stats = MutableStateFlow<StatsData?>(null)
     val stats: StateFlow<StatsData?> = _stats
+    // RONDA 165: si la carga falla, la pantalla se quedaba en
+    // "Cargando…" para siempre (data null = cargando, sin error ni
+    // reintento). Este estado distingue el fallo de la carga.
+    private val _loadFailed = MutableStateFlow(false)
+    val loadFailed: StateFlow<Boolean> = _loadFailed
 
     private var loaded = false
     private var loadedPermission: Boolean? = null
@@ -98,6 +103,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.IO) { loadDaoStats(byId) }
                     } catch (e: Exception) {
                         ErrorLog.log(getApplication(), "Cargar estadísticas", e)
+                        _loadFailed.value = true
                         null
                     }
                 }
@@ -150,6 +156,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         if (loaded && loadedPermission == hasAudioPermission) return
         loaded = true
         loadedPermission = hasAudioPermission
+        _loadFailed.value = false
         viewModelScope.launch {
             val data = try {
                 withContext(Dispatchers.IO) {
@@ -167,6 +174,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
                 // Un fallo no deja las estadísticas colgadas: se
                 // registra y la pantalla muestra su estado vacío.
                 ErrorLog.log(getApplication(), "Cargar estadísticas", e)
+                _loadFailed.value = true
                 null
             }
             _stats.value = data
@@ -203,6 +211,7 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
 fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     val viewModel: StatsViewModel = viewModel()
     val stats by viewModel.stats.collectAsState()
+    val loadFailed by viewModel.loadFailed.collectAsState()
     // RONDA 79: la clave era Unit, así que si el permiso de música
     // se concedía en Ajustes del sistema con esta pantalla abierta
     // (MainActivity.onResume ya lo vuelve a comprobar), la pantalla
@@ -250,7 +259,22 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
             )
         }
         if (data == null) {
-            Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+            // RONDA 165: un fallo de carga no es "Cargando…" para
+            // siempre: se muestra el error y se puede reintentar.
+            if (loadFailed) {
+                Text(
+                    "No se pudieron cargar las estadísticas.",
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                OutlinedButton(
+                    onClick = { viewModel.refresh(hasAudioPermission) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("Reintentar")
+                }
+            } else {
+                Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+            }
             return@Column
         }
         if (data.totalPlays == 0) {
