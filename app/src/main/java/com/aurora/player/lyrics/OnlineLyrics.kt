@@ -127,6 +127,23 @@ fun plainToLrcLines(plainText: String): List<LrcLine> =
         .toList()
 
 /**
+ * RONDA LETRAS (2026-11-11): los títulos locales a veces traen el
+ * prefijo de pista del archivo ("2A - Eyes on Fire", "01. Canción",
+ * "1 - Canción"): ningún proveedor casa con ese prefijo y la letra
+ * se da por inexistente. Se quita SOLO el prefijo numérico inicial
+ * (número de 1-2 cifras + letra opcional + separador); el resto del
+ * título (incl. "(Zeds Dead Remix)") se conserva: es parte de la
+ * identidad de la canción y quitarlo traería la letra de otra versión.
+ */
+fun cleanTrackTitle(track: String): String {
+    val cleaned = track.trim().replace(
+        Regex("^\\d{1,2}[A-Za-z]?[\\s.\\-–—]+"),
+        "",
+    ).trim()
+    return cleaned.ifBlank { track.trim() }
+}
+
+/**
  * Resuelve la letra con prioridad honesta: .lrc local primero; si no
  * hay, la online sincronizada (validada con el parser); si tampoco,
  * la online sin tiempos. Nunca mezcla letras de otra canción.
@@ -261,6 +278,11 @@ suspend fun loadOnlineLyrics(
         LrclibProvider(),
         BetterLyricsProvider(),
         BiniLyricsProvider(),
+        LyricsOvhProvider(),
+        QqLyricsProvider(),
+        UnisonLyricsProvider(),
+        LiriqoLyricsProvider(),
+        KugouLyricsProvider(),
     ),
 ): List<LrcLine>? = withContext(Dispatchers.IO) {
     LyricsCache.read(context, cacheKey)?.let { cached ->
@@ -275,6 +297,15 @@ suspend fun loadOnlineLyrics(
     // la canción no tiene letra.
     val found = try {
         fetchLyricsFirst(providers, track, artist, album, durationSec)
+            ?: run {
+                // RONDA LETRAS: si no hay letra y el título trae
+                // prefijo de pista ("2A - ..."), se reintenta una
+                // vez con el título limpio (todos los proveedores).
+                val cleaned = cleanTrackTitle(track)
+                if (cleaned != track.trim()) {
+                    fetchLyricsFirst(providers, cleaned, artist, album, durationSec)
+                } else null
+            }
     } catch (_: LyricsSearchFailedException) {
         return@withContext null
     } ?: return@withContext emptyList()
