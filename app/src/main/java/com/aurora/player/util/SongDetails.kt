@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import com.aurora.player.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 /**
  * Aurora Player — detalles reales de una canción (ETAPA 5).
@@ -29,7 +30,7 @@ data class SongDetails(
 /** Formato que se ve en el reproductor. Si MediaStore no guardó el
  * mime (pasa con archivos de extensiones raras), se deduce de la
  * extensión del archivo; nunca sale "—". */
-fun codecDisplayName(mimeType: String, filePath: String = ""): String = when (mimeType.lowercase()) {
+fun codecDisplayName(mimeType: String, filePath: String = ""): String = when (mimeType.lowercase(Locale.ROOT)) {
     "audio/flac", "audio/x-flac" -> "FLAC"
     "audio/mpeg", "audio/mp3" -> "MP3"
     "audio/mp4", "audio/x-m4a", "audio/aac" -> "AAC"
@@ -39,7 +40,7 @@ fun codecDisplayName(mimeType: String, filePath: String = ""): String = when (mi
     "audio/x-ms-wma" -> "WMA"
     "audio/alac" -> "ALAC"
     else -> mimeType.ifBlank {
-        when (filePath.substringAfterLast('.', "").lowercase()) {
+        when (filePath.substringAfterLast('.', "").lowercase(Locale.ROOT)) {
             "flac" -> "FLAC"
             "mp3" -> "MP3"
             "m4a", "aac" -> "AAC"
