@@ -1,19 +1,13 @@
 package com.aurora.player.ui.settings
 
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -111,14 +105,7 @@ fun IntegrationsScreen(
         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier.size(48.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(Icons.Filled.MusicNote, contentDescription = null)
-        }
+        YouTubeMusicIcon(modifier = Modifier.size(48.dp))
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
             Text("YouTube Music", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -148,14 +135,7 @@ fun IntegrationsScreen(
                 modifier = Modifier.size(48.dp).clip(CircleShape),
             )
         } else {
-            Box(
-                modifier = Modifier.size(48.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.AccountCircle, contentDescription = null)
-            }
+            SpotifyIcon(modifier = Modifier.size(48.dp))
         }
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
             Text("Spotify", style = MaterialTheme.typography.titleMedium)
