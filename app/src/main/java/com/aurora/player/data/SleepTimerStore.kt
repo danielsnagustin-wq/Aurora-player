@@ -21,6 +21,12 @@ import kotlinx.coroutines.flow.map
  * Estado transitorio, no un ajuste: no va a PlayerSettings ni al
  * respaldo (un plazo en un respaldo no tiene sentido).
  * ANTI-CIERRE: archivo corrupto -> sin temporizador, nunca tumba la app.
+ * RONDA 164: el plazo es MONÓTONO (SystemClock.elapsedRealtime),
+ * no reloj de pared: un cambio de hora o de zona horaria no lo
+ * adelanta ni lo retrasa. Por eso vive en su propia clave
+ * (sleep_until_elapsed_ms): un valor viejo de reloj de pared
+ * leído como monótono parecería estar en el futuro siempre y el
+ * temporizador no se dispararía nunca.
  */
 private val Context.sleepTimerDataStore by preferencesDataStore(
     name = "aurora_sleep_timer",
@@ -37,7 +43,10 @@ class SleepTimerStore(private val context: Context) {
 
     private object Keys {
         val OPTION = stringPreferencesKey("sleep_option")
-        val UNTIL = longPreferencesKey("sleep_until_ms")
+        // RONDA 164: plazo monótono (elapsedRealtime). La clave
+        // vieja (sleep_until_ms, reloj de pared) ya no se lee ni se
+        // escribe; si queda en el archivo, se ignora.
+        val UNTIL_ELAPSED = longPreferencesKey("sleep_until_elapsed_ms")
         val AT_SONG_END = booleanPreferencesKey("sleep_at_song_end")
     }
 
@@ -47,7 +56,7 @@ class SleepTimerStore(private val context: Context) {
             val option = prefs[Keys.OPTION] ?: ""
             if (option.isEmpty()) null else SavedSleepTimer(
                 optionName = option,
-                untilMs = prefs[Keys.UNTIL],
+                untilMs = prefs[Keys.UNTIL_ELAPSED],
                 atSongEnd = prefs[Keys.AT_SONG_END] ?: false,
             )
         }
@@ -55,7 +64,7 @@ class SleepTimerStore(private val context: Context) {
     suspend fun save(optionName: String, untilMs: Long?, atSongEnd: Boolean) {
         context.sleepTimerDataStore.edit { prefs ->
             prefs[Keys.OPTION] = optionName
-            if (untilMs != null) prefs[Keys.UNTIL] = untilMs else prefs.remove(Keys.UNTIL)
+            if (untilMs != null) prefs[Keys.UNTIL_ELAPSED] = untilMs else prefs.remove(Keys.UNTIL_ELAPSED)
             prefs[Keys.AT_SONG_END] = atSongEnd
         }
     }
@@ -63,7 +72,7 @@ class SleepTimerStore(private val context: Context) {
     suspend fun clear() {
         context.sleepTimerDataStore.edit { prefs ->
             prefs.remove(Keys.OPTION)
-            prefs.remove(Keys.UNTIL)
+            prefs.remove(Keys.UNTIL_ELAPSED)
             prefs.remove(Keys.AT_SONG_END)
         }
     }
