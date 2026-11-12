@@ -13,7 +13,7 @@ class ThemeSettingsTest {
     @Test
     fun `por defecto es AMOLED negro puro`() {
         assertEquals("#000000", ThemeSettings.DEFAULT.backgroundHex)
-        assertEquals("#111111", ThemeSettings.DEFAULT.cardHex)
+        assertEquals("#17171B", ThemeSettings.DEFAULT.cardHex)
         assertEquals("#8CCBEB", ThemeSettings.DEFAULT.accentHex)
     }
 
