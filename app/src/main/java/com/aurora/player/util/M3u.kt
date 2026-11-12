@@ -63,7 +63,13 @@ object M3u {
             .trimStart('/')
         if (tail.isEmpty()) return null
         val suffix = "/$tail"
-        return libraryPaths.firstOrNull { it.endsWith(suffix) || it == tail }
+        // RONDA 166: solo si la coincidencia es ÚNICA. Antes
+        // devolvía la primera que casaba y un nombre repetido en
+        // dos carpetas importaba la canción equivocada en silencio
+        // — lo mismo que la ronda 32 prohibió en los niveles de
+        // nombre y título. Si varias casan, null: la entrada queda
+        // sin coincidir y se cuenta como tal, nunca se adivina.
+        return libraryPaths.filter { it.endsWith(suffix) || it == tail }.singleOrNull()
     }
 }
 
