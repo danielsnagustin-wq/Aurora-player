@@ -24,7 +24,17 @@ enum class SearchCategory(val label: String) {
 }
 
 private fun foldAccents(s: String): String =
-    Normalizer.normalize(s, Normalizer.Form.NFD)
+    // RONDA 169: hay letras que NFD no descompone (no tienen marca
+    // que quitar): ł, ø, đ, ß, æ, œ. Sin este mapa, buscar "lodz"
+    // no encontraba "Łódź" y "strasse" no encontraba "Straße".
+    Normalizer.normalize(
+        s.replace("ß", "ss").replace("Æ", "ae").replace("æ", "ae")
+            .replace("Œ", "oe").replace("œ", "oe")
+            .replace('ł', 'l').replace('Ł', 'l')
+            .replace('ø', 'o').replace('Ø', 'o')
+            .replace('đ', 'd').replace('Đ', 'd'),
+        Normalizer.Form.NFD,
+    )
         // RONDA 145: era solo el bloque InCombiningDiacriticalMarks
         // (U+0300-U+036F): las tildes de bloques extendidos (p. ej.
         // U+1AB0) no se quitaban y la búsqueda fallaba. \p{Mn} quita
