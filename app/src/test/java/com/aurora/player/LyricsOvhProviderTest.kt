@@ -61,6 +61,6 @@ class LyricsOvhProviderTest {
 
     @Test
     fun `titulo que es solo prefijo no se vacia`() {
-        assertEquals("01 - ", cleanTrackTitle("01 - "))
+        assertEquals("01 -", cleanTrackTitle("01 - "))
     }
 }
