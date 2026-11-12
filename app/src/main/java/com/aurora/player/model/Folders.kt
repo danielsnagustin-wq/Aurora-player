@@ -79,3 +79,13 @@ fun isInExcludedFolder(path: String, excluded: Set<String>): Boolean {
     val dir = parentPath(path)
     return excluded.any { dir == it || dir.startsWith("$it/") }
 }
+
+/**
+ * ESCANEAR (2026-11-11): true si la canción está dentro de una de
+ * las carpetas a escanear. Vacío = se escanea todo (sin filtro).
+ */
+fun isInIncludedFolder(path: String, included: Set<String>): Boolean {
+    if (included.isEmpty()) return true
+    val dir = parentPath(path)
+    return included.any { dir == it || dir.startsWith("$it/") }
+}
