@@ -66,4 +66,24 @@ fun SettingsPlaybackSection(
         onCheckedChange = { onSavePlayer(player.copy(localRadio = it)) },
         description = "Cuando se acaba la cola y la repetición está apagada, sigue sonando con canciones parecidas de tu biblioteca: mismo artista, género o álbum; nunca repite.",
     )
+    // AUTO-CERRAR (2026-11-11, como Musicolet): si dejas de
+    // escuchar y la app no está visible, se cierra sola del todo
+    // tras estos minutos (servicio + notificación + actividad).
+    // La cola guardada no se borra: al volver a abrir, reanuda.
+    AuroraSectionHeader(
+        title = "Cerrar la app automáticamente",
+        description = "Cierra la app tras un tiempo sin música y sin estar visible.",
+    )
+    AuroraOptionChips(
+        options = listOf(
+            "0" to "Nunca",
+            "1" to "1 min",
+            "2" to "2 min",
+            "5" to "5 min",
+            "10" to "10 min",
+            "30" to "30 min",
+        ),
+        selected = player.autoCloseMinutes.toString(),
+        onSelect = { onSavePlayer(player.copy(autoCloseMinutes = it.toInt())) },
+    )
 }
