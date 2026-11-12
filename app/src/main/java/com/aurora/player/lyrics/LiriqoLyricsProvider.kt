@@ -70,8 +70,12 @@ fun liriqoMatches(track: LiriqoTrack, wantedTrack: String, wantedArtist: String)
     val candArtist = normalizeForMatch(track.artist)
     val wantTrack = normalizeForMatch(wantedTrack)
     val wantArtist = normalizeForMatch(wantedArtist)
-    val trackOk = candTrack == wantTrack ||
-        candTrack.contains(wantTrack) || wantTrack.contains(candTrack)
+    // El título solo vale si es IGUAL o si lo pedido lo CONTIENE
+    // (el candidato es la versión corta de lo pedido). Al revés NO:
+    // un título corto ("Yellow") es prefijo de otra canción
+    // ("Yellow Submarine") y aquí no hay duración que desambigüe
+    // (misma lección que el run #722 de Unison).
+    val trackOk = candTrack == wantTrack || wantTrack.contains(candTrack)
     val artistOk = candArtist == wantArtist ||
         candArtist.contains(wantArtist) || wantArtist.contains(candArtist)
     return trackOk && artistOk
