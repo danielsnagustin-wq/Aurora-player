@@ -13,11 +13,15 @@ import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.data.SongStatsRow
 import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
+import com.aurora.player.model.FolderEntry
 import com.aurora.player.model.SearchCategory
 import com.aurora.player.model.Song
 import com.aurora.player.model.isInExcludedFolder
+import com.aurora.player.model.isInIncludedFolder
+import com.aurora.player.model.parentPath
 import com.aurora.player.model.matchesSearchQuery
 import com.aurora.player.util.ErrorLog
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -85,6 +89,13 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     // vacía. Null cuando el escaneo fue bien o no hay música de verdad.
     private val _scanError = MutableStateFlow<String?>(null)
     val scanError: StateFlow<String?> = _scanError
+
+    // ESCANEAR (2026-11-11): cifras y carpetas del último escaneo
+    // para el diálogo Escanear (como BitChord).
+    private val _scanStats = MutableStateFlow<ScanStats?>(null)
+    val scanStats: StateFlow<ScanStats?> = _scanStats
+    private val _scanFolders = MutableStateFlow<List<FolderEntry>>(emptyList())
+    val scanFolders: StateFlow<List<FolderEntry>> = _scanFolders
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
@@ -190,9 +201,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 if (loaded && excluded != lastExcluded) refresh()
             }
         }
+        // ESCANEAR (2026-11-11): lo mismo con las carpetas a
+        // escanear: al marcar o quitar una en el diálogo, la
+        // biblioteca se vuelve a escanear sola.
+        viewModelScope.launch {
+            folderStore.includedFlow.collect { included ->
+                if (loaded && included != lastIncluded) refresh()
+            }
+        }
     }
 
     private var lastExcluded: Set<String> = emptySet()
+    private var lastIncluded: Set<String> = emptySet()
 
     val filteredSongs: StateFlow<List<Song>> =
         combine(
@@ -272,7 +292,9 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             // SPEC 005 FR-006: leer las carpetas excluidas antes del
             // escaneo, para filtrarlas fuera de todo.
             val excluded = folderStore.excludedFlow.first()
+            val included = folderStore.includedFlow.first()
             lastExcluded = excluded
+            lastIncluded = included
             var loadFailed = false
             val (songs, albums, artists) = try {
                 withContext(Dispatchers.IO) {
@@ -283,8 +305,26 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                     // en ninguna pestaña, ni en la búsqueda, ni en los
                     // duplicados, ni en la cola (la cola guardada las
                     // pierde al restaurar, porque ya no están aquí).
-                    val loadedSongs = repository.loadSongs(minDurationMs)
+                    // ESCANEAR (2026-11-11): con carpetas marcadas,
+                    // SOLO esas entran (los audios que no son música
+                    // de otras carpetas ya no suben a la biblioteca).
+                    val rawSongs = repository.loadSongs(minDurationMs)
+                    val loadedSongs = rawSongs
                         .filter { !isInExcludedFolder(it.path, excluded) }
+                        .filter { isInIncludedFolder(it.path, included) }
+                    val folders = rawSongs.map { parentPath(it.path) }
+                        .groupingBy { it }.eachCount()
+                        .map { (path, count) ->
+                            FolderEntry(path, path.substringAfterLast('/'), count)
+                        }.sortedBy { it.name.lowercase() }
+                    _scanFolders.value = folders
+                    _scanStats.value = ScanStats(
+                        totalScanned = rawSongs.size,
+                        accessible = loadedSongs.size,
+                        excludedOrMissing = rawSongs.size - loadedSongs.size,
+                        foldersToScan = loadedSongs.map { parentPath(it.path) }.toSet().size,
+                        excludedFolders = excluded.size,
+                    )
                     Triple(
                         loadedSongs,
                         repository.loadAlbums(loadedSongs),
@@ -299,7 +339,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 Triple(emptyList(), emptyList(), emptyList())
             }
             _duplicateGroups.value = songs
-                .groupBy { Triple(it.title.lowercase(), it.artist.lowercase(), it.durationMs) }
+                // RONDA 169: la identidad de un duplicado no depende
+                // del idioma del teléfono: lowercase() sin locale en
+                // turco convierte "I" en "ı" y el mismo título en
+                // mayúsculas y minúsculas dejaba de agruparse (o dos
+                // títulos distintos se juntaban). Locale.ROOT.
+                .groupBy { Triple(it.title.lowercase(Locale.ROOT), it.artist.lowercase(Locale.ROOT), it.durationMs) }
                 .values
                 .filter { it.size > 1 }
                 .map { DuplicateGroup(it.first().title, it.first().artist, it.first().durationMs, it) }
@@ -330,6 +375,11 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     /** SPEC 005 FR-006: excluir una carpeta (sale de toda la biblioteca). */
     fun excludeFolder(path: String) {
         viewModelScope.launch { folderStore.exclude(path) }
+    }
+
+    /** ESCANEAR (2026-11-11): reemplazar las carpetas a escanear (el diálogo escribe el conjunto marcado de una vez). */
+    fun setIncludedFolders(paths: Set<String>) {
+        viewModelScope.launch { folderStore.setIncluded(paths) }
     }
 
     fun setQuery(q: String) {
