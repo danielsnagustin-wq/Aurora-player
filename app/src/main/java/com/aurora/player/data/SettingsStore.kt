@@ -155,6 +155,7 @@ class PlayerSettingsStore(private val context: Context) {
         val AUDIO_OUTPUT_MODE = stringPreferencesKey("audio_output_mode")
         val AUTO_PAUSE = booleanPreferencesKey("auto_pause_on_disconnect")
         val AUTOPLAY_ON_CONNECT = booleanPreferencesKey("autoplay_on_connect")
+        val AUTO_CLOSE_MINUTES = intPreferencesKey("auto_close_minutes")
         val MIN_DURATION = longPreferencesKey("min_duration_ms")
         val RESUME = booleanPreferencesKey("resume_where_left")
         val LOCAL_RADIO = booleanPreferencesKey("local_radio")
@@ -166,7 +167,6 @@ class PlayerSettingsStore(private val context: Context) {
         val KARAOKE_MODE = stringPreferencesKey("karaoke_mode")
         val SHAKE_TO_NEXT = booleanPreferencesKey("shake_to_next")
         val SHAKE_ACTION = stringPreferencesKey("shake_action")
-        val VOLUME_GESTURE = booleanPreferencesKey("volume_gesture")
     }
 
     val settingsFlow: Flow<PlayerSettings> = context.playerDataStore.data
@@ -180,13 +180,18 @@ class PlayerSettingsStore(private val context: Context) {
             playbackPitch = (prefs[Keys.PITCH]?.toFloatOrNull() ?: d.playbackPitch).coerceIn(0.5f, 2.0f),
             skipSilence = prefs[Keys.SKIP_SILENCE] ?: d.skipSilence,
             replayGainMode = (prefs[Keys.REPLAY_GAIN_MODE] ?: d.replayGainMode)
-                .takeIf { it in setOf("off", "track", "album", "smart") } ?: "off",
+                // RONDA 168: la lista olvidaba "lufs" y la lectura lo
+                // convertía en "off": el modo LUFS que ofrece la UI
+                // no se quedaba nunca (ni en la sesión: el flujo
+                // relee al guardar). Los 5 modos son los 5 de la UI.
+                .takeIf { it in setOf("off", "track", "album", "smart", "lufs") } ?: "off",
             replayGainPreAmpDb = (prefs[Keys.REPLAY_GAIN_PREAMP]?.toFloatOrNull() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
             channelBalance = (prefs[Keys.CHANNEL_BALANCE]?.toFloatOrNull() ?: d.channelBalance).coerceIn(-1f, 1f),
             audioOutputMode = (prefs[Keys.AUDIO_OUTPUT_MODE] ?: d.audioOutputMode)
                 .takeIf { it in setOf("standard", "direct") } ?: "standard",
             autoPauseOnDisconnect = prefs[Keys.AUTO_PAUSE] ?: d.autoPauseOnDisconnect,
             autoplayOnConnect = prefs[Keys.AUTOPLAY_ON_CONNECT] ?: d.autoplayOnConnect,
+            autoCloseMinutes = (prefs[Keys.AUTO_CLOSE_MINUTES] ?: d.autoCloseMinutes).coerceIn(0, 30),
             minDurationMs = prefs[Keys.MIN_DURATION] ?: d.minDurationMs,
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
@@ -198,7 +203,6 @@ class PlayerSettingsStore(private val context: Context) {
             karaokeMode = KaraokeMode.entries.find { it.name == prefs[Keys.KARAOKE_MODE] } ?: d.karaokeMode,
             shakeToNext = prefs[Keys.SHAKE_TO_NEXT] ?: d.shakeToNext,
             shakeAction = parseGestureAction(prefs[Keys.SHAKE_ACTION], GestureAction.NEXT).name,
-            volumeGesture = prefs[Keys.VOLUME_GESTURE] ?: d.volumeGesture,
         )
     }
 
@@ -215,6 +219,7 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.AUDIO_OUTPUT_MODE] = settings.audioOutputMode
             prefs[Keys.AUTO_PAUSE] = settings.autoPauseOnDisconnect
             prefs[Keys.AUTOPLAY_ON_CONNECT] = settings.autoplayOnConnect
+            prefs[Keys.AUTO_CLOSE_MINUTES] = settings.autoCloseMinutes
             prefs[Keys.MIN_DURATION] = settings.minDurationMs
             prefs[Keys.RESUME] = settings.resumeWhereLeft
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
@@ -226,7 +231,6 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.KARAOKE_MODE] = settings.karaokeMode.name
             prefs[Keys.SHAKE_TO_NEXT] = settings.shakeToNext
             prefs[Keys.SHAKE_ACTION] = settings.shakeAction
-            prefs[Keys.VOLUME_GESTURE] = settings.volumeGesture
         }
     }
 
