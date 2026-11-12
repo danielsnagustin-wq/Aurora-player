@@ -129,6 +129,7 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "audioOutputMode" to JsonValue.Str(p.audioOutputMode),
         "autoPauseOnDisconnect" to JsonValue.Bool(p.autoPauseOnDisconnect),
         "autoplayOnConnect" to JsonValue.Bool(p.autoplayOnConnect),
+        "autoCloseMinutes" to JsonValue.Num(p.autoCloseMinutes.toDouble()),
         "minDurationMs" to JsonValue.Num(p.minDurationMs.toDouble()),
         "resumeWhereLeft" to JsonValue.Bool(p.resumeWhereLeft),
         "localRadio" to JsonValue.Bool(p.localRadio),
@@ -140,7 +141,6 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "karaokeMode" to JsonValue.Str(p.karaokeMode.name),
         "shakeToNext" to JsonValue.Bool(p.shakeToNext),
         "shakeAction" to JsonValue.Str(p.shakeAction),
-        "volumeGesture" to JsonValue.Bool(p.volumeGesture),
     ),
 )
 
@@ -243,13 +243,17 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         playbackPitch = (v.obj("playbackPitch").double()?.toFloat() ?: d.playbackPitch).coerceIn(0.5f, 2.0f),
         skipSilence = v.obj("skipSilence").bool() ?: d.skipSilence,
         replayGainMode = (v.obj("replayGainMode").str() ?: d.replayGainMode)
-            .takeIf { it in setOf("off", "track", "album", "smart") } ?: "off",
+            // AUTO-CERRAR (2026-11-11): la lista olvidaba "lufs"
+            // (la ronda 168 lo arregló en SettingsStore pero no
+            // aquí): restaurar un respaldo con LUFS lo volvía "off".
+            .takeIf { it in setOf("off", "track", "album", "smart", "lufs") } ?: "off",
         replayGainPreAmpDb = (v.obj("replayGainPreAmpDb").double()?.toFloat() ?: d.replayGainPreAmpDb).coerceIn(-12f, 12f),
         channelBalance = (v.obj("channelBalance").double()?.toFloat() ?: d.channelBalance).coerceIn(-1f, 1f),
         audioOutputMode = (v.obj("audioOutputMode").str() ?: d.audioOutputMode)
             .takeIf { it in setOf("standard", "direct") } ?: "standard",
         autoPauseOnDisconnect = v.obj("autoPauseOnDisconnect").bool() ?: d.autoPauseOnDisconnect,
         autoplayOnConnect = v.obj("autoplayOnConnect").bool() ?: d.autoplayOnConnect,
+        autoCloseMinutes = (v.obj("autoCloseMinutes").long()?.toInt() ?: d.autoCloseMinutes).coerceIn(0, 30),
         minDurationMs = v.obj("minDurationMs").long() ?: d.minDurationMs,
         resumeWhereLeft = v.obj("resumeWhereLeft").bool() ?: d.resumeWhereLeft,
         localRadio = v.obj("localRadio").bool() ?: d.localRadio,
@@ -261,7 +265,6 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         karaokeMode = enumFrom(v.obj("karaokeMode").str(), KaraokeMode.entries.toTypedArray(), d.karaokeMode),
         shakeToNext = v.obj("shakeToNext").bool() ?: d.shakeToNext,
         shakeAction = parseGestureAction(v.obj("shakeAction").str(), GestureAction.NEXT).name,
-        volumeGesture = v.obj("volumeGesture").bool() ?: d.volumeGesture,
     )
 }
 
