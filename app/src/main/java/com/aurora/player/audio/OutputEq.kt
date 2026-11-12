@@ -3,6 +3,7 @@ package com.aurora.player.audio
 import android.content.Context
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import java.util.Locale
 
 /**
  * EQ por salida (Fase 2 audio): cada salida de audio puede tener su
@@ -42,7 +43,11 @@ fun classifyOutputRoute(deviceTypes: List<Int>): OutputRoute {
 fun routeKey(route: OutputRoute, deviceName: String?): String {
     if (route != OutputRoute.BLUETOOTH) return route.name.lowercase()
     val clean = (deviceName ?: "")
-        .lowercase()
+        // RONDA 170: la clave de EQ por aparato se guarda: con
+        // lowercase() sin locale, en turco "IEM" daba
+        // "bluetooth:ıem" y en otros idiomas "bluetooth:iem" — la
+        // EQ guardada de ese aparato dejaba de encontrarse.
+        .lowercase(Locale.ROOT)
         .map { if (it.isLetterOrDigit() || it == '-' || it == '_') it else '_' }
         .joinToString("")
         .trim('_')
