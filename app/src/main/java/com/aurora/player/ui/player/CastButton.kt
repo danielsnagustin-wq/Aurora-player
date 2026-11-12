@@ -32,17 +32,22 @@ import com.google.android.gms.cast.framework.CastButtonFactory
 fun CastButton(modifier: Modifier = Modifier, size: Dp = 48.dp) {
     AndroidView(
         factory = { ctx: Context ->
-            // RONDA CAST-CRASH 2026-11-11: el constructor de
-            // MediaRouteButton lee android:colorBackground de su tema
-            // y el nuestro no lo definía (resolvía a #0 transparente)
-            // → IllegalArgumentException al abrir el reproductor.
-            // Se crea con el tema propio de MediaRouter (fondo
-            // opaco) y, si aun así falla, se devuelve una vista
+            // CAST (2026-11-12): el constructor de MediaRouteButton
+            // re-tematiza su contexto por dentro
+            // (createThemedButtonContext) y resuelve el colorPrimary
+            // de AppCompat (bytecode mediarouter 1.6.0:
+            // getControllerColor → calculateContrast); si resuelve a
+            // #0 transparente, tira IllegalArgumentException y la app
+            // se cierra al abrir el reproductor (12 FATAL en el log
+            // del 11 nov, CastButton.kt:28). Theme.AuroraPlayer ya lo
+            // define opaco, pero el botón no depende del tema de la
+            // actividad: usa el overlay propio (fondo opaco
+            // garantizado) y, si aun así falla, se devuelve una vista
             // vacía: el botón nunca vuelve a tumbar la app.
             try {
                 val themedCtx = ContextThemeWrapper(
                     ctx,
-                    androidx.mediarouter.R.style.Theme_MediaRouter,
+                    com.aurora.player.R.style.ThemeOverlay_Aurora_CastButton,
                 )
                 MediaRouteButton(themedCtx).also { button ->
                     try {
