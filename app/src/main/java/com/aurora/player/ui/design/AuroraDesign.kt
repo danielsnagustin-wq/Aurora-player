@@ -89,7 +89,7 @@ fun AuroraSwitchRow(
     description: String? = null,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = 12.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -122,7 +122,7 @@ fun AuroraSliderRow(
     steps: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxWidth().padding(top = 8.dp)) {
+    Column(modifier = modifier.fillMaxWidth().padding(top = 12.dp)) {
         Text(label)
         Slider(
             value = value,
@@ -147,9 +147,9 @@ fun AuroraOptionChips(
     modifier: Modifier = Modifier,
 ) {
     FlowRow(
-        modifier = modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxWidth().padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         for ((value, label) in options) {
             if (value == selected) {
@@ -177,9 +177,9 @@ fun AuroraMultiChips(
     modifier: Modifier = Modifier,
 ) {
     FlowRow(
-        modifier = modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = modifier.fillMaxWidth().padding(top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         for ((value, label) in options) {
             if (value in selected) {
