@@ -80,11 +80,13 @@ data class ThemeSettings(
     val amoledWhenSystemDark: Boolean = true,
     val accentHex: String = "#8CCBEB", // Aurora hielo
     val backgroundHex: String = "#000000", // negro puro AMOLED
-    val cardHex: String = "#111111",
+    // UI-3 (2026-11-11): #111111 sobre #000000 aplana las capas;
+    // #17171B separa tarjetas y barra sin perder el AMOLED.
+    val cardHex: String = "#17171B",
     val textHex: String = "#DCE8F5", // plata
-    val secondaryTextHex: String = "#9AA7B8",
+    val secondaryTextHex: String = "#B0BAC8",
     val buttonHex: String = "#8CCBEB",
-    val playerBarHex: String = "#111111",
+    val playerBarHex: String = "#17171B",
     val visualizerHex: String = "#A99ACD", // lavanda
     val useMaterialYou: Boolean = false, // Fase 1b, apagado por defecto
     val textSize: TextSize = TextSize.MEDIUM,
@@ -174,6 +176,10 @@ data class PlayerSettings(
     // defecto) — al conectar una salida de audio, reanuda la
     // reproducción si hay una canción cargada y está en pausa.
     val autoplayOnConnect: Boolean = false,
+    // AUTO-CERRAR (2026-11-11, como Musicolet): minutos sin música
+    // tras los que la app se cierra sola, solo si no está visible.
+    // 0 = nunca. Por defecto 2, como pidió el usuario.
+    val autoCloseMinutes: Int = 2,
     // Biblioteca (Etapa 1: minDuration + rescan; 1b: carpetas)
     val minDurationMs: Long = 5_000L,
     // Reproducción (Etapa 1: temporizador; RONDA 6: radio local)
@@ -196,15 +202,12 @@ data class PlayerSettings(
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
     val swipeToChangeTrack: Boolean = true,
     // Fase 1b: agitar para pasar a la siguiente (OFF por defecto).
-    // Solo salta si está sonando; en pausa no hace nada.
+    // RONDA 119: funciona también en pausa (antes solo sonando).
     val shakeToNext: Boolean = false,
     // Fase 2 — gestos configurables (GoneMAD): qué hace agitar el
     // teléfono. NEXT por defecto, como hasta ahora. Guardado como
     // texto, validado al leer (un valor desconocido usa NEXT).
     val shakeAction: String = "next",
-    // Fase 1b: gesto de volumen — deslizar vertical sobre la
-    // portada sube/baja el volumen (como los otros gestos, activo).
-    val volumeGesture: Boolean = true,
     val doubleTapToFavorite: Boolean = true,
     // Fase 2 — gestos configurables: qué hace el doble toque en la
     // portada. FAVORITE por defecto, como hasta ahora.
