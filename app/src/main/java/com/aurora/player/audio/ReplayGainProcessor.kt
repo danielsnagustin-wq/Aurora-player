@@ -9,6 +9,7 @@ import androidx.media3.extractor.metadata.id3.TextInformationFrame
 import androidx.media3.extractor.metadata.vorbis.VorbisComment
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.math.pow
 
 /**
@@ -82,7 +83,12 @@ fun replayGainFromMetadata(metadata: Metadata): Pair<Float?, Float?> {
     for (i in 0 until metadata.length()) {
         when (val entry = metadata[i]) {
             is VorbisComment -> {
-                when (entry.key.uppercase()) {
+                // RONDA 167: uppercase() sin locale usa el locale
+                // del teléfono: en turco, "replaygain_track_gain"
+                // sube como "REPLAYGAİN_TRACK_GAİN" (İ con punto) y
+                // la etiqueta no se reconoce. Locale.ROOT es
+                // independiente del idioma del teléfono.
+                when (entry.key.uppercase(Locale.ROOT)) {
                     "REPLAYGAIN_TRACK_GAIN" -> trackDb = parseReplayGainDb(entry.value)
                     "REPLAYGAIN_ALBUM_GAIN" -> albumDb = parseReplayGainDb(entry.value)
                 }
