@@ -333,7 +333,11 @@ fun parsePlayerVideoFormats(json: String): List<VideoFormat>? {
     val out = mutableListOf<VideoFormat>()
     streamingData.obj("formats")?.arr()?.forEach { addFormat(it, requireAudio = false)?.let(out::add) }
     streamingData.obj("adaptiveFormats")?.arr()?.forEach { addFormat(it, requireAudio = true)?.let(out::add) }
-    return if (out.isEmpty()) null else out
+    // Sin formatos de vídeo la lista es VACÍA, no null: null es solo
+    // para "no se pudo leer la respuesta" (JSON roto, estado no OK,
+    // sin streamingData). VideoFormatsTest.sinProgresivos_noHayVideo
+    // afirma `!!.isEmpty()`; devolver null aquí lo rompía (#730).
+    return out
 }
 
 /**
