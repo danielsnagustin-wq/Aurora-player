@@ -38,6 +38,25 @@ import com.aurora.player.model.treeDocumentIdToPath
  * suben los audios que no son música (notas de voz, tonos) de
  * otras carpetas. Sin marcar nada se escanea todo, como siempre.
  */
+/**
+ * ESCANEAR (2026-11-11, como BitChord): cifras del último escaneo
+ * para el diálogo Escanear. totalScanned = lo que devolvió
+ * MediaStore (con el filtro de duración mínima, que es parte del
+ * escaneo); accessible = lo que entró en la biblioteca;
+ * excludedOrMissing = la diferencia: canciones que quedaron fuera
+ * SOLO por los filtros de carpeta (excluidas o no marcadas).
+ * foldersToScan = carpetas distintas que aportaron al menos una
+ * canción accesible (ronda 178: contar las rutas marcadas inflaba
+ * el número con carpetas vacías o padre+hija).
+ */
+data class ScanStats(
+    val totalScanned: Int,
+    val accessible: Int,
+    val excludedOrMissing: Int,
+    val foldersToScan: Int,
+    val excludedFolders: Int,
+)
+
 @Composable
 fun ScanDialog(
     stats: ScanStats?,
