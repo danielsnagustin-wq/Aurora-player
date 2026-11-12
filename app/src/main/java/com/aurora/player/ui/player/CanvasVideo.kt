@@ -2,6 +2,7 @@ package com.aurora.player.ui.player
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -21,7 +22,7 @@ import androidx.media3.ui.PlayerView
  * cuadrado de la portada (ZOOM).
  */
 @Composable
-fun CanvasVideo(url: String, modifier: Modifier = Modifier) {
+fun CanvasVideo(url: String, isPlaying: Boolean = true, modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val player = remember(url) {
         ExoPlayer.Builder(context).build().apply {
@@ -29,9 +30,13 @@ fun CanvasVideo(url: String, modifier: Modifier = Modifier) {
             volume = 0f
             setMediaItem(MediaItem.fromUri(url))
             prepare()
-            playWhenReady = true
+            playWhenReady = isPlaying
         }
     }
+    // R180 (2026-11-11): el Canvas arrancaba con playWhenReady = true
+    // y nadie lo paraba nunca: el vídeo seguía en bucle aunque la
+    // música estuviera en pausa. Ahora sigue al reproductor principal.
+    LaunchedEffect(isPlaying) { player.playWhenReady = isPlaying }
     DisposableEffect(player) {
         onDispose { player.release() }
     }
