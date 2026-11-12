@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -245,8 +246,14 @@ fun ColorPickerDialog(
             }
         },
         confirmButton = {
+            // RONDA 173 (2026-11-11): "Aplicar" deshabilitado con HEX
+            // inválido. Antes el botón seguía activo y confirmaba el RGB
+            // ANTERIOR (el campo marca error pero rgb no cambia hasta que
+            // el texto es válido): el usuario escribía un HEX, pulsaba
+            // "Aplicar" y se aplicaba otro color distinto al que escribió.
             Button(
                 onClick = { onConfirm(rgbToHex(r, g, b)) },
+                enabled = tab != 0 || hexToRgb(hexText) != null,
                 colors = auroraButtonColors(),
             ) { Text("Aplicar") }
         },
@@ -368,7 +375,10 @@ fun ThemePresetsSection(
 suspend fun exportThemeFile(context: Context, preset: ThemePreset): Result<String> =
     withContext(Dispatchers.IO) {
         runCatching {
-            val slug = preset.name.lowercase()
+            // RONDA 170: el slug es el nombre del archivo exportado:
+            // con lowercase() sin locale, en turco "Indie" daba
+            // "ındie" y el filtro [^a-z0-9] lo dejaba en "ndie".
+            val slug = preset.name.lowercase(Locale.ROOT)
                 .replace(Regex("[^a-z0-9]+"), "-").trim('-')
                 .ifBlank { "tema" }
             val fileName = "aurora-tema-$slug.json"
