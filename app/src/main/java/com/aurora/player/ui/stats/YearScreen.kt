@@ -51,6 +51,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -69,8 +71,18 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
     val years: StateFlow<List<Int>> = _years
     private val _stats = MutableStateFlow<YearStats?>(null)
     val stats: StateFlow<YearStats?> = _stats
+    // RONDA 165: como en StatsScreen, un fallo de carga no puede
+    // quedarse en "Cargando…" para siempre.
+    private val _loadFailed = MutableStateFlow(false)
+    val loadFailed: StateFlow<Boolean> = _loadFailed
     private val _playlistCreated = MutableStateFlow<String?>(null)
     val playlistCreated: StateFlow<String?> = _playlistCreated
+    // RONDA 165: dos toques seguidos en "Crear playlist" lanzaban
+    // dos corrutinas y cada una veía que no existía la playlist:
+    // se creaban DOS "Tu año NNNN". El candado las serializa y la
+    // segunda actualiza la que creó la primera, como promete el
+    // comentario de arriba.
+    private val playlistMutex = Mutex()
 
     fun loadYears(hasAudioPermission: Boolean) {
         viewModelScope.launch {
@@ -94,6 +106,7 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
     fun loadYear(year: Int, hasAudioPermission: Boolean) {
         _stats.value = null
         _playlistCreated.value = null
+        _loadFailed.value = false
         viewModelScope.launch {
             val data = try {
                 withContext(Dispatchers.IO) {
@@ -106,6 +119,7 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 ErrorLog.log(getApplication(), "Cargar Tu año", e)
+                _loadFailed.value = true
                 null
             }
             _stats.value = data
@@ -115,26 +129,33 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
     fun createYearPlaylist(stats: YearStats) {
         if (stats.topSongIds.isEmpty()) return
         viewModelScope.launch(Dispatchers.IO) {
-            val name = "Tu año ${stats.year}"
-            val dao = db.playlistDao()
-            val existing = dao.playlistByName(name)
-            if (existing != null) {
-                dao.replaceSongs(
-                    existing.id,
-                    stats.topSongIds.mapIndexed { index, songId ->
-                        PlaylistSongEntity(playlistId = existing.id, songId = songId, position = index)
-                    },
-                )
-            } else {
-                val id = dao.insertPlaylist(PlaylistEntity(name = name))
-                dao.replaceSongs(
-                    id,
-                    stats.topSongIds.mapIndexed { index, songId ->
-                        PlaylistSongEntity(playlistId = id, songId = songId, position = index)
-                    },
-                )
+            try {
+                playlistMutex.withLock {
+                    val name = "Tu año ${stats.year}"
+                    val dao = db.playlistDao()
+                    val existing = dao.playlistByName(name)
+                    if (existing != null) {
+                        dao.replaceSongs(
+                            existing.id,
+                            stats.topSongIds.mapIndexed { index, songId ->
+                                PlaylistSongEntity(playlistId = existing.id, songId = songId, position = index)
+                            },
+                        )
+                    } else {
+                        val id = dao.insertPlaylist(PlaylistEntity(name = name))
+                        dao.replaceSongs(
+                            id,
+                            stats.topSongIds.mapIndexed { index, songId ->
+                                PlaylistSongEntity(playlistId = id, songId = songId, position = index)
+                            },
+                        )
+                    }
+                    _playlistCreated.value = "$name · ${stats.topSongIds.size} canciones"
+                }
+            } catch (e: Exception) {
+                ErrorLog.log(getApplication(), "Crear playlist Tu año", e)
+                _playlistCreated.value = "No se pudo crear la playlist"
             }
-            _playlistCreated.value = "$name · ${stats.topSongIds.size} canciones"
         }
     }
 }
@@ -145,6 +166,7 @@ fun YearScreen(hasAudioPermission: Boolean, onClose: () -> Unit, modifier: Modif
     val viewModel: YearViewModel = viewModel()
     val years by viewModel.years.collectAsState()
     val stats by viewModel.stats.collectAsState()
+    val loadFailed by viewModel.loadFailed.collectAsState()
     val created by viewModel.playlistCreated.collectAsState()
     var selectedYear by remember { mutableStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
 
@@ -179,7 +201,22 @@ fun YearScreen(hasAudioPermission: Boolean, onClose: () -> Unit, modifier: Modif
         }
         val data = stats
         if (data == null) {
-            Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+            // RONDA 165: un fallo de carga no es "Cargando…" para
+            // siempre: se muestra el error y se puede reintentar.
+            if (loadFailed) {
+                Text(
+                    "No se pudo cargar Tu año.",
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+                OutlinedButton(
+                    onClick = { viewModel.loadYear(selectedYear, hasAudioPermission) },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Text("Reintentar")
+                }
+            } else {
+                Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+            }
             return@Column
         }
         if (data.totalPlays == 0) {
