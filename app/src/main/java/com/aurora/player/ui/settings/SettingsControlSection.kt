@@ -60,9 +60,4 @@ fun SettingsControlSection(
             onSelect = { onSavePlayer(player.copy(shakeAction = it)) },
         )
     }
-    AuroraSwitchRow(
-        title = "Deslizar vertical sobre la portada cambia el volumen",
-        checked = player.volumeGesture,
-        onCheckedChange = { onSavePlayer(player.copy(volumeGesture = it)) },
-    )
 }
