@@ -69,8 +69,14 @@ fun pickUnisonResult(
     for (candidate in results) {
         val candTrack = normalizeForMatch(candidate.song)
         val candArtist = normalizeForMatch(candidate.artist)
-        val trackOk = candTrack == wantedTrack ||
-            candTrack.contains(wantedTrack) || wantedTrack.contains(candTrack)
+        // El título solo vale si es IGUAL o si lo pedido lo CONTIENE
+        // (el candidato es la versión corta de lo pedido, p. ej.
+        // "Yellow" dentro de "Yellow (Remastered)"). Al revés NO:
+        // un título corto ("Yellow") es prefijo de otra canción
+        // ("Yellow Submarine") y Unison no devuelve duración para
+        // desambiguar, así que esa dirección devolvería la letra
+        // de otra canción. (Run #722: "pick descarta otra cancion".)
+        val trackOk = candTrack == wantedTrack || wantedTrack.contains(candTrack)
         val artistOk = candArtist == wantedArtist ||
             candArtist.contains(wantedArtist) || wantedArtist.contains(candArtist)
         if (trackOk && artistOk) return candidate
