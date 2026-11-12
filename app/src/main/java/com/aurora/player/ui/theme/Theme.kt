@@ -52,7 +52,7 @@ val Lavender = Color(0xFFA99ACD)
 val Turquoise = Color(0xFF75D6CE)
 val Silver = Color(0xFFDCE8F5)
 val PureBlack = Color(0xFF000000)
-val CardBlack = Color(0xFF111111)
+val CardBlack = Color(0xFF17171B) // UI-3 (2026-11-11): #111111 sobre #000000 aplana las capas; #17171B separa sin perder AMOLED
 
 /** Convierte "#RRGGBB" en Color; null si no es un HEX válido. */
 fun parseHexOrNull(hex: String): Color? {
@@ -228,22 +228,51 @@ private fun scaledTypography(scale: Float, font: com.aurora.player.model.AppFont
         lineHeight = lineHeight * scale,
         fontFamily = family,
     )
+    // PULIR INTERFAZ (2026-11-11, revisión Aurora): antes solo 5
+    // estilos llevaban la fuente y la escala elegidas; el resto
+    // (bodySmall, labelSmall, titleSmall, headline*...) quedaba con
+    // los valores M3 por defecto y FontFamily.Default: el tamaño de
+    // texto y la fuente no llegaban a todo el texto. Ahora se escalan
+    // los 15 estilos.
     return Typography(
+        displayLarge = AuroraTypography.displayLarge.scaled(),
+        displayMedium = AuroraTypography.displayMedium.scaled(),
+        displaySmall = AuroraTypography.displaySmall.scaled(),
+        headlineLarge = AuroraTypography.headlineLarge.scaled(),
+        headlineMedium = AuroraTypography.headlineMedium.scaled(),
+        headlineSmall = AuroraTypography.headlineSmall.scaled(),
         titleLarge = AuroraTypography.titleLarge.scaled(),
         titleMedium = AuroraTypography.titleMedium.scaled(),
+        titleSmall = AuroraTypography.titleSmall.scaled(),
         bodyLarge = AuroraTypography.bodyLarge.scaled(),
         bodyMedium = AuroraTypography.bodyMedium.scaled(),
+        bodySmall = AuroraTypography.bodySmall.scaled(),
+        labelLarge = AuroraTypography.labelLarge.scaled(),
         labelMedium = AuroraTypography.labelMedium.scaled(),
+        labelSmall = AuroraTypography.labelSmall.scaled(),
     )
 }
 
 /** Tipografía cuidada (PLAN §16): jerarquía título > artista > álbum, sin textos amontonados. */
 val AuroraTypography = Typography(
-    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.5.sp),
-    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.3.sp),
-    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.2.sp),
-    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.2.sp),
-    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.4.sp),
+    displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 64.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 52.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    // PULIR INTERFAZ (2026-11-11): los títulos llevaban tracking
+    // positivo (0.5/0.3.sp), aireado y poco premium; Retro/Poweramp
+    // usan títulos prietos y pesados: 0 y 0.1.sp.
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.sp),
+    titleMedium = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, letterSpacing = 0.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, letterSpacing = 0.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, letterSpacing = 0.1.sp),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, letterSpacing = 0.1.sp),
 )
 
 @Composable
@@ -394,6 +423,6 @@ fun cardBackground(style: CardStyle, surface: Color): Color = when (style) {
 /** Borde de tarjeta según el estilo; null en sólido (sin borde). */
 fun cardBorder(style: CardStyle, outline: Color): BorderStroke? = when (style) {
     CardStyle.SOLID -> null
-    CardStyle.GLASS -> BorderStroke(1.dp, outline.copy(alpha = 0.25f))
-    CardStyle.OUTLINE -> BorderStroke(1.dp, outline.copy(alpha = 0.45f))
+    CardStyle.GLASS -> BorderStroke(1.dp, outline.copy(alpha = 0.40f))
+    CardStyle.OUTLINE -> BorderStroke(1.dp, outline.copy(alpha = 0.65f))
 }
