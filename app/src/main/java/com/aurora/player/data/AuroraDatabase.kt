@@ -101,7 +101,11 @@ interface PlaylistDao {
     @Transaction
     suspend fun replaceSongs(id: Long, songs: List<PlaylistSongEntity>) {
         clearSongs(id)
-        setSongs(songs)
+        // R187 (2026-11-11): antes se insertaban las entidades tal
+        // cual venían: una lista con playlistId distintos dejaba esta
+        // playlist vacía y metía las canciones en otra. El DAO impone
+        // su propio contrato: todas las canciones van a `id`.
+        setSongs(songs.map { it.copy(playlistId = id) })
     }
 
     /** Playlist por nombre (Tu año: no duplicar "Tu año 2026"). */
