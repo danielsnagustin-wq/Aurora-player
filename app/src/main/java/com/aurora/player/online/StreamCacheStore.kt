@@ -5,6 +5,7 @@ import com.aurora.player.model.StreamQuality
 import android.content.Context
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +22,14 @@ import kotlinx.coroutines.withContext
 class StreamCacheStore(context: Context) {
     private val dir = File(context.cacheDir, "stream-cache").apply { mkdirs() }
 
+    // RONDA 175: el vídeo que suena ahora mismo, para que la poda
+    // no lo borre en mitad de la reproducción. Lo marca cachedFile
+    // (el archivo que devuelve está a punto de sonar) y lo lee
+    // prune. AtomicReference porque cachedFile corre en el hilo de
+    // la UI y prune en IO. Solo se protege un vídeo: el último que
+    // se pidió de caché (retener uno de más es despreciable).
+    private val protectedVideoId = AtomicReference<String?>(null)
+
     companion object {
         // RONDA 69: un candado por archivo, de PROCESO. Online y
         // Spotify crean cada una su propio StreamCacheStore, así que
@@ -36,6 +45,9 @@ class StreamCacheStore(context: Context) {
             val file = File(dir, streamCacheFileName(videoId, itag.toInt()))
             if (file.exists() && file.length() > 0L) {
                 runCatching { file.setLastModified(System.currentTimeMillis()) }
+                // RONDA 175: este archivo está a punto de sonar; la
+                // poda no puede llevárselo mientras tanto.
+                protectedVideoId.set(videoId)
                 return file
             }
         }
@@ -59,6 +71,32 @@ class StreamCacheStore(context: Context) {
                 lastUsedMs = file.lastModified(),
                 fileName = file.name,
             )
+        }
+    }
+
+    /**
+     * MENÚ ⋮ (2026-11-11, como BitChord): borra todos los archivos
+     * en caché de este vídeo (cualquier itag, incluidos los .part
+     * de una descarga a medias). Nunca lanza.
+     *
+     * RONDA 175: suspende y toma el candado por archivo (el mismo
+     * que download). Antes corría sin candado y podía borrar el
+     * .part mientras se escribía o el archivo final justo tras el
+     * renameTo de una descarga en curso.
+     */
+    suspend fun delete(videoId: String) {
+        val safe = Regex.escape(videoId)
+        val pattern = Regex("^${safe}_\\d+\\.(webm|m4a|bin)$")
+        val partPattern = Regex("^${safe}_\\d+\\.(webm|m4a|bin)\\.part$")
+        val files = dir.listFiles()?.filter { file ->
+            pattern.matchEntire(file.name) != null ||
+                partPattern.matchEntire(file.name) != null
+        } ?: return
+        for (file in files) {
+            val key = file.name.removeSuffix(".part")
+            downloadLocks.getOrPut(key) { Mutex() }.withLock {
+                runCatching { file.delete() }
+            }
         }
     }
 
@@ -120,6 +158,21 @@ class StreamCacheStore(context: Context) {
                 part.delete()
                 return null
             }
+            // RONDA 175: una respuesta truncada que cierra limpia
+            // pasaba el filtro (part no vacío) y se renombraba como
+            // final corrupto. Si el servidor dio longitud, tiene que
+            // coincidir; y la magia del contenedor tiene que ser la
+            // del itag (WebM = EBML, M4A = ftyp). Sin longitud ni
+            // magia conocida no hay nada que comprobar.
+            val expected = conn.contentLengthLong
+            if (expected > 0L && total != expected) {
+                part.delete()
+                return null
+            }
+            if (!streamCachePartHasMagic(part, itag)) {
+                part.delete()
+                return null
+            }
             if (part.length() == 0L || !part.renameTo(final)) {
                 part.delete()
                 return null
@@ -133,8 +186,29 @@ class StreamCacheStore(context: Context) {
     }
 
     private fun prune(maxBytes: Long) {
-        filesToEvict(listCached(), maxBytes).forEach { cached ->
+        // RONDA 175: el vídeo que suena no se poda.
+        val protected = setOfNotNull(protectedVideoId.get())
+        filesToEvict(listCached(), maxBytes, protected).forEach { cached ->
             runCatching { File(dir, cached.fileName).delete() }
         }
+    }
+}
+
+/** Magia del contenedor de un .part (ronda 175): WebM empieza con EBML, M4A lleva 'ftyp' en los bytes 4-7. */
+private fun streamCachePartHasMagic(part: File, itag: Int): Boolean {
+    val ext = streamExtensionForItag(itag)
+    if (ext == "bin") return true
+    val header = ByteArray(12)
+    val read = try {
+        part.inputStream().use { it.read(header) }
+    } catch (_: Exception) {
+        return false
+    }
+    if (read < 12) return false
+    return when (ext) {
+        "webm" -> header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
+            header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte()
+        "m4a" -> header.copyOfRange(4, 8).contentEquals("ftyp".toByteArray(Charsets.US_ASCII))
+        else -> true
     }
 }
