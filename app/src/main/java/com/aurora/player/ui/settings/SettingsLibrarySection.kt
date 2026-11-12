@@ -4,23 +4,33 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.FolderStore
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.ui.design.AuroraMultiChips
 import com.aurora.player.ui.design.AuroraOptionChips
 import com.aurora.player.ui.design.AuroraSectionHeader
+import com.aurora.player.ui.library.LibraryUiState
+import com.aurora.player.ui.library.LibraryViewModel
+import com.aurora.player.ui.library.ScanDialog
 import kotlinx.coroutines.launch
 
 /**
@@ -41,6 +51,15 @@ fun SettingsLibrarySection(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val folderStore = remember { FolderStore(context) }
+    // ESCANEAR (2026-11-11): el diálogo necesita el ViewModel de
+    // la biblioteca (mismo de la pantalla principal, por actividad).
+    val libraryViewModel: LibraryViewModel = viewModel()
+    val scanStats by libraryViewModel.scanStats.collectAsState()
+    val scanFolders by libraryViewModel.scanFolders.collectAsState()
+    val includedFolders by folderStore.includedFlow.collectAsState(initial = emptySet())
+    val libraryUiState by libraryViewModel.uiState.collectAsState()
+    var showScanDialog by remember { mutableStateOf(false) }
     // RONDA 2 (2026-11-09): la duración mínima existía en el
     // modelo y la biblioteca la usaba, pero NO HABÍA control para
     // cambiarla en Ajustes: era un ajuste muerto. Ahora sí se
@@ -49,6 +68,26 @@ fun SettingsLibrarySection(
         title = "Biblioteca",
         description = "Qué canciones entran en la biblioteca. Las muy cortas suelen ser tonos o notas de voz. Se aplica al volver a escanear la biblioteca.",
     )
+    // ESCANEAR (2026-11-11, como BitChord): volver a buscar
+    // canciones nuevas y elegir qué carpetas entran.
+    Button(
+        onClick = { showScanDialog = true },
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) {
+        Icon(Icons.Filled.Refresh, contentDescription = null)
+        Text("Escanear", modifier = Modifier.padding(start = 8.dp))
+    }
+    if (showScanDialog) {
+        ScanDialog(
+            stats = scanStats,
+            folders = scanFolders,
+            included = includedFolders,
+            isScanning = libraryUiState is LibraryUiState.Loading,
+            onRescan = { libraryViewModel.refresh() },
+            onSetIncluded = { libraryViewModel.setIncludedFolders(it) },
+            onDismiss = { showScanDialog = false },
+        )
+    }
     AuroraOptionChips(
         options = listOf(
             "0" to "Todo",
@@ -81,7 +120,6 @@ fun SettingsLibrarySection(
     )
     // SPEC 005 FR-006: carpetas excluidas (se excluyen con
     // mantener pulsado en la pestaña Carpetas; aquí se quitan).
-    val folderStore = remember { FolderStore(context) }
     val excludedFolders by folderStore.excludedFlow.collectAsState(initial = emptySet())
     AuroraSectionHeader(
         title = "Carpetas excluidas",
