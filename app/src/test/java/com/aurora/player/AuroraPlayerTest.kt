@@ -138,6 +138,31 @@ class AuroraPlayerTest {
     }
 
     @Test
+    fun `M3U no adivina cuando el sufijo casa con varias canciones`() {
+        // RONDA 166: un nombre repetido en dos carpetas no se
+        // resuelve a ciegas con la primera que casa.
+        val library = listOf(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            "/storage/emulated/0/Música/pop/cancion.mp3",
+        )
+        assertNull(M3u.matchBySuffix("cancion.mp3", library))
+        assertNull(
+            M3u.matchBySuffix(
+                "rock/cancion.mp3",
+                listOf(
+                    "/storage/emulated/0/A/rock/cancion.mp3",
+                    "/storage/emulated/0/B/rock/cancion.mp3",
+                ),
+            ),
+        )
+        // Con una sola coincidencia sigue resolviendo.
+        assertEquals(
+            "/storage/emulated/0/Música/rock/cancion.mp3",
+            M3u.matchBySuffix("cancion.mp3", listOf(library[0])),
+        )
+    }
+
+    @Test
     fun `M3U ignora directivas desconocidas y lineas vacias`() {
         val parsed = M3u.parse("#EXTM3U\n#EXTINF:120,A - B\n\n/song.mp3\n#UNKNOWN:1\n")
         assertEquals(1, parsed.size)
