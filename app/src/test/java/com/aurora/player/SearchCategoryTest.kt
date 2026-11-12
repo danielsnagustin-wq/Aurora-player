@@ -63,4 +63,16 @@ class SearchCategoryTest {
         // Lo que no coincide sigue sin coincidir.
         assertFalse(matchesSearchQuery("Canción", "José", "Música", "Pop", "cantar", SearchCategory.SONGS))
     }
+
+    @Test
+    fun `la busqueda pliega letras que NFD no descompone`() {
+        // RONDA 169: ł, ø, đ, ß, æ y œ no se descomponen en NFD y
+        // el plegado de acentos las dejaba distintas.
+        assertTrue(matchesSearchQuery("Łódź", "X", "Y", "Pop", "lodz", SearchCategory.SONGS))
+        assertTrue(matchesSearchQuery("Straße", "X", "Y", "Pop", "strasse", SearchCategory.SONGS))
+        assertTrue(matchesSearchQuery("Søren", "X", "Y", "Pop", "soren", SearchCategory.SONGS))
+        assertTrue(matchesSearchQuery("Đorđe", "X", "Y", "Pop", "dorde", SearchCategory.SONGS))
+        assertTrue(matchesSearchQuery("Æsop", "X", "Y", "Pop", "aesop", SearchCategory.SONGS))
+        assertFalse(matchesSearchQuery("Łódź", "X", "Y", "Pop", "varsovia", SearchCategory.SONGS))
+    }
 }
