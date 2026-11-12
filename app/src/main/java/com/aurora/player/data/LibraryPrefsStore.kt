@@ -32,7 +32,10 @@ class LibraryPrefsStore(context: Context) {
     companion object {
         const val TAB_COUNT = 8
         val ALL_TABS: Set<Int> = (0 until TAB_COUNT).toSet()
-        const val DEFAULT_ROW_COVER_DP = 40
+        // UI-1 (2026-11-11) + revisión Aurora: 40 dp en una fila de
+        // 72 dp dejaba la portada como miniatura; 52 dp le da
+        // presencia sin robar sitio al título (rango 32..96).
+        const val DEFAULT_ROW_COVER_DP = 52
         private val VISIBLE_TABS_KEY = stringPreferencesKey("visible_tabs_csv")
         // Cuántas pestañas conocía el teléfono cuando se guardó la
         // selección. Sin esta clave (instalaciones anteriores a
