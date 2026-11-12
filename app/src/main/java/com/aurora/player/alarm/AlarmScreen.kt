@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -371,10 +372,14 @@ private fun AlarmChip(name: String, selected: Boolean, onClick: () -> Unit) {
 private fun SongPickerDialog(songs: List<Song>, onPick: (Song) -> Unit, onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     val filtered = remember(query, songs) {
-        val q = query.trim().lowercase()
+        // RONDA 170: la consulta la escribe el usuario y el título
+        // viene de MediaStore: no son simétricos. En turco, buscar
+        // "imagine" no encontraba "Imagine" ("I" → "ı" en el título
+        // y la 'i' de la consulta se quedaba en 'i').
+        val q = query.trim().lowercase(Locale.ROOT)
         if (q.isEmpty()) songs
         else songs.filter {
-            it.title.lowercase().contains(q) || it.artist.lowercase().contains(q)
+            it.title.lowercase(Locale.ROOT).contains(q) || it.artist.lowercase(Locale.ROOT).contains(q)
         }
     }
     AlertDialog(
