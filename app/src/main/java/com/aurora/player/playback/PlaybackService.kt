@@ -135,6 +135,19 @@ class PlaybackService : MediaLibraryService() {
     private var crossfadeSeconds = 0
     /** Fase 1b: reproducir al conectar auriculares/BT (opt-in, OFF). */
     private var autoplayOnConnect = false
+    // AUTO-CERRAR (2026-11-11, como Musicolet): la app se cierra
+    // sola si la música lleva parada autoCloseMinutes minutos y la
+    // app no está visible. appVisible la avisa la actividad por
+    // broadcast (ACTION_APP_VISIBILITY).
+    private var appVisible = true
+    private var autoCloseMinutes = 0
+    private var autoCloseJob: Job? = null
+    private var visibilityReceiver: BroadcastReceiver? = null
+    // RONDA 179: la alarma suena por el mismo reproductor, pero
+    // antes de sonar tarda en resolver (dos lecturas IO) con el
+    // reproductor en pausa: sin esta bandera, el temporizador
+    // podría vencer en ese hueco y parar la alarma antes de sonar.
+    private var alarmActive = false
     private var headphoneReceiver: BroadcastReceiver? = null
     private var fadeJob: Job? = null
     private var fadingIn = false
@@ -179,12 +192,23 @@ class PlaybackService : MediaLibraryService() {
         /** RONDA 7 P4: la alarma la dispara el receptor con estas acciones. */
         const val ACTION_PLAY_ALARM = "com.aurora.player.PLAY_ALARM"
         const val ACTION_STOP_ALARM = "com.aurora.player.STOP_ALARM"
+        /** Botón X de la notificación (2026-11-11): cierra la música y la app. */
+        const val ACTION_CLOSE_APP = "com.aurora.player.ACTION_CLOSE_APP"
+        const val ACTION_STOP_ALL = "aurora_stop_all"
+        /** AUTO-CERRAR (2026-11-11): la actividad avisa si se ve o no. */
+        const val ACTION_APP_VISIBILITY = "com.aurora.player.ACTION_APP_VISIBILITY"
+        const val EXTRA_APP_VISIBLE = "app_visible"
         const val ALARM_CHANNEL_ID = "aurora_player_alarm"
         const val ALARM_NOTIFICATION_ID = 2
     }
 
     override fun onCreate() {
         super.onCreate()
+        // Botón X de la notificación (2026-11-11): proveedor propio
+        // para que la compacta sea [anterior, reproducir/pausa, X].
+        // Va antes de crear la sesión: el manager se crea perezoso
+        // al añadirla y ya no se puede cambiar el proveedor.
+        setMediaNotificationProvider(AuroraNotificationProvider(this))
         createNotificationChannel()
         createAlarmChannel()
         // startForeground() INMEDIATO (auditoría Codex, ronda 2):
@@ -272,6 +296,12 @@ class PlaybackService : MediaLibraryService() {
                             }
                             true
                         }
+                        // Botón X de la notificación (2026-11-11):
+                        // para la música del todo y cierra la app.
+                        ACTION_STOP_ALL -> {
+                            stopAllAndCloseApp()
+                            true
+                        }
                         else -> false
                     }
                 },
@@ -325,6 +355,23 @@ class PlaybackService : MediaLibraryService() {
             @Suppress("UnspecifiedRegisterReceiverFlag")
             registerReceiver(autoplayReceiver, autoplayFilter)
         }
+        // AUTO-CERRAR (2026-11-11): la actividad avisa de si se ve
+        // o no. El broadcast no arranca el servicio: si está muerto,
+        // no hay nada que cerrar y no llega a ningún lado.
+        visibilityReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                appVisible = intent?.getBooleanExtra(EXTRA_APP_VISIBLE, true) ?: true
+                updateAutoCloseTimer()
+            }
+        }.also { receiver ->
+            val filter = IntentFilter(ACTION_APP_VISIBILITY)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                registerReceiver(receiver, filter)
+            }
+        }
         // Ajustes vivos (ETAPA 4): crossfade y auto-pausa se aplican
         // cuando cambian en Ajustes, sin reiniciar nada.
         serviceScope.launch {
@@ -338,6 +385,10 @@ class PlaybackService : MediaLibraryService() {
                 crossfadeGaplessAlbum = settings.crossfadeGaplessAlbumException
                 exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
                 autoplayOnConnect = settings.autoplayOnConnect
+                // AUTO-CERRAR (2026-11-11): cada cambio del ajuste
+                // reevalúa el temporizador.
+                autoCloseMinutes = settings.autoCloseMinutes
+                updateAutoCloseTimer()
                 if (crossfadeSeconds == 0) {
                     fadeJob?.cancel()
                     fadingIn = false
@@ -425,6 +476,21 @@ class PlaybackService : MediaLibraryService() {
                         cancelOverlap()
                         player?.volume = 1f
                     }
+                }
+                // AUTO-CERRAR (2026-11-11): al parar empieza el
+                // conteo; al sonar se cancela.
+                updateAutoCloseTimer()
+            }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                // RONDA 179: la alarma terminó sola al acabarse su
+                // cola (sin Apagar): bajar la bandera para que el
+                // auto-cierre vuelva a aplicar. Con repetición no
+                // llega STATE_ENDED: la alarma sigue activa y la
+                // bandera se queda, como toca.
+                if (playbackState == Player.STATE_ENDED && alarmActive) {
+                    alarmActive = false
+                    updateAutoCloseTimer()
                 }
             }
 
@@ -624,7 +690,62 @@ class PlaybackService : MediaLibraryService() {
             .setSessionCommand(SessionCommand("aurora_cycle_repeat", Bundle.EMPTY))
             .setDisplayName(repeatName)
             .build()
-        session.setCustomLayout(listOf(shuffleButton, repeatButton))
+        // Botón X de la notificación (2026-11-11): cierra la música
+        // y la app. En la compacta sale siempre (AuroraNotificationProvider);
+        // aquí solo se añade al layout, como aleatorio y repetir.
+        val stopButton = CommandButton.Builder(CommandButton.ICON_STOP)
+            .setSessionCommand(SessionCommand(ACTION_STOP_ALL, Bundle.EMPTY))
+            .setDisplayName("Cerrar")
+            .build()
+        session.setCustomLayout(listOf(shuffleButton, repeatButton, stopButton))
+    }
+
+    /**
+     * AUTO-CERRAR (2026-11-11, como Musicolet): si la música lleva
+     * parada [autoCloseMinutes] minutos y la app no está visible, la
+     * app se cierra del todo (servicio + actividad). Cada cambio de
+     * reproducción, visibilidad o ajuste reinicia el conteo; al
+     * sonar, se cancela. La cola guardada NO se borra: al volver a
+     * abrir, reanuda donde iba.
+     */
+    private fun updateAutoCloseTimer() {
+        autoCloseJob?.cancel()
+        autoCloseJob = null
+        val minutes = autoCloseMinutes
+        // RONDA 179: con la alarma activa no hay temporizador
+        // (suena por este mismo reproductor).
+        if (minutes <= 0 || appVisible || alarmActive || player?.isPlaying == true) return
+        autoCloseJob = serviceScope.launch {
+            delay(minutes * 60_000L)
+            // Re-comprobar al despertar: por si sonó, se abrió la
+            // app o empezó una alarma mientras corría el conteo.
+            if (player?.isPlaying != true && !appVisible && !alarmActive) {
+                stopAllAndCloseApp()
+            }
+        }
+    }
+
+    /**
+     * Botón X de la notificación (2026-11-11): para la música del
+     * todo, quita la notificación, detiene el servicio y le pide a la
+     * actividad que se cierre. La cola guardada NO se borra: al volver
+     * a abrir, la música sigue donde iba (eso es reanudar, no sonar).
+     */
+    private fun stopAllAndCloseApp() {
+        try {
+            val p = player
+            p?.stop()
+            p?.clearMediaItems()
+        } catch (e: Exception) {
+            ErrorLog.log(this, "Cerrar todo", e)
+        }
+        // RONDA 179: al cerrar del todo, la notificación de la
+        // alarma tampoco puede quedarse colgada con el servicio
+        // muerto detrás (le pasaba igual al botón X).
+        getSystemService(NotificationManager::class.java)?.cancel(ALARM_NOTIFICATION_ID)
+        sendBroadcast(Intent(ACTION_CLOSE_APP).setPackage(packageName))
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun setupEqualizer(sessionId: Int) {
@@ -648,13 +769,25 @@ class PlaybackService : MediaLibraryService() {
                     PlayerSettingsStore(this@PlaybackService).settingsFlow.first().audioOutputMode,
                 )
                 audioOutputDirect = direct
-                eq.setEnabled(if (direct) false else saved.enabled)
-                eq.applyPreset(
+                // RONDA EQ: si el efecto no se creó o no tiene bandas,
+                // queda escrito en el registro (antes era mudo: la
+                // pantalla ofrecía barras que no hacían nada).
+                if (!eq.isAvailable) {
+                    ErrorLog.log(this@PlaybackService, "EQ no disponible en este dispositivo (el efecto no se creó o no tiene bandas)", null)
+                }
+                val wantEnabled = if (direct) false else saved.enabled
+                if (wantEnabled && eq.isAvailable && !eq.setEnabled(true)) {
+                    ErrorLog.log(this@PlaybackService, "EQ: el teléfono rechazó activar el ecualizador", null)
+                }
+                if (!wantEnabled) eq.setEnabled(false)
+                if (!eq.applyPreset(
                     EqualizerManager.Preset(
                         "Guardado",
                         applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
                     ),
-                )
+                )) {
+                    ErrorLog.log(this@PlaybackService, "EQ: no se pudo aplicar el preset guardado", null)
+                }
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!direct) applyRouteEq()
@@ -955,13 +1088,25 @@ class PlaybackService : MediaLibraryService() {
         manager?.let { eq ->
             serviceScope.launch {
                 val saved = EqStateStore(this@PlaybackService).stateFlow.first()
-                eq.setEnabled(if (audioOutputDirect) false else saved.enabled)
-                eq.applyPreset(
+                // RONDA EQ: mismo registro que el EQ principal: si el
+                // efecto no se creó o el teléfono lo rechaza, queda
+                // escrito en vez de fallar en silencio.
+                if (!eq.isAvailable) {
+                    ErrorLog.log(this@PlaybackService, "EQ solape no disponible en este dispositivo (el efecto no se creó o no tiene bandas)", null)
+                }
+                val wantEnabled = if (audioOutputDirect) false else saved.enabled
+                if (wantEnabled && eq.isAvailable && !eq.setEnabled(true)) {
+                    ErrorLog.log(this@PlaybackService, "EQ solape: el teléfono rechazó activar el ecualizador", null)
+                }
+                if (!wantEnabled) eq.setEnabled(false)
+                if (!eq.applyPreset(
                     EqualizerManager.Preset(
                         "Guardado",
                         applyTone2d(saved.levelsDb, saved.toneBassDb, saved.toneTrebleDb),
                     ),
-                )
+                )) {
+                    ErrorLog.log(this@PlaybackService, "EQ solape: no se pudo aplicar el preset guardado", null)
+                }
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
                 if (!audioOutputDirect) applyRouteEq()
@@ -1020,16 +1165,33 @@ class PlaybackService : MediaLibraryService() {
      * alarma (se oye aunque el teléfono esté en silencio) y publica
      * la notificación con el botón "Apagar". */
     private suspend fun playAlarm() {
+        // RONDA 179: la alarma se marca activa ANTES de resolver
+        // (la resolución tarda y el reproductor sigue en pausa):
+        // si el temporizador venciera en ese hueco, pararía la
+        // alarma antes de sonar. Se quita en stopAlarm().
+        alarmActive = true
+        updateAutoCloseTimer()
         val settings = withContext(Dispatchers.IO) {
             AlarmStore(this@PlaybackService).settingsFlow.first()
         }
-        if (!settings.enabled) return
+        if (!settings.enabled) {
+            alarmActive = false
+            updateAutoCloseTimer()
+            return
+        }
         val items = withContext(Dispatchers.IO) { resolveAlarmItems(settings) }
         if (items.isEmpty()) {
             ErrorLog.log(this, "Alarma sin música", null)
+            alarmActive = false
+            updateAutoCloseTimer()
             return
         }
-        val p = player ?: return
+        val p = player
+        if (p == null) {
+            alarmActive = false
+            updateAutoCloseTimer()
+            return
+        }
         p.setAudioAttributes(
             AudioAttributes.Builder()
                 .setUsage(C.USAGE_ALARM)
@@ -1070,6 +1232,10 @@ class PlaybackService : MediaLibraryService() {
     /** Apaga la alarma: pausa, vuelve al canal multimedia y quita la
      * notificación; si no suena nada, el servicio se detiene solo. */
     private fun stopAlarm() {
+        // RONDA 179: la alarma terminó: el auto-cierre vuelve a
+        // aplicar (si la app sigue oculta, se cierra a los minutos).
+        alarmActive = false
+        updateAutoCloseTimer()
         val p = player
         p?.pause()
         p?.setAudioAttributes(
@@ -1164,6 +1330,8 @@ class PlaybackService : MediaLibraryService() {
         serviceScope.cancel()
         try { headphoneReceiver?.let { unregisterReceiver(it) } } catch (_: IllegalArgumentException) { }
         headphoneReceiver = null
+        try { visibilityReceiver?.let { unregisterReceiver(it) } } catch (_: IllegalArgumentException) { }
+        visibilityReceiver = null
         fadeJob?.cancel()
         lufsJob?.cancel()
         overlapJob?.cancel()
