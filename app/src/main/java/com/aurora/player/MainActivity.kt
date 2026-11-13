@@ -168,6 +168,8 @@ import com.aurora.player.util.saveLyricsForSong
 import com.aurora.player.util.dsdQualityLine
 import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
+import com.aurora.player.util.effectiveStreamQuality
+import com.aurora.player.util.isWifiConnected
 import com.aurora.player.util.SongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
@@ -1080,6 +1082,13 @@ private fun AuroraApp(
         val c = controller ?: return
         if (radioBusy) return
         radioBusy = true
+        // El controlador solo se lee en el hilo principal: Media3
+        // exige su hilo de aplicación y leerlo en IO puede lanzar
+        // IllegalStateException (la radio quedaba vacía y avisaba
+        // "no quedan canciones parecidas" sin razón).
+        val currentId = c.currentMediaItem?.mediaId?.toLongOrNull()
+        val inQueue = (0 until c.mediaItemCount)
+            .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }.toSet()
         scope.launch {
             val picked: List<Song> = try {
                 withContext(Dispatchers.IO) {
@@ -1094,10 +1103,7 @@ private fun AuroraApp(
                     val stats = dao.statsPerSong().associateBy { it.songId }
                     val favs = dao.favoriteIdsFlow().first().toSet()
                     val songs = enrichSongs(rawSongs, favs, stats)
-                    val currentId = c.currentMediaItem?.mediaId?.toLongOrNull()
                     val current = songs.firstOrNull { it.id == currentId }
-                    val inQueue = (0 until c.mediaItemCount)
-                        .mapNotNull { c.getMediaItemAt(it).mediaId.toLongOrNull() }.toSet()
                     // MENÚ ⋮: la radio nunca repite una canción con
                     // "No me gusta" (claves local:<id>).
                     val dislikedLocalIds = dislikedStore.keysFlow.first()
@@ -2106,7 +2112,13 @@ private fun AuroraApp(
     fun downloadCurrent() {
         val videoId = currentVideoId ?: return
         scope.launch {
-            val quality = playerSettings.streamQuality
+            // Calidad por conexión (slice 3): la de Wi-Fi o la de
+            // móvil según la red activa al descargar.
+            val quality = effectiveStreamQuality(
+                isWifiConnected(context),
+                playerSettings.wifiStreamQuality,
+                playerSettings.mobileStreamQuality,
+            )
             val resolved = innerTubeClient().resolveStream(videoId, quality)
             if (resolved == null) {
                 Toast.makeText(context, "No se pudo descargar: sin conexión o sin audio", Toast.LENGTH_SHORT).show()
@@ -2460,7 +2472,8 @@ private fun AuroraApp(
                 ytMusicToken = ytMusicToken,
                 onYtTokenRejected = onYtTokenRejected,
                 onYtCookiesRejected = onYtCookiesRejected,
-                streamQuality = playerSettings.streamQuality,
+                wifiStreamQuality = playerSettings.wifiStreamQuality,
+                mobileStreamQuality = playerSettings.mobileStreamQuality,
                 onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
                 modifier = Modifier.padding(padding),
             )
