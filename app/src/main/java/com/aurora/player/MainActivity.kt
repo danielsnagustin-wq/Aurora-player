@@ -1821,6 +1821,36 @@ private fun AuroraApp(
         }
     }
 
+    fun playSongs(songs: List<Song>, startIndex: Int) {
+        val c = controller ?: return
+        if (songs.isEmpty()) return
+        if (castManager.isConnected) {
+            Toast.makeText(
+                context,
+                "Solo las pistas online se pueden enviar al Chromecast.",
+                Toast.LENGTH_LONG,
+            ).show()
+            return
+        }
+        // indexOfFirst devuelve -1 si la canción no está en la lista
+        // (duplicados exactos): nunca se pasa un índice inválido al
+        // reproductor.
+        val safeIndex = startIndex.coerceIn(0, songs.size - 1)
+        // RONDA 2026-11-10 (crash al tocar una canción): si el
+        // controlador muere entre medias, la app no se cierra: se
+        // registra y se queda en la biblioteca.
+        try {
+            c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
+            c.prepare()
+            c.play()
+            // Al tocar una canción el reproductor se abre solo: antes
+            // la música sonaba pero te quedabas en la biblioteca.
+            showPlayer = true
+        } catch (e: Exception) {
+            ErrorLog.log(context, "PLAY", e)
+        }
+    }
+
     /** Abrir una descarga: si está en la biblioteca suena ahí; si no, con el visor de archivos. */
     fun openDownload(record: DownloadRecord) {
         val uriStr = record.uri ?: return
@@ -1855,7 +1885,7 @@ private fun AuroraApp(
             try {
                 record.uri?.let {
                     try {
-                        contentResolver.delete(android.net.Uri.parse(it), null, null)
+                        context.contentResolver.delete(android.net.Uri.parse(it), null, null)
                     } catch (_: Exception) {
                     }
                 }
@@ -1878,36 +1908,6 @@ private fun AuroraApp(
             context.startActivity(Intent.createChooser(send, "Compartir descarga"))
         } catch (_: Exception) {
             Toast.makeText(context, "No se pudo compartir", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun playSongs(songs: List<Song>, startIndex: Int) {
-        val c = controller ?: return
-        if (songs.isEmpty()) return
-        if (castManager.isConnected) {
-            Toast.makeText(
-                context,
-                "Solo las pistas online se pueden enviar al Chromecast.",
-                Toast.LENGTH_LONG,
-            ).show()
-            return
-        }
-        // indexOfFirst devuelve -1 si la canción no está en la lista
-        // (duplicados exactos): nunca se pasa un índice inválido al
-        // reproductor.
-        val safeIndex = startIndex.coerceIn(0, songs.size - 1)
-        // RONDA 2026-11-10 (crash al tocar una canción): si el
-        // controlador muere entre medias, la app no se cierra: se
-        // registra y se queda en la biblioteca.
-        try {
-            c.setMediaItems(songs.map { songToMediaItem(context, it) }, safeIndex, 0)
-            c.prepare()
-            c.play()
-            // Al tocar una canción el reproductor se abre solo: antes
-            // la música sonaba pero te quedabas en la biblioteca.
-            showPlayer = true
-        } catch (e: Exception) {
-            ErrorLog.log(context, "PLAY", e)
         }
     }
 
