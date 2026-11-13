@@ -852,6 +852,15 @@ class PlaybackService : MediaLibraryService() {
                 }
                 eq.setBassBoost(saved.bassBoost.toShort())
                 eq.setVirtualizer(saved.virtualizer.toShort())
+                // RONDA ARREGLOS 2026-11-13: diagnóstico del efecto en
+                // el registro (sesión, bandas, activado releído): si el
+                // usuario no oye el EQ, el registro dice si el efecto
+                // está vivo o si el teléfono lo rechazó en silencio.
+                ErrorLog.log(
+                    this@PlaybackService,
+                    "EQ: sesión $sessionId, ${eq.getBandCount()} bandas, activado=${eq.isEnabled()}",
+                    null,
+                )
                 if (!direct) applyRouteEq()
                 applyUsbRouting()
             }
