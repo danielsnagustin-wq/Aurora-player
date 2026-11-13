@@ -52,6 +52,7 @@ import com.aurora.player.online.double
 import com.aurora.player.online.long
 import com.aurora.player.online.obj
 import com.aurora.player.online.str
+import com.aurora.player.online.YouTubeMusicAuth
 import com.aurora.player.online.PLAYER_CLIENTS
 import com.aurora.player.online.SEARCH_CLIENT
 import com.aurora.player.online.buildPlayerBody
@@ -198,6 +199,30 @@ class AuroraPlayerTest {
         assertEquals(0, LrcParser.currentLineIndex(lines, 3000))
         assertEquals(1, LrcParser.currentLineIndex(lines, 7000))
         assertEquals(-1, LrcParser.currentLineIndex(lines, 1000))
+    }
+
+    @Test
+    fun `LRC aplica la etiqueta offset a todas las lineas`() {
+        val lines = LrcParser.parse("[offset:+1500]\n[00:01.00]Primera\n[00:05.50]Segunda\n")
+        assertEquals(2, lines.size)
+        assertEquals(2500L, lines[0].timeMs)
+        assertEquals(7000L, lines[1].timeMs)
+    }
+
+    @Test
+    fun `LRC con offset negativo no baja de cero`() {
+        val lines = LrcParser.parse("[offset:-2000]\n[00:01.00]Primera\n[00:05.00]Segunda\n")
+        assertEquals(0L, lines[0].timeMs)
+        assertEquals(3000L, lines[1].timeMs)
+    }
+
+    @Test
+    fun `pegado manual acepta header crudo y valor suelto`() {
+        assertEquals("abc123", YouTubeMusicAuth.parseManualSession("sp_dc=abc123; sp_key=zz", "sp_dc"))
+        assertEquals("abc123", YouTubeMusicAuth.parseManualSession("abc123", "sp_dc"))
+        assertEquals("abc123", YouTubeMusicAuth.parseManualSession("Cookie: sp_dc=abc123; sp_key=zz", "sp_dc"))
+        assertNull(YouTubeMusicAuth.parseManualSession("sp_key=zz", "sp_dc"))
+        assertNull(YouTubeMusicAuth.parseManualSession("", "sp_dc"))
     }
 
     @Test
