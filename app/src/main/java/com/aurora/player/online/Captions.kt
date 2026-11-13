@@ -56,14 +56,20 @@ suspend fun fetchCaptions(baseUrl: String): List<LrcLine> = withContext(Dispatch
         val separator = if (baseUrl.contains("?")) "&" else "?"
         val url = if (baseUrl.contains("fmt=")) baseUrl else "$baseUrl${separator}fmt=srv3"
         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = 10_000
-        conn.readTimeout = 10_000
-        conn.setRequestProperty(
-            "User-Agent",
-            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
-        )
-        val text = conn.inputStream.bufferedReader().use { it.readText() }
-        parseTimedText(text)
+        // La conexión se desconecta en finally: sin esto quedaba
+        // retenida tras cada lectura (auditoría 2026-11-12).
+        try {
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            conn.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
+            )
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            parseTimedText(text)
+        } finally {
+            conn.disconnect()
+        }
     } catch (_: Exception) {
         emptyList()
     }
