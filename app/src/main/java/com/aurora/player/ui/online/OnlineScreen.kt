@@ -42,6 +42,8 @@ import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.QuickPick
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.model.StreamQuality
+import com.aurora.player.util.effectiveStreamQuality
+import com.aurora.player.util.isWifiConnected
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.ResolvedVideo
 import kotlinx.coroutines.launch
@@ -66,7 +68,10 @@ fun OnlineScreen(
     onYtTokenRejected: (String) -> Unit = {},
     // Ronda 7b: sesión de cookies caducada (401 sin token).
     onYtCookiesRejected: () -> Unit = {},
-    streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Calidad por conexión (copia BitChord, slice 3): una para
+    // Wi-Fi y otra para datos móviles; se resuelve al pulsar.
+    wifiStreamQuality: StreamQuality = StreamQuality.HIGH,
+    mobileStreamQuality: StreamQuality = StreamQuality.MEDIUM,
     // Fase 2 — Fuentes: cuántas canciones locales hay y qué hacer
     // al tocar el chip Local (volver a la pestaña Canciones).
     localCount: Int = 0,
@@ -180,20 +185,27 @@ fun OnlineScreen(
         if (resolvingId != null) return
         resolvingId = track.videoId
         error = null
+        // Calidad por conexión (slice 3): se resuelve al pulsar,
+        // según la red activa en ese momento, no al abrir la lista.
+        val quality = effectiveStreamQuality(
+            isWifiConnected(context),
+            wifiStreamQuality,
+            mobileStreamQuality,
+        )
         scope.launch {
             try {
                 // Caché (Fase 2): si ya sonó antes, suena del disco
                 // sin gastar datos; si no, suena la URL y el audio se
                 // baja en segundo plano para la próxima vez.
-                cacheStore.cachedFile(track.videoId, streamQuality)?.let {
+                cacheStore.cachedFile(track.videoId, quality)?.let {
                     onPlayTrack(track, it.toURI().toString())
                     return@launch
                 }
-                val stream = client.resolveStream(track.videoId, streamQuality)
+                val stream = client.resolveStream(track.videoId, quality)
                 if (stream != null) {
                     onPlayTrack(track, stream.url)
                     scope.launch {
-                        cacheStore.download(track.videoId, stream.itag, stream.url, streamQuality)
+                        cacheStore.download(track.videoId, stream.itag, stream.url, quality)
                     }
                 } else {
                     error = "YouTube no devolvió audio para \"${track.title}\". Prueba con otro resultado."
@@ -265,7 +277,8 @@ fun OnlineScreen(
                 ytMusicCookies = ytMusicCookies,
                 ytMusicToken = ytMusicToken,
                 onYtTokenRejected = onYtTokenRejected,
-                streamQuality = streamQuality,
+                wifiStreamQuality = wifiStreamQuality,
+                mobileStreamQuality = mobileStreamQuality,
             )
         }
         // Fase 2 — Para ti: charts de YouTube Music. Tocar una
