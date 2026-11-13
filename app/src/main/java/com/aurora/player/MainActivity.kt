@@ -2138,9 +2138,70 @@ private fun AuroraApp(
         }
     }
 
-    /** MENÚ ⋮: radio (Auto-DJ local) desde la pista actual. */
+    /**
+     * MENÚ ⋮: radio desde la pista actual. Si suena una canción online,
+     * la radio es de YouTube Music (canciones parecidas, endpoint `next`);
+     * si es local, o la radio online viene vacía o falla, cae al Auto-DJ
+     * local de siempre. La semilla nunca se repite como primera de la
+     * radio. Cada pista se resuelve con caché primero, como al tocarla.
+     */
     fun startRadioFromCurrent() {
-        refillRadio()
+        val videoId = currentVideoId
+        if (videoId == null) {
+            refillRadio()
+            return
+        }
+        if (radioBusy) return
+        radioBusy = true
+        scope.launch {
+            // true cuando la radio pasa a refillRadio: ella gestiona
+            // radioBusy a partir de ahí y este finally no lo toca.
+            var handedOff = false
+            try {
+                val quality = effectiveStreamQuality(
+                    isWifiConnected(context),
+                    playerSettings.wifiStreamQuality,
+                    playerSettings.mobileStreamQuality,
+                )
+                val cache = StreamCacheStore(context)
+                val radio = innerTubeClient().getWatchPlaylist(videoId)
+                    .filter { it.videoId != videoId }
+                    .take(10)
+                val pairs = mutableListOf<Pair<OnlineTrack, String>>()
+                for (track in radio) {
+                    val url = cache.cachedFile(track.videoId, quality)?.toURI()?.toString()
+                        ?: innerTubeClient().resolveStream(track.videoId, quality)?.let { stream ->
+                            scope.launch {
+                                cache.download(track.videoId, stream.itag, stream.url, quality)
+                            }
+                            stream.url
+                        }
+                    if (url != null) pairs += track to url
+                }
+                if (pairs.isEmpty()) {
+                    radioBusy = false
+                    handedOff = true
+                    refillRadio()
+                    return@launch
+                }
+                val c = controller ?: return@launch
+                try {
+                    val startIndex = c.mediaItemCount
+                    c.addMediaItems(pairs.map { (track, url) -> onlineMediaItem(track, url) })
+                    c.seekTo(startIndex, 0)
+                    c.play()
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Radio online", e)
+                }
+            } catch (e: Exception) {
+                ErrorLog.log(context, "Radio online", e)
+                radioBusy = false
+                handedOff = true
+                refillRadio()
+            } finally {
+                if (!handedOff) radioBusy = false
+            }
+        }
     }
 
     /** MENÚ ⋮: ver el vídeo de YouTube de la pista online actual. */
