@@ -276,6 +276,9 @@ fun PlayerScreen(
     // Slice 6 (2026-11-12): tras guardar etiquetas, la biblioteca se
     // recarga para que los cambios se vean (MainActivity).
     onTagsSaved: () -> Unit = {},
+    // Slice 6 paso 5b: canciones del mismo álbum para aplicar las
+    // etiquetas a todo el álbum desde el editor.
+    albumSongs: List<Song> = emptyList(),
     // Gestos con interruptor real en Ajustes (AUDITORÍA 2026-11-09).
     swipeEnabled: Boolean = true,
     doubleTapEnabled: Boolean = true,
@@ -569,6 +572,7 @@ fun PlayerScreen(
                 onSaved = { showTagEditor = false; onTagsSaved() },
                 onDismiss = { showTagEditor = false },
                 onlineMode = onlineMode,
+                albumSongs = albumSongs,
             )
         }
         if (castDeviceName != null) {
