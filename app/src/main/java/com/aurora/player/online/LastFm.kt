@@ -93,9 +93,8 @@ internal fun lastFmImageUrl(images: JsonValue?): String? {
     var bestUrl: String? = null
     var bestRank = order.size
     for (item in arr) {
-        val obj = item?.obj()
-        val url = obj?.obj("#text")?.str()
-        val size = obj?.obj("size")?.str()
+        val url = item.obj("#text")?.str()
+        val size = item.obj("size")?.str()
         if (url.isNullOrBlank() || size == null) continue
         val rank = order.indexOf(size)
         if (rank != -1 && rank < bestRank) {
