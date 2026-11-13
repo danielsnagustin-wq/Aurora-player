@@ -96,6 +96,8 @@ import com.aurora.player.util.rememberRemoteBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import com.aurora.player.online.searchItunes
+import java.io.IOException
 
 @Composable
 fun ArtistProfileScreen(
@@ -127,6 +129,7 @@ fun ArtistProfileScreen(
     // R8b: página del artista en YouTube Music (novedades, álbumes,
     // sencillos y vídeos reales). Carga independiente de la búsqueda.
     var artistPage by remember { mutableStateOf<ArtistPage?>(null) }
+    var itunesCoverUrl by remember { mutableStateOf<String?>(null) }
     var pageError by remember { mutableStateOf<String?>(null) }
     var pageJob by remember { mutableStateOf<Job?>(null) }
     // Canciones de un álbum online abierto con un toque.
@@ -389,6 +392,24 @@ fun ArtistProfileScreen(
         }
     }
 
+    LaunchedEffect(artistName, onlineMode, bannerCoverUrl) {
+        if (!onlineMode || bannerCoverUrl != null) {
+            itunesCoverUrl = null
+            return@LaunchedEffect
+        }
+        try {
+            val res = searchItunes(artistName, limit = 1)
+            itunesCoverUrl = res?.firstOrNull {
+                it.artist.contains(artistName, ignoreCase = true) ||
+                artistName.contains(it.artist, ignoreCase = true)
+            }?.artworkUrl600
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: IOException) {
+            itunesCoverUrl = null
+        }
+    }
+
     LazyColumn(modifier = modifier.fillMaxSize()) {
         // R8c: Atrás queda arriba del banner; el nombre va sobre la
         // portada y las acciones debajo, con los recuentos reales.
@@ -406,7 +427,7 @@ fun ArtistProfileScreen(
             }
         }
         item {
-            ArtistBanner(artistName = artistName, coverUrl = bannerCoverUrl)
+            ArtistBanner(artistName = artistName, coverUrl = bannerCoverUrl ?: itunesCoverUrl)
         }
         item {
             Text(
