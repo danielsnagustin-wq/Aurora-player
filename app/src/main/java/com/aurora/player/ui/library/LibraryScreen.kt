@@ -653,6 +653,7 @@ private fun AlbumsTab(
         Text("No hay álbumes.", modifier = Modifier.padding(16.dp))
         return
     }
+    val songByAlbum = remember(songs) { songs.groupBy { it.albumId }.mapValues { (_, v) -> v.first() } }
     // DISEÑO PREMIUM (spec 003): cuadrícula cuando el interruptor
     // está encendido (1..4 columnas, a elegir en Ajustes); lista
     // cuando está apagado.
@@ -665,7 +666,7 @@ private fun AlbumsTab(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             gridItems(albums, key = { it.id }) { album ->
-                val coverSong = songs.firstOrNull { it.albumId == album.id }
+                val coverSong = songByAlbum[album.id]
                 Surface(
                     color = cardBackground(
                         LocalCardStyle.current,
@@ -707,7 +708,7 @@ private fun AlbumsTab(
     }
     LazyColumn(modifier = Modifier.fillMaxSize()) {
         items(albums, key = { it.id }) { album ->
-            val coverSong = songs.firstOrNull { it.albumId == album.id }
+            val coverSong = songByAlbum[album.id]
             ListItem(
                 headlineContent = {
                     Text(album.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
