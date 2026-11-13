@@ -546,13 +546,16 @@ class PlaybackService : MediaLibraryService() {
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 // RONDA 179: la alarma terminó sola al acabarse su
-                // cola (sin Apagar): bajar la bandera para que el
-                // auto-cierre vuelva a aplicar. Con repetición no
-                // llega STATE_ENDED: la alarma sigue activa y la
-                // bandera se queda, como toca.
+                // cola (sin Apagar). Con repetición no llega
+                // STATE_ENDED: la alarma sigue activa y la bandera se
+                // queda, como toca.
+                // RONDA CAZA 2026-11-13 (P1): antes solo se bajaba la
+                // bandera: el reproductor se quedaba en USAGE_ALARM y
+                // la notificación de la alarma colgada. La misma
+                // restauración que stopAlarm() (canal multimedia +
+                // quitar notificación + auto-cierre).
                 if (playbackState == Player.STATE_ENDED && alarmActive) {
-                    alarmActive = false
-                    updateAutoCloseTimer()
+                    stopAlarm()
                 }
             }
 
@@ -1111,15 +1114,50 @@ class PlaybackService : MediaLibraryService() {
     private fun finishOverlapHandoff(p: ExoPlayer) {
         val b = overlapPlayer ?: return
         overlapHandoff = true
+        val handoffPosition = b.currentPosition
         p.volume = 0f
         p.seekToNextMediaItem()
-        p.seekTo(b.currentPosition)
-        p.volume = 1f
-        // Ronda 8 (Codex): NO limpiar overlapHandoff aquí: la
+        p.seekTo(handoffPosition)
+        // RONDA CAZA 2026-11-13 (P1): B NO se libera aquí: el seek de
+        // A es asíncrono y mientras A busca y rellena el búfer no
+        // suena nada si B ya no está (hueco audible, peor en streams;
+        // el comentario viejo prometía que B cubría el salto, pero el
+        // código lo liberaba en la misma llamada). B sigue sonando
+        // hasta que A renderiza de verdad en la nueva posición; ahí
+        // fundido corto B→A y se libera B. La corrutina corre en el
+        // hilo principal (serviceScope), como los callbacks del
+        // reproductor: entre dos delays no hay interleaving, así que
+        // el chequeo de identidad antes de cada escritura basta.
+        // Ronda 8 (Codex): overlapHandoff NO se limpia aquí: la
         // transición es asíncrona y onMediaItemTransition lo limpia
         // cuando la ve (ver la rama de traspaso arriba).
-        releaseOverlapPlayer()
-        overlapping = false
+        overlapJob = serviceScope.launch {
+            val deadline = SystemClock.elapsedRealtime() + 3000L
+            while (SystemClock.elapsedRealtime() < deadline) {
+                if (overlapPlayer !== b || !overlapping) return@launch
+                if (p.isPlaying && p.currentPosition >= handoffPosition) break
+                delay(50)
+            }
+            if (overlapPlayer !== b || !overlapping) return@launch
+            // Fundido corto B→A (150 ms): los dos suenan la misma
+            // pista en el mismo punto, así que el cambio no se oye
+            // doble ni se corta.
+            var aborted = false
+            for (i in 1..5) {
+                if (overlapPlayer !== b || !overlapping) {
+                    aborted = true
+                    break
+                }
+                val f = i / 5f
+                p.volume = f
+                b.volume = 1f - f
+                delay(30)
+            }
+            p.volume = 1f
+            if (aborted || overlapPlayer !== b || !overlapping) return@launch
+            releaseOverlapPlayer()
+            overlapping = false
+        }
     }
 
     private fun cancelOverlap() {
