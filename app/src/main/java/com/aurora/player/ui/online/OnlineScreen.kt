@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,10 +38,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.aurora.player.data.DiscoveryStore
+import com.aurora.player.data.NewReleaseItem
+import com.aurora.player.data.SoundCloudStore
+import com.aurora.player.data.SpotifyStore
 import com.aurora.player.online.ChartsResult
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.QuickPick
+import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.StreamCacheStore
+import com.aurora.player.online.fetchSoundCloudStream
+import com.aurora.player.online.fetchSoundCloudWebClientId
+import com.aurora.player.online.filterSpotifyReleasesByFollowed
+import com.aurora.player.online.soundCloudArtwork500
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
@@ -122,6 +132,21 @@ fun OnlineScreen(
     var searching by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var resolvingId by remember { mutableStateOf<String?>(null) }
+    // Descubrimiento — Nuevos lanzamientos: lo último guardado es lo
+    // que pinta el panel; el refresco lo vuelve a pedir a las cuentas
+    // con sesión y guarda lo nuevo. Sin ninguna sesión no se muestra.
+    val discoveryStore = remember { DiscoveryStore(context) }
+    val savedReleases by discoveryStore.releasesFlow.collectAsState(initial = emptyList())
+    val releasesUpdatedAt by discoveryStore.updatedAtFlow.collectAsState(initial = null)
+    val spotifyStore = remember { SpotifyStore(context) }
+    val spCookie by spotifyStore.cookieFlow.collectAsState(initial = "")
+    val spotify = remember { SpotifyClient() }
+    val soundCloudStore = remember { SoundCloudStore(context) }
+    val scToken by soundCloudStore.tokenFlow.collectAsState(initial = "")
+    val scConnected by soundCloudStore.connectedFlow.collectAsState(initial = false)
+    var releasesLoading by remember { mutableStateOf(false) }
+    var releasesLoaded by remember { mutableStateOf(false) }
+    val hasAnyLogin = ytMusicCookies != null || spotifyConnected || scConnected
 
     fun doSearch() {
         val q = query.trim()
@@ -240,6 +265,118 @@ fun OnlineScreen(
         }
     }
 
+    // Descubrimiento — refresca los lanzamientos de las cuentas con
+    // sesión (YouTube, Spotify, SoundCloud) y guarda lo nuevo. Cada
+    // fuente va en su orden (lo más nuevo primero) y si una falla, las
+    // demás llegan igual. Sin red, el panel enseña lo último guardado.
+    fun refreshReleases() {
+        if (releasesLoading) return
+        releasesLoading = true
+        scope.launch {
+            try {
+                val all = mutableListOf<NewReleaseItem>()
+                if (ytMusicCookies != null) {
+                    val yt = client.getNewReleases()
+                    all += yt.map {
+                        NewReleaseItem(
+                            source = "YouTube",
+                            title = it.title,
+                            artist = it.artist,
+                            dateText = it.year?.toString(),
+                            kind = it.kind,
+                            imageUrl = it.thumbnailUrl,
+                            browseId = it.browseId,
+                            trackId = null,
+                        )
+                    }
+                }
+                if (spotifyConnected && spCookie.isNotBlank()) {
+                    val token = spotify.fetchAccessToken(spCookie)
+                    if (token != null) {
+                        val followed = spotify.fetchFollowedArtists(token) ?: emptyList()
+                        val fresh = spotify.fetchNewReleases(token) ?: emptyList()
+                        val mine = filterSpotifyReleasesByFollowed(
+                            fresh,
+                            followed.map { it.id }.toSet(),
+                        )
+                        all += mine.map {
+                            NewReleaseItem(
+                                source = "Spotify",
+                                title = it.name,
+                                artist = it.artistName,
+                                dateText = it.releaseDate,
+                                kind = null,
+                                imageUrl = it.imageUrl,
+                                browseId = null,
+                                trackId = null,
+                            )
+                        }
+                    }
+                }
+                if (scConnected && scToken.isNotBlank()) {
+                    val clientId = fetchSoundCloudWebClientId()
+                    if (clientId != null) {
+                        val stream = fetchSoundCloudStream(clientId, scToken) ?: emptyList()
+                        all += stream.take(10).map {
+                            NewReleaseItem(
+                                source = "SoundCloud",
+                                title = it.title,
+                                artist = it.artist,
+                                dateText = null,
+                                kind = null,
+                                imageUrl = soundCloudArtwork500(it.artworkUrl),
+                                browseId = null,
+                                trackId = it.id,
+                            )
+                        }
+                    }
+                }
+                if (all.isNotEmpty()) {
+                    discoveryStore.save(all)
+                }
+            } catch (_: Exception) {
+                // Sin red: el panel enseña lo último guardado.
+            } finally {
+                releasesLoading = false
+            }
+        }
+    }
+
+    // Tocar un lanzamiento: el álbum de YouTube abre sus canciones
+    // como resultados; los demás buscan "artista - título" en YouTube
+    // Music (el camino real que ya existe, como Para ti).
+    fun openRelease(item: NewReleaseItem) {
+        val browseId = item.browseId
+        if (browseId != null) {
+            scope.launch {
+                try {
+                    val tracks = client.getAlbumTracks(browseId)
+                    if (tracks != null) {
+                        results = tracks
+                        error = if (tracks.isEmpty()) {
+                            "YouTube no devolvió canciones para \"${item.title}\"."
+                        } else {
+                            null
+                        }
+                    } else {
+                        error = "Sin conexión o YouTube no respondió."
+                    }
+                } catch (_: Exception) {
+                    error = "Sin conexión o YouTube no respondió."
+                }
+            }
+        } else {
+            query = "${item.artist} - ${item.title}".trim()
+            doSearch()
+        }
+    }
+
+    LaunchedEffect(onlineMode) {
+        if (!onlineMode || releasesLoaded || !hasAnyLogin) return@LaunchedEffect
+        releasesLoaded = true
+        refreshReleases()
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         SourcesRow(
             localCount = localCount,
@@ -268,6 +405,17 @@ fun OnlineScreen(
             enabled = query.isNotBlank() && !searching,
             modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
         ) { Text("Buscar") }
+        // Descubrimiento — Nuevos lanzamientos: solo con el modo
+        // online y al menos una sesión (YouTube, Spotify o SoundCloud).
+        if (onlineMode && hasAnyLogin) {
+            NewReleasesSection(
+                items = savedReleases,
+                updatedAtMs = releasesUpdatedAt,
+                loading = releasesLoading,
+                onRefresh = { refreshReleases() },
+                onOpenRelease = { openRelease(it) },
+            )
+        }
         // Fase 2 — Spotify como BitChord: tus listas, importadas por
         // YouTube Music. Solo con la cookie conectada.
         if (spotifyConnected && spotifySectionVisible) {
