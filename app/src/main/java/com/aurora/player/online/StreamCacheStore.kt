@@ -130,55 +130,61 @@ class StreamCacheStore(context: Context) {
             if (final.exists() && final.length() > 0L) return final
             val part = File(dir, streamCachePartFileName(videoId, itag))
             val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = 10000
-            conn.readTimeout = 30000
-            conn.connect()
-            if (conn.responseCode !in 200..299) return null
-            // Copia con tope por archivo: la poda LRU solo corre al
-            // final, así que un flujo infinito llenaría el disco
-            // antes de podar (auditoría 2026-11-10).
-            var total = 0L
-            var capped = false
-            conn.inputStream.use { input ->
-                part.outputStream().use { output ->
-                    val buf = ByteArray(8192)
-                    while (!capped) {
-                        val n = input.read(buf)
-                        if (n <= 0) break
-                        total += n
-                        if (total > MAX_SINGLE_STREAM_BYTES) {
-                            capped = true
-                            break
+            // La conexión se desconecta en finally: sin esto quedaba
+            // retenida en los retornos anticipados (auditoría 2026-11-12).
+            try {
+                conn.connectTimeout = 10000
+                conn.readTimeout = 30000
+                conn.connect()
+                if (conn.responseCode !in 200..299) return null
+                // Copia con tope por archivo: la poda LRU solo corre al
+                // final, así que un flujo infinito llenaría el disco
+                // antes de podar (auditoría 2026-11-10).
+                var total = 0L
+                var capped = false
+                conn.inputStream.use { input ->
+                    part.outputStream().use { output ->
+                        val buf = ByteArray(8192)
+                        while (!capped) {
+                            val n = input.read(buf)
+                            if (n <= 0) break
+                            total += n
+                            if (total > MAX_SINGLE_STREAM_BYTES) {
+                                capped = true
+                                break
+                            }
+                            output.write(buf, 0, n)
                         }
-                        output.write(buf, 0, n)
                     }
                 }
+                if (capped) {
+                    part.delete()
+                    return null
+                }
+                // RONDA 175: una respuesta truncada que cierra limpia
+                // pasaba el filtro (part no vacío) y se renombraba como
+                // final corrupto. Si el servidor dio longitud, tiene que
+                // coincidir; y la magia del contenedor tiene que ser la
+                // del itag (WebM = EBML, M4A = ftyp). Sin longitud ni
+                // magia conocida no hay nada que comprobar.
+                val expected = conn.contentLengthLong
+                if (expected > 0L && total != expected) {
+                    part.delete()
+                    return null
+                }
+                if (!streamCachePartHasMagic(part, itag)) {
+                    part.delete()
+                    return null
+                }
+                if (part.length() == 0L || !part.renameTo(final)) {
+                    part.delete()
+                    return null
+                }
+                prune(maxBytes)
+                return final
+            } finally {
+                conn.disconnect()
             }
-            if (capped) {
-                part.delete()
-                return null
-            }
-            // RONDA 175: una respuesta truncada que cierra limpia
-            // pasaba el filtro (part no vacío) y se renombraba como
-            // final corrupto. Si el servidor dio longitud, tiene que
-            // coincidir; y la magia del contenedor tiene que ser la
-            // del itag (WebM = EBML, M4A = ftyp). Sin longitud ni
-            // magia conocida no hay nada que comprobar.
-            val expected = conn.contentLengthLong
-            if (expected > 0L && total != expected) {
-                part.delete()
-                return null
-            }
-            if (!streamCachePartHasMagic(part, itag)) {
-                part.delete()
-                return null
-            }
-            if (part.length() == 0L || !part.renameTo(final)) {
-                part.delete()
-                return null
-            }
-            prune(maxBytes)
-            return final
         } catch (_: Exception) {
             runCatching { File(dir, streamCachePartFileName(videoId, itag)).delete() }
             return null
