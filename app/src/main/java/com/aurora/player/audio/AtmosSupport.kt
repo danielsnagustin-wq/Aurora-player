@@ -56,11 +56,20 @@ internal fun mapAtmosSupport(
  * constante de encoding usable aquí y se busca por MediaCodecList.
  * Cualquier fallo (sin servicio de audio, sin códecs) es NONE,
  * nunca un crash.
+ *
+ * Se caza Throwable, no solo Exception, a propósito: en JVM el
+ * mero hecho de tocar AudioCapabilities tira
+ * ExceptionInInitializerError (un Error) porque su inicializador
+ * estático construye un android.util.SparseArray, que en los stubs
+ * de los tests tira RuntimeException("Stub!") (reproducido en
+ * local 2026-11-13, run 43427589515). En el teléfono real
+ * SparseArray existe y esto no pasa; aquí la detección es
+ * best-effort y cualquier fallo vale NONE.
  */
 fun detectAtmosSupport(context: Context): AtmosSupport {
     val caps = try {
         AudioCapabilities.getCapabilities(context)
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         null
     }
     val supportsEAc3 = caps?.supportsEncoding(C.ENCODING_E_AC3) == true
@@ -71,7 +80,7 @@ fun detectAtmosSupport(context: Context): AtmosSupport {
                 it.equals("audio/ac4", ignoreCase = true)
             }
         }
-    } catch (_: Exception) {
+    } catch (_: Throwable) {
         false
     }
     return mapAtmosSupport(supportsEAc3, supportsJoc, supportsAc4)
