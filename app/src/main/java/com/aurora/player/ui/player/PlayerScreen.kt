@@ -148,6 +148,7 @@ import com.aurora.player.util.SongDetails
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.shareVerse
 import com.aurora.player.online.searchItunes
+import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.rememberRemoteBitmap
 import java.io.IOException
 
@@ -396,11 +397,13 @@ fun PlayerScreen(
             itunesCoverUrl = null
             return@LaunchedEffect
         }
+        val queryTitle = title.orEmpty()
+        val queryArtist = artist.orEmpty()
         try {
-            val res = searchItunes("$artist $title", limit = 1)
+            val res = searchItunes("$queryArtist $queryTitle", limit = 1)
             itunesCoverUrl = res?.firstOrNull {
-                (it.title.contains(title, ignoreCase = true) || title.contains(it.title, ignoreCase = true)) &&
-                (it.artist.contains(artist, ignoreCase = true) || artist.contains(it.artist, ignoreCase = true))
+                (it.title.contains(queryTitle, ignoreCase = true) || queryTitle.contains(it.title, ignoreCase = true)) &&
+                (it.artist.contains(queryArtist, ignoreCase = true) || queryArtist.contains(it.artist, ignoreCase = true))
             }?.artworkUrl600
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
