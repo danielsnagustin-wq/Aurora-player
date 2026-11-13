@@ -121,7 +121,7 @@ data class ThemeSettings(
             "Lavanda" to "#A99ACD",
             "Turquesa" to "#75D6CE",
             "Plata" to "#DCE8F5",
-            "Azul lavanda" to "#6578B8",
+            "Azul lavanda" to "#96A5D7",
         )
 
         /** ¿Es un HEX "#RRGGBB" válido? */
