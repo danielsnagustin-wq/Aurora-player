@@ -128,7 +128,15 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
      *  presets pasan por aquí, para que ninguno finja que suena
      *  distinto cuando el efecto no se encendió. */
     fun ensureEnabled(): Boolean {
-        if (enabled) return true
+        // RONDA CAZA 2026-11-13 (P1): el estado local "enabled" mentía:
+        // el servicio puede apagar el efecto real (cambio de ajustes,
+        // salida Directa) sin avisar a la pantalla, y mover un
+        // deslizador "tenía éxito" sin cambiar el sonido. Preguntar al
+        // efecto real, no al interruptor, y resincronizar el local.
+        if (manager?.isEnabled() == true) {
+            enabled = true
+            return true
+        }
         val ok = manager?.setEnabled(true) ?: true
         if (ok) {
             enabled = true
@@ -415,7 +423,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         ) {
             Text("Ecualizador activado")
             Switch(
-                checked = enabled,
+                // RONDA CAZA 2026-11-13 (P1): el interruptor leía el
+                // estado local, que puede quedar desincronizado si el
+                // servicio apaga el efecto real; con sesión, manda el
+                // efecto real; sin sesión todavía, el estado local.
+                checked = manager?.isEnabled() ?: enabled,
                 onCheckedChange = { want ->
                     // RONDA EQ: si el teléfono rechaza encender el
                     // efecto, el interruptor no se queda en "activado"
@@ -438,7 +450,11 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             manager == null -> "Sin sesión todavía: suena una canción y aparece."
             !manager.isAvailable -> "No disponible en este teléfono."
             else -> "Sesión ${manager.sessionId} · ${manager.getBandCount()} bandas · " +
-                if (enabled) "activo" else "apagado"
+                // RONDA CAZA 2026-11-13 (P1): la línea decía "activo"
+                // leyendo el estado local de la pantalla, no el efecto
+                // real: podía decir activo con el EQ apagado. Ahora
+                // lee manager.isEnabled() (relee el efecto Android).
+                if (manager.isEnabled()) "activo" else "apagado"
         }
         Text(
             eqStatus,
