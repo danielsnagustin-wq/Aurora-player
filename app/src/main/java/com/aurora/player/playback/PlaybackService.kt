@@ -1173,6 +1173,13 @@ class PlaybackService : MediaLibraryService() {
         updateAutoCloseTimer()
         try {
             playAlarmInner()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // A2b-1 (auditoría 2026-11-12): playAlarmInner es suspend
+            // (settingsFlow.first() dentro); si el servicio se destruye
+            // mientras resuelve, la cancelación se lanzaba aquí y el
+            // catch genérico la tragaba (la alarma quedaba como fallo
+            // en el registro en vez de cancelarse). Se relanza.
+            throw e
         } catch (e: Exception) {
             // Sin esto, un fallo al cargar los ajustes, resolver la
             // música o preparar el reproductor escapaba de la
