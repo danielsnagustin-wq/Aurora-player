@@ -74,6 +74,17 @@ fun SettingsNetworkSection(
             }
         },
     )
+    // Descargas (slice 4 paso 6): solo con Wi-Fi. Encendido, una
+    // descarga sin Wi-Fi queda pendiente en la lista de descargas
+    // en vez de gastar datos; apagado (por defecto), descarga con
+    // cualquier conexión.
+    AuroraSectionHeader(title = "Descargas")
+    AuroraSwitchRow(
+        title = "Descargar solo con Wi-Fi",
+        checked = player.downloadWifiOnly,
+        onCheckedChange = { onSavePlayer(player.copy(downloadWifiOnly = it)) },
+        description = "Con el interruptor encendido, las descargas sin Wi-Fi quedan pendientes en la lista de descargas hasta que haya Wi-Fi. No afecta a escuchar en streaming.",
+    )
     // Letras automáticas (2026-11-10, como BitChord): el orden
     // LRCLIB → BetterLyrics → BiniLyrics es fijo y el primero que
     // encuentre la letra gana. Sin hoja para elegir proveedor.
