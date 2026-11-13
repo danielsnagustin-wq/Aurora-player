@@ -1,5 +1,6 @@
 package com.aurora.player
 
+import com.aurora.player.online.SoundCloudTrack
 import com.aurora.player.online.SoundCloudTranscoding
 import com.aurora.player.online.buildSoundCloudSearchUrl
 import com.aurora.player.online.buildSoundCloudTrackUrl
@@ -147,7 +148,7 @@ class SoundCloudTest {
 
     @Test
     fun parseSearchJsonInvalidoDevuelveVacio() {
-        assertEquals(emptyList(), parseSoundCloudSearch("{ no es json"))
+        assertEquals(emptyList<SoundCloudTrack>(), parseSoundCloudSearch("{ no es json"))
     }
 
     @Test
