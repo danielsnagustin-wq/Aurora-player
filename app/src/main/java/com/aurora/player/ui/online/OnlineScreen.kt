@@ -146,7 +146,7 @@ fun OnlineScreen(
     val scConnected by soundCloudStore.connectedFlow.collectAsState(initial = false)
     var releasesLoading by remember { mutableStateOf(false) }
     var releasesLoaded by remember { mutableStateOf(false) }
-    val hasAnyLogin = ytMusicCookies != null || spotifyConnected || scConnected
+    val hasAnyLogin = !ytMusicCookies.isNullOrBlank() || spotifyConnected || scConnected
 
     fun doSearch() {
         val q = query.trim()
@@ -275,7 +275,7 @@ fun OnlineScreen(
         scope.launch {
             try {
                 val all = mutableListOf<NewReleaseItem>()
-                if (ytMusicCookies != null) {
+                if (!ytMusicCookies.isNullOrBlank()) {
                     val yt = client.getNewReleases()
                     all += yt.map {
                         NewReleaseItem(
@@ -377,135 +377,168 @@ fun OnlineScreen(
         refreshReleases()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        SourcesRow(
-            localCount = localCount,
-            ytMusicConnected = ytMusicCookies != null,
-            spotifyConnected = spotifyConnected,
-            spotifySectionVisible = spotifySectionVisible,
-            onShowLocal = onShowLocal,
-            onFocusSearch = {
-                searchFocus.requestFocus()
-                keyboardController?.show()
-            },
-            onToggleSpotify = { spotifySectionVisible = !spotifySectionVisible },
-        )
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            label = { Text("Buscar en YouTube Music") },
-            modifier = Modifier.fillMaxWidth().padding(16.dp)
-                .focusRequester(searchFocus),
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { doSearch() }),
-        )
-        OutlinedButton(
-            onClick = { doSearch() },
-            enabled = query.isNotBlank() && !searching,
-            modifier = Modifier.padding(start = 16.dp, bottom = 8.dp),
-        ) { Text("Buscar") }
-        // Descubrimiento — Nuevos lanzamientos: solo con el modo
-        // online y al menos una sesión (YouTube, Spotify o SoundCloud).
-        if (onlineMode && hasAnyLogin) {
-            NewReleasesSection(
-                items = savedReleases,
-                updatedAtMs = releasesUpdatedAt,
-                loading = releasesLoading,
-                onRefresh = { refreshReleases() },
-                onOpenRelease = { openRelease(it) },
-            )
-        }
-        // Fase 2 — Spotify como BitChord: tus listas, importadas por
-        // YouTube Music. Solo con la cookie conectada.
-        if (spotifyConnected && spotifySectionVisible) {
-            SpotifyPlaylistsSection(
+    // RONDA ARREGLOS 2026-11-13 (prueba en el teléfono): la raíz era
+    // un Column sin scroll con un LazyColumn anidado al final: los
+    // resultados, el error y el spinner quedaban fuera de la pantalla
+    // (altura ~0) y la búsqueda parecía no hacer nada. Ahora TODO es
+    // una sola LazyColumn: al buscar, los resultados se ven arriba y
+    // el contenido de exploración se esconde; sin búsqueda se ve lo
+    // de siempre (lanzamientos, listas de Spotify, Para ti).
+    val list = results
+    val showingResults = searching || list != null || error != null
+    LazyColumn(modifier = modifier.fillMaxSize()) {
+        item {
+            SourcesRow(
+                localCount = localCount,
+                ytMusicConnected = !ytMusicCookies.isNullOrBlank(),
                 spotifyConnected = spotifyConnected,
-                onImportTracks = onImportOnlineTracks,
-                ytMusicCookies = ytMusicCookies,
-                ytMusicToken = ytMusicToken,
-                onYtTokenRejected = onYtTokenRejected,
-                wifiStreamQuality = wifiStreamQuality,
-                mobileStreamQuality = mobileStreamQuality,
+                spotifySectionVisible = spotifySectionVisible,
+                onShowLocal = onShowLocal,
+                onFocusSearch = {
+                    searchFocus.requestFocus()
+                    keyboardController?.show()
+                },
+                onToggleSpotify = { spotifySectionVisible = !spotifySectionVisible },
             )
         }
-        // Fase 2 — Para ti: charts de YouTube Music. Tocar una
-        // lista o un artista busca su nombre en YouTube Music.
-        ForYouSection(
-            charts = charts,
-            loading = chartsLoading,
-            error = chartsError,
-            onSearchQuery = { q ->
-                query = q
-                doSearch()
-            },
-            quickPicks = quickPicks,
-            onPlayQuickPick = { pick ->
-                play(
-                    OnlineTrack(
-                        videoId = pick.videoId,
-                        title = pick.title,
-                        artist = pick.artist,
-                        album = null,
-                        durationSec = null,
-                        thumbnailUrl = pick.thumbnailUrl,
-                    ),
+        item {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Buscar en YouTube Music") },
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    .focusRequester(searchFocus),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { doSearch() }),
+            )
+        }
+        item {
+            Row(modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)) {
+                OutlinedButton(
+                    onClick = { doSearch() },
+                    enabled = query.isNotBlank() && !searching,
+                ) { Text("Buscar") }
+                if (list != null || error != null) {
+                    OutlinedButton(
+                        onClick = { results = null; error = null },
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) { Text("Limpiar") }
+                }
+            }
+        }
+        // El error va justo debajo del botón: antes quedaba debajo de
+        // "Para ti", fuera de la pantalla.
+        error?.let { errorText ->
+            item {
+                Text(
+                    errorText,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
-            },
-            onRetry = {
-                chartsError = null
-                chartsLoaded = false
-                chartsRetry++
-            },
-        )
+            }
+        }
         if (searching) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) { CircularProgressIndicator() }
-            return@Column
-        }
-        error?.let {
-            Text(
-                it,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(16.dp),
-            )
-        }
-        val list = results
-        if (list == null && error == null) {
-            Text(
-                "Busca una canción o un artista. Los resultados son de YouTube Music y suenan con el reproductor de siempre.",
-                modifier = Modifier.padding(16.dp),
-            )
+            item {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(32.dp),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator() }
+            }
         } else if (list != null) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(list, key = { it.videoId }) { track ->
-                    val subtitle = listOfNotNull(
-                        track.artist.takeIf { it.isNotBlank() },
-                        track.album,
-                        track.durationSec?.let { formatOnlineDuration(it) },
-                    ).joinToString(" • ")
-                    ListItem(
-                        headlineContent = { Text(track.title) },
-                        supportingContent = { Text(subtitle) },
-                        trailingContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                if (resolvingId == track.videoId) {
-                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                } else {
-                                    IconButton(onClick = { watchVideo(track) }) {
-                                        Icon(
-                                            Icons.Filled.OndemandVideo,
-                                            contentDescription = "Ver vídeo",
-                                        )
-                                    }
+            items(list, key = { it.videoId }) { track ->
+                val subtitle = listOfNotNull(
+                    track.artist.takeIf { it.isNotBlank() },
+                    track.album,
+                    track.durationSec?.let { formatOnlineDuration(it) },
+                ).joinToString(" • ")
+                ListItem(
+                    headlineContent = { Text(track.title) },
+                    supportingContent = { Text(subtitle) },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (resolvingId == track.videoId) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            } else {
+                                IconButton(onClick = { watchVideo(track) }) {
+                                    Icon(
+                                        Icons.Filled.OndemandVideo,
+                                        contentDescription = "Ver vídeo",
+                                    )
                                 }
                             }
-                        },
-                        modifier = Modifier.clickable { play(track) },
+                        }
+                    },
+                    modifier = Modifier.clickable { play(track) },
+                )
+            }
+        } else if (!showingResults) {
+            item {
+                Text(
+                    "Busca una canción o un artista. Los resultados son de YouTube Music y suenan con el reproductor de siempre.",
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
+        if (!showingResults) {
+            // Descubrimiento — Nuevos lanzamientos: solo con el modo
+            // online y al menos una sesión (YouTube, Spotify o SoundCloud).
+            if (onlineMode && hasAnyLogin) {
+                item {
+                    NewReleasesSection(
+                        items = savedReleases,
+                        updatedAtMs = releasesUpdatedAt,
+                        loading = releasesLoading,
+                        onRefresh = { refreshReleases() },
+                        onOpenRelease = { openRelease(it) },
                     )
                 }
+            }
+            // Fase 2 — Spotify como BitChord: tus listas, importadas por
+            // YouTube Music. Solo con la cookie conectada.
+            if (spotifyConnected && spotifySectionVisible) {
+                item {
+                    SpotifyPlaylistsSection(
+                        spotifyConnected = spotifyConnected,
+                        onImportTracks = onImportOnlineTracks,
+                        ytMusicCookies = ytMusicCookies,
+                        ytMusicToken = ytMusicToken,
+                        onYtTokenRejected = onYtTokenRejected,
+                        wifiStreamQuality = wifiStreamQuality,
+                        mobileStreamQuality = mobileStreamQuality,
+                    )
+                }
+            }
+            // Fase 2 — Para ti: charts de YouTube Music. Tocar una
+            // lista o un artista busca su nombre en YouTube Music.
+            item {
+                ForYouSection(
+                    charts = charts,
+                    loading = chartsLoading,
+                    error = chartsError,
+                    onSearchQuery = { q ->
+                        query = q
+                        doSearch()
+                    },
+                    quickPicks = quickPicks,
+                    onPlayQuickPick = { pick ->
+                        play(
+                            OnlineTrack(
+                                videoId = pick.videoId,
+                                title = pick.title,
+                                artist = pick.artist,
+                                album = null,
+                                durationSec = null,
+                                thumbnailUrl = pick.thumbnailUrl,
+                            ),
+                        )
+                    },
+                    onRetry = {
+                        chartsError = null
+                        chartsLoaded = false
+                        chartsRetry++
+                    },
+                )
             }
         }
     }
