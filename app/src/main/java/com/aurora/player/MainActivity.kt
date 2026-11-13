@@ -2331,6 +2331,9 @@ private fun AuroraApp(
                     }
                 }
             },
+            // Slice 6 (2026-11-12): tras guardar etiquetas, recargar
+            // la biblioteca para que título/artista/álbum se vean.
+            onTagsSaved = { libraryViewModel.refresh() },
         )
         return
     }
