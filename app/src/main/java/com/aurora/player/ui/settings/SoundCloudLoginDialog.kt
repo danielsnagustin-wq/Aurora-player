@@ -64,6 +64,10 @@ fun SoundCloudLoginDialog(
     var loading by remember { mutableStateOf(true) }
     var loadFailed by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    // RONDA CAZA 2026-11-13 (P1): el popup de login se creaba en
+    // onCreateWindow pero nunca se mostraba ni se destruía: se abría
+    // invisible, sin poder tocarlo ni cerrarlo.
+    var popupWebView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
     // RONDA ARREGLOS 2026-11-13: pegado manual del token (la ruta
     // fiable si la web no deja leer la sesión) + abrir en Chrome.
@@ -276,10 +280,18 @@ fun SoundCloudLoginDialog(
                                         settings.userAgentString = view.settings.userAgentString
                                         webViewClient = view.webViewClient
                                     }
+                                    popupWebView = newWebView
                                     val transport = resultMsg?.obj as? WebView.WebViewTransport
                                     transport?.webView = newWebView
                                     resultMsg?.sendToTarget()
                                     return true
+                                }
+
+                                override fun onCloseWindow(view: WebView?) {
+                                    // La página cerró el popup sola: se
+                                    // quita el diálogo; el onRelease del
+                                    // AndroidView destruye el WebView.
+                                    popupWebView = null
                                 }
 
                                 override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
@@ -385,6 +397,40 @@ fun SoundCloudLoginDialog(
                 ) {
                     Text("Conectar SoundCloud")
                 }
+            }
+        }
+    }
+
+    // RONDA CAZA 2026-11-13 (P1): el popup va en su propio diálogo
+    // encima, con botón de cierre. El onRelease destruye el WebView
+    // al salir de la composición (después de desanclarlo, nunca
+    // antes); por eso el cierre solo limpia el estado.
+    popupWebView?.let { popup ->
+        Dialog(
+            onDismissRequest = { popupWebView = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .statusBarsPadding()
+                    .padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "Ventana emergente",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.weight(1f),
+                    )
+                    IconButton(onClick = { popupWebView = null }) {
+                        Icon(Icons.Filled.Close, contentDescription = "Cerrar")
+                    }
+                }
+                AndroidView(
+                    factory = { popup },
+                    onRelease = { it.destroy() },
+                    modifier = Modifier.fillMaxWidth().weight(1f).padding(top = 8.dp),
+                )
             }
         }
     }
