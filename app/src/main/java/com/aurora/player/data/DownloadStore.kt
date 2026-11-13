@@ -116,8 +116,13 @@ class DownloadStore(private val context: Context) {
     suspend fun setStatus(videoId: String, status: DownloadStatus) {
         context.downloadDataStore.edit { prefs ->
             val current = prefs[Keys.RECORDS] ?: emptySet()
-            val updated = current.mapNotNull { line ->
-                val rec = decodeDownloadRecord(line) ?: return@mapNotNull null
+            // RONDA CAZA 2026-11-13 (P1): antes era mapNotNull y una
+            // línea corrupta o de formato viejo (p. ej. título con
+            // U+001F) desaparecía al cambiar el estado de CUALQUIER
+            // otra descarga. Las líneas no decodificables se conservan
+            // tal cual, como ya hace upsert.
+            val updated = current.map { line ->
+                val rec = decodeDownloadRecord(line) ?: return@map line
                 if (rec.videoId == videoId) {
                     encodeDownloadRecord(rec.copy(status = status))
                 } else {
