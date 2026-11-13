@@ -3,6 +3,7 @@ package com.aurora.player.ui.settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -68,5 +69,30 @@ fun SpotifyIcon(modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+/**
+ * SoundCloud: círculo naranja con su nube blanca (dos bultos y base
+ * redondeada). La nube del logo lleva además unas barras de sonido a
+ * la izquierda; aquí va solo la nube, que es lo reconocible.
+ */
+@Composable
+fun SoundCloudIcon(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        drawCircle(color = Color(0xFFFF5500), radius = size.minDimension / 2f, center = center)
+        val w = size.width
+        val h = size.height
+        val cloud = Color.White
+        // Bulto grande a la derecha, bulto pequeño a la izquierda.
+        drawCircle(color = cloud, radius = w * 0.20f, center = Offset(w * 0.58f, h * 0.42f))
+        drawCircle(color = cloud, radius = w * 0.14f, center = Offset(w * 0.38f, h * 0.48f))
+        // Base redondeada de la nube.
+        drawRoundRect(
+            color = cloud,
+            topLeft = Offset(w * 0.24f, h * 0.48f),
+            size = Size(w * 0.54f, h * 0.18f),
+            cornerRadius = CornerRadius(h * 0.09f),
+        )
     }
 }
