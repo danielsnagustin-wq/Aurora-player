@@ -135,6 +135,7 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "localRadio" to JsonValue.Bool(p.localRadio),
         "onlineMode" to JsonValue.Bool(p.onlineMode),
         "downloadWifiOnly" to JsonValue.Bool(p.downloadWifiOnly),
+        "atmosPassthrough" to JsonValue.Bool(p.atmosPassthrough),
         "wifiStreamQuality" to JsonValue.Str(p.wifiStreamQuality.name),
         "mobileStreamQuality" to JsonValue.Str(p.mobileStreamQuality.name),
         "swipeToChangeTrack" to JsonValue.Bool(p.swipeToChangeTrack),
@@ -261,6 +262,7 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         localRadio = v.obj("localRadio").bool() ?: d.localRadio,
         onlineMode = v.obj("onlineMode").bool() ?: d.onlineMode,
         downloadWifiOnly = v.obj("downloadWifiOnly").bool() ?: d.downloadWifiOnly,
+        atmosPassthrough = v.obj("atmosPassthrough").bool() ?: d.atmosPassthrough,
         // Calidad por conexión (slice 3): si la copia solo trae la
         // calidad única vieja, las dos heredan ese valor.
         wifiStreamQuality = v.obj("wifiStreamQuality").str()?.let {
