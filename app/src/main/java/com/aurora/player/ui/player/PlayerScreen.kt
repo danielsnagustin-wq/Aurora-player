@@ -15,6 +15,10 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -710,7 +714,15 @@ fun PlayerScreen(
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp),
+                // Rediseño: el nombre del artista abre su perfil.
+                // heightIn(48.dp) para que el toque mida lo mínimo (R-03).
+                modifier = Modifier.padding(top = 4.dp)
+                    .heightIn(min = 48.dp)
+                    .clickable { onOpenArtist() }
+                    .semantics {
+                        role = Role.Button
+                        contentDescription = "Abrir perfil de $artist"
+                    },
             )
         }
         if (album != null) {
