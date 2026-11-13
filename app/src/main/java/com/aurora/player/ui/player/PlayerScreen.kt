@@ -147,7 +147,9 @@ import com.aurora.player.util.LrcParser
 import com.aurora.player.util.SongDetails
 import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.shareVerse
-import com.aurora.player.util.TimeFormat
+import com.aurora.player.online.searchItunes
+import com.aurora.player.util.rememberRemoteBitmap
+import java.io.IOException
 
 /**
  * Aurora Player — reproductor a pantalla completa, cableado.
@@ -304,6 +306,7 @@ fun PlayerScreen(
     var showTagEditor by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
+    var itunesCoverUrl by remember(title, artist) { mutableStateOf<String?>(null) }
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
     // de caché o medidos en segundo plano al cambiar de pista. Las
     // pistas online (https) no se miden: nunca se dibuja una onda
@@ -386,6 +389,25 @@ fun PlayerScreen(
     val useDynamicColor = LocalDynamicColor.current
     val playerBackground = LocalPlayerBackground.current
     val coverBitmap = rememberArtworkBitmap(artworkUri, songUri, sizePx = 1024)
+    val itunesCoverBitmap = rememberRemoteBitmap(itunesCoverUrl)
+
+    LaunchedEffect(title, artist, onlineMode, coverBitmap, canvasUrl) {
+        if (!onlineMode || canvasUrl != null || coverBitmap != null) {
+            itunesCoverUrl = null
+            return@LaunchedEffect
+        }
+        try {
+            val res = searchItunes("$artist $title", limit = 1)
+            itunesCoverUrl = res?.firstOrNull {
+                (it.title.contains(title, ignoreCase = true) || title.contains(it.title, ignoreCase = true)) &&
+                (it.artist.contains(artist, ignoreCase = true) || artist.contains(it.artist, ignoreCase = true))
+            }?.artworkUrl600
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: IOException) {
+            itunesCoverUrl = null
+        }
+    }
     // Fondo difuminado (2026-11-10, como BitChord): la misma portada
     // a 64 px, estirada a pantalla completa (el escalado bilineal la
     // difumina solo). Carga aparte de la grande (otra clave de caché).
@@ -685,6 +707,13 @@ fun PlayerScreen(
                 CanvasVideo(
                     url = canvasUrl,
                     isPlaying = isPlaying,
+                    modifier = Modifier.fillMaxSize().clip(coverCorner),
+                )
+            } else if (itunesCoverBitmap != null) {
+                Image(
+                    bitmap = itunesCoverBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize().clip(coverCorner),
                 )
             } else {
