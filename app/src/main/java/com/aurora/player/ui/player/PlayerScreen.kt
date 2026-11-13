@@ -246,6 +246,9 @@ fun PlayerScreen(
     // letras cuando no las hay).
     qualityText: String? = null,
     onlineMode: Boolean = false,
+    // Slice 5 paso 5: passthrough Atmos (Ajustes > Sonido). Sin él,
+    // la pista JOC se decodifica normal y el aviso no sale.
+    atmosPassthrough: Boolean = true,
     sleepTimer: SleepTimerOption = SleepTimerOption.OFF,
     onSleepTimerSelected: (SleepTimerOption) -> Unit = {},
     isFavorite: Boolean = false,
@@ -830,7 +833,7 @@ fun PlayerScreen(
         // en offload el ecualizador (y ReplayGain/balance) no se
         // aplican a esta pista. Solo local: YouTube Music no tiene
         // Atmos.
-        if (songDetails?.isAtmosJoc == true && atmosSupported && !isOnline) {
+        if (songDetails?.isAtmosJoc == true && atmosSupported && atmosPassthrough && !isOnline) {
             Text(
                 "Dolby Atmos · sin ecualizador en esta pista",
                 style = MaterialTheme.typography.bodySmall,
