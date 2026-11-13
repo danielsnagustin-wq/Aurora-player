@@ -27,6 +27,10 @@
          y solo si el usuario enciende "Letras online" en Ajustes.
          La música local no usa la red jamás. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Calidad por conexión (copia BitChord, slice 3): saber si la
+         red activa es Wi-Fi para elegir la calidad. Permiso normal,
+         no se pide nada al usuario. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- INTERNET solo para letras online (P2), con interruptor
          apagado por defecto. La música local no usa la red jamás. -->
 
