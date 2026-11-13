@@ -1,13 +1,20 @@
 package com.aurora.player.ui.settings
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.aurora.player.data.FolderStore
+import com.aurora.player.data.LibraryPrefsStore
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.ui.design.AuroraMultiChips
 import com.aurora.player.ui.design.AuroraOptionChips
@@ -32,6 +40,14 @@ import com.aurora.player.ui.library.LibraryUiState
 import com.aurora.player.ui.library.LibraryViewModel
 import com.aurora.player.ui.library.ScanDialog
 import kotlinx.coroutines.launch
+
+/**
+ * Nombres de las pestañas del inicio, en el orden 0..7. Los usan los
+ * chips de visibilidad y el diálogo de orden.
+ */
+private val TAB_LABELS = listOf(
+    "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online", "Listas",
+)
 
 /**
  * Sección Biblioteca, partida de SettingsScreen (2026-11-09, paso
@@ -46,6 +62,11 @@ fun SettingsLibrarySection(
     onSavePlayer: (PlayerSettings) -> Unit,
     visibleTabs: Set<Int>,
     onSetTabVisible: (Int, Boolean) -> Unit,
+    // Reordenar pestañas (copia BitChord, slice 2): orden guardado
+    // completo (0..7) y guardar el nuevo orden completo. Con valores
+    // por defecto para que la sección compile antes del cableado.
+    tabOrder: List<Int> = (0 until LibraryPrefsStore.TAB_COUNT).toList(),
+    onSaveTabOrder: (List<Int>) -> Unit = {},
     rowCoverDp: Int,
     onSetRowCoverSize: (Int) -> Unit,
 ) {
@@ -104,12 +125,31 @@ fun SettingsLibrarySection(
         description = "Elige qué pestañas se ven en el inicio. Siempre queda al menos una visible.",
     )
     AuroraMultiChips(
-        options = listOf(
-            "Canciones", "Artistas", "Álbumes", "Favoritos", "Géneros", "Carpetas", "Online", "Listas",
-        ).withIndex().map { (index, label) -> index.toString() to label },
+        options = TAB_LABELS.withIndex().map { (index, label) -> index.toString() to label },
         selected = visibleTabs.map { it.toString() }.toSet(),
         onToggle = { onSetTabVisible(it.toInt(), it.toInt() !in visibleTabs) },
     )
+    // Reordenar pestañas (copia BitChord, slice 2): sube y baja las
+    // pestañas visibles; las ocultas quedan al final en su orden.
+    var showTabOrderDialog by remember { mutableStateOf(false) }
+    Button(
+        onClick = { showTabOrderDialog = true },
+        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+    ) {
+        Text("Organizar pestañas")
+    }
+    if (showTabOrderDialog) {
+        TabOrderDialog(
+            visibleOrder = tabOrder.filter { it in visibleTabs },
+            onSave = { newVisibleOrder ->
+                onSaveTabOrder(
+                    newVisibleOrder + tabOrder.filter { it !in newVisibleOrder.toSet() },
+                )
+                showTabOrderDialog = false
+            },
+            onDismiss = { showTabOrderDialog = false },
+        )
+    }
     AuroraSectionHeader(title = "Tamaño de portada en la fila")
     AuroraOptionChips(
         options = listOf(
@@ -150,4 +190,66 @@ fun SettingsLibrarySection(
             modifier = Modifier.padding(top = 8.dp),
         ) { Text("Quitar todas") }
     }
+}
+
+/**
+ * Reordenar pestañas (copia BitChord, slice 2): las pestañas visibles
+ * en su orden actual, cada una con flechas para subirla o bajarla.
+ * Guardar aplica el orden nuevo; Cancelar no cambia nada. Las
+ * flechas se apagan en los extremos.
+ */
+@Composable
+private fun TabOrderDialog(
+    visibleOrder: List<Int>,
+    onSave: (List<Int>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var order by remember { mutableStateOf(visibleOrder) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = { TextButton(onClick = { onSave(order) }) { Text("Guardar") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar") } },
+        title = { Text("Organizar pestañas") },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                for ((position, index) in order.withIndex()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            TAB_LABELS.getOrNull(index) ?: "Pestaña $index",
+                            modifier = Modifier.weight(1f),
+                        )
+                        IconButton(
+                            onClick = {
+                                order = order.toMutableList().also {
+                                    it[position] = it[position - 1]
+                                    it[position - 1] = index
+                                }
+                            },
+                            enabled = position > 0,
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowUp, contentDescription = "Subir")
+                        }
+                        IconButton(
+                            onClick = {
+                                order = order.toMutableList().also {
+                                    it[position] = it[position + 1]
+                                    it[position + 1] = index
+                                }
+                            },
+                            enabled = position < order.size - 1,
+                        ) {
+                            Icon(Icons.Filled.KeyboardArrowDown, contentDescription = "Bajar")
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
