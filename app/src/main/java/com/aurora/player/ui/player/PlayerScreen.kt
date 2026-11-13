@@ -131,6 +131,7 @@ import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.normalizeQueueName
 import com.aurora.player.ui.library.ArtworkImage
+import com.aurora.player.ui.library.TagEditorDialog
 import com.aurora.player.ui.library.rememberArtworkBitmap
 import com.aurora.player.ui.theme.LocalAnimationsEnabled
 import com.aurora.player.ui.theme.LocalCoverShape
@@ -272,6 +273,9 @@ fun PlayerScreen(
     lyricsOffsetMs: Int = 0,
     onLyricsOffsetChange: (Int) -> Unit = {},
     onSaveLyrics: (List<LrcLine>) -> Unit = {},
+    // Slice 6 (2026-11-12): tras guardar etiquetas, la biblioteca se
+    // recarga para que los cambios se vean (MainActivity).
+    onTagsSaved: () -> Unit = {},
     // Gestos con interruptor real en Ajustes (AUDITORÍA 2026-11-09).
     swipeEnabled: Boolean = true,
     doubleTapEnabled: Boolean = true,
@@ -294,6 +298,7 @@ fun PlayerScreen(
     // MENÚ ⋮ (2026-11-11, como BitChord).
     var songMenuOpen by remember { mutableStateOf(false) }
     var showSongInfo by remember { mutableStateOf(false) }
+    var showTagEditor by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
@@ -552,7 +557,17 @@ fun PlayerScreen(
                 isOnline = isOnline,
                 song = currentSong,
                 details = songDetails,
+                onEditTags = { showSongInfo = false; showTagEditor = true },
                 onDismiss = { showSongInfo = false },
+            )
+        }
+        // Slice 6 (2026-11-12): editor de etiquetas de la canción
+        // local. Al guardar, la biblioteca se recarga (onTagsSaved).
+        if (showTagEditor && currentSong != null && !isOnline) {
+            TagEditorDialog(
+                song = currentSong,
+                onSaved = { showTagEditor = false; onTagsSaved() },
+                onDismiss = { showTagEditor = false },
             )
         }
         if (castDeviceName != null) {
@@ -1875,11 +1890,21 @@ private fun SongInfoDialog(
     isOnline: Boolean,
     song: Song?,
     details: SongDetails?,
+    onEditTags: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
+        confirmButton = {
+            Row {
+                // Slice 6: editar etiquetas solo en canciones locales
+                // (una online no tiene archivo que etiquetar).
+                if (onEditTags != null && song != null && !isOnline) {
+                    TextButton(onClick = onEditTags) { Text("Editar etiquetas") }
+                }
+                TextButton(onClick = onDismiss) { Text("Cerrar") }
+            }
+        },
         title = { Text("Información de la canción") },
         text = {
             Column(
