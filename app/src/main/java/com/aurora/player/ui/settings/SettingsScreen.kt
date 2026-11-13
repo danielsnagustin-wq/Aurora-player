@@ -73,8 +73,11 @@ import com.aurora.player.data.FolderStore
 import com.aurora.player.data.LibraryPrefsStore
 import com.aurora.player.data.ThemePresetStore
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.SoundCloudStore
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.fetchSoundCloudMe
+import com.aurora.player.online.fetchSoundCloudWebClientId
 import com.aurora.player.data.ThemeSettingsStore
 import com.aurora.player.data.validateBackup
 import com.aurora.player.model.CardStyle
@@ -181,6 +184,11 @@ fun SettingsScreen(
     val spotifyStore = remember { SpotifyStore(context) }
     val spotifyConnected by spotifyStore.connectedFlow.collectAsState(initial = false)
     var spotifyStatus by remember { mutableStateOf<String?>(null) }
+
+    // Descubrimiento — SoundCloud (token oauth_token, solo en el teléfono).
+    val soundCloudStore = remember { SoundCloudStore(context) }
+    val soundCloudConnected by soundCloudStore.connectedFlow.collectAsState(initial = false)
+    var soundCloudStatus by remember { mutableStateOf<String?>(null) }
 
     fun save(next: ThemeSettings) {
         scope.launch { store.save(next) }
@@ -325,6 +333,37 @@ fun SettingsScreen(
                 }
             }
         }
+        // SoundCloud: el token se comprueba contra /me antes de
+        // guardarlo; sin client_id web no hay nada que pedir.
+        val disconnectSoundCloud: () -> Unit = {
+            scope.launch {
+                try {
+                    soundCloudStore.clear()
+                    soundCloudStatus = null
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Desconectar SoundCloud", e)
+                    soundCloudStatus = "No se pudo desconectar. Inténtalo de nuevo."
+                }
+            }
+        }
+        val connectSoundCloud: (String) -> Unit = { token ->
+            scope.launch {
+                soundCloudStatus = "Comprobando la sesión…"
+                try {
+                    val clientId = fetchSoundCloudWebClientId()
+                    val me = clientId?.let { fetchSoundCloudMe(it, token.trim()) }
+                    if (me != null) {
+                        soundCloudStore.setToken(token.trim())
+                        soundCloudStatus = "Conectado."
+                    } else {
+                        soundCloudStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con SoundCloud."
+                    }
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Conectar SoundCloud", e)
+                    soundCloudStatus = "No se pudo conectar. Inténtalo de nuevo."
+                }
+            }
+        }
         if (section == SettingsSection.INTEGRATIONS) {
             IntegrationsScreen(
                 spotifyConnected = spotifyConnected,
@@ -336,6 +375,10 @@ fun SettingsScreen(
                 onConnectYouTubeMusic = onConnectYouTubeMusic,
                 onDisconnectYouTubeMusic = onDisconnectYouTubeMusic,
                 ytMusicCookies = ytMusicCookies,
+                soundCloudConnected = soundCloudConnected,
+                soundCloudStatus = soundCloudStatus,
+                onConnectSoundCloud = connectSoundCloud,
+                onDisconnectSoundCloud = disconnectSoundCloud,
                 wifiStreamQuality = player.wifiStreamQuality,
                 mobileStreamQuality = player.mobileStreamQuality,
             )
