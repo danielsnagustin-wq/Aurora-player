@@ -289,15 +289,19 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         loaded = true
         _uiState.value = LibraryUiState.Loading
         viewModelScope.launch {
-            // SPEC 005 FR-006: leer las carpetas excluidas antes del
-            // escaneo, para filtrarlas fuera de todo.
-            val excluded = folderStore.excludedFlow.first()
-            val included = folderStore.includedFlow.first()
-            lastExcluded = excluded
-            lastIncluded = included
             var loadFailed = false
             val (songs, albums, artists) = try {
                 withContext(Dispatchers.IO) {
+                    // SPEC 005 FR-006: leer las carpetas excluidas
+                    // antes del escaneo, para filtrarlas fuera de todo.
+                    // Dentro del try: antes estaban fuera y si
+                    // DataStore fallaba, la corrutina moría con
+                    // loaded=true y la pantalla se quedaba en
+                    // "Cargando…" para siempre (auditoría 2026-11-12).
+                    val excluded = folderStore.excludedFlow.first()
+                    val included = folderStore.includedFlow.first()
+                    lastExcluded = excluded
+                    lastIncluded = included
                     // ETAPA 4: la duración mínima guardada en Ajustes sí se
                     // usa (antes loadSongs() siempre usaba 5 s fijos).
                     val minDurationMs = playerStore.settingsFlow.first().minDurationMs
