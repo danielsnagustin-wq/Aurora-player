@@ -145,6 +145,7 @@ class PlaybackService : MediaLibraryService() {
     // quien los salta, no los apagamos nosotros. Si el dispositivo
     // no lo soporta, la pista se decodifica normal (núcleo DD+ sin
     // Atmos): nunca silencio ni crash.
+    private var atmosDeviceSupported: Boolean = false
     private var atmosOffloadOn: Boolean = false
 
     /**
@@ -273,7 +274,11 @@ class PlaybackService : MediaLibraryService() {
         // Slice 5 paso 4: ¿este dispositivo pasa Atmos por offload?
         // detectAtmosSupport ya caza Throwable y devuelve NONE si
         // algo falla, así que aquí no hace falta otro try/catch.
-        atmosOffloadOn = detectAtmosSupport(this) == AtmosSupport.ATMOS
+        // Paso 5: el interruptor decide el offload, el dispositivo
+        // solo decide si se puede; el collect de ajustes corrige el
+        // valor con lo guardado en cuanto emite.
+        atmosDeviceSupported = detectAtmosSupport(this) == AtmosSupport.ATMOS
+        atmosOffloadOn = atmosDeviceSupported
         // RONDA 6 (fix run #68, VERIFICADO EN EL CÓDIGO FUENTE 1.4.1):
         // en 1.4.1 buildAudioSink tiene TRES parámetros (context,
         // enableFloatOutput, enableAudioTrackPlaybackParams) y el
@@ -436,6 +441,12 @@ class PlaybackService : MediaLibraryService() {
                 crossfadeGaplessAlbum = settings.crossfadeGaplessAlbumException
                 exoPlayer.setHandleAudioBecomingNoisy(settings.autoPauseOnDisconnect)
                 autoplayOnConnect = settings.autoplayOnConnect
+                // Slice 5 paso 5: el interruptor Atmos (passthrough)
+                // se aplica en vivo: al apagarlo, la siguiente pista
+                // ya no va en offload (el modo se lee en el próximo
+                // configure del sink).
+                atmosOffloadOn = settings.atmosPassthrough && atmosDeviceSupported
+                applyAtmosOffloadMode()
                 // AUTO-CERRAR (2026-11-11): cada cambio del ajuste
                 // reevalúa el temporizador.
                 autoCloseMinutes = settings.autoCloseMinutes
