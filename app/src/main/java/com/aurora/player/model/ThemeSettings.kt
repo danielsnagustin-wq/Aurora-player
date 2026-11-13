@@ -193,10 +193,6 @@ data class PlayerSettings(
     // internet: letras online (LRCLIB) y escuchar de YouTube. La
     // música local nunca usa la red. Apagado, nada sale a la red.
     val onlineMode: Boolean = false,
-    // Calidad de streaming (BitChord, 2026-11-10): Alta es lo
-    // mejor que da YouTube (Opus ~160 kbps); no hay tier sin
-    // perdida porque YouTube no lo ofrece.
-    val streamQuality: StreamQuality = StreamQuality.HIGH,
     // Calidad por conexión (copia BitChord, slice 3): una calidad
     // para Wi-Fi y otra para datos móviles. La única se migra en
     // SettingsStore/BackupData y se quita después (paso D).
