@@ -104,6 +104,7 @@ import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.SpotifyCanvasClient
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.StreamCacheStore
+import com.aurora.player.ui.library.LibraryUiState
 import com.aurora.player.ui.library.LibraryViewModel
 import com.aurora.player.cast.CastManager
 import com.aurora.player.cast.CastState
@@ -167,6 +168,7 @@ import com.aurora.player.util.saveLyricsForSong
 import com.aurora.player.util.dsdQualityLine
 import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
+import com.aurora.player.util.SongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -744,6 +746,9 @@ private fun AuroraApp(
     var canvasUrl by remember { mutableStateOf<String?>(null) }
     // RONDA 2 (2026-11-09): línea de calidad real del tema actual.
     var qualityText by remember { mutableStateOf<String?>(null) }
+    // Ficha completa (copia BitChord): los detalles reales del tema
+    // actual (bitrate, frecuencia, profundidad de bits, canales).
+    var currentSongDetails by remember { mutableStateOf<SongDetails?>(null) }
     var sleepTimer by remember { mutableStateOf(SleepTimerOption.OFF) }
     var sleepUntilMs by remember { mutableStateOf<Long?>(null) }
     var sleepAtSongEnd by remember { mutableStateOf(false) }
@@ -809,6 +814,13 @@ private fun AuroraApp(
     // que usa LibraryScreen): así el menú puede filtrar por álbum o
     // artista y cambiar de pestaña.
     val libraryViewModel: LibraryViewModel = viewModel()
+    // Ficha completa (copia BitChord): la canción real de la
+    // biblioteca, para mostrar todos sus datos (tamaño, fechas,
+    // pista/disco, año, artista del álbum). Null si la biblioteca
+    // aún no cargó o suena online.
+    val libraryState by libraryViewModel.uiState.collectAsState()
+    val currentSong = (libraryState as? LibraryUiState.Loaded)?.songs
+        ?.firstOrNull { it.id == currentSongId }
     val playlistsViewModel: PlaylistsViewModel = viewModel()
     val playlists by playlistsViewModel.playlists.collectAsState()
     // MENÚ ⋮ Stage 2: el diálogo "Añadir a la lista" necesita las
@@ -1548,9 +1560,10 @@ private fun AuroraApp(
         lyrics = loadLyricsForPath(context, currentSongPath ?: "")
         // RONDA 2: línea de calidad real (códec/bitrate/muestreo);
         // solo se muestra si hay al menos un dato real.
-        // La canción se reconstruye del MediaItem actual (uri +
-        // mimeType son lo único que usa loadSongDetails); no hay una
-        // lista de canciones en este ámbito para buscarla.
+        // La canción se reconstruye del MediaItem actual para el
+        // cargador de detalles (uri + mimeType son lo único que usa);
+        // la canción COMPLETA (tamaño, fechas, pista/disco) viene de
+        // la biblioteca (currentSong, derivado de libraryViewModel).
         val mediaItem = controller?.currentMediaItem
         val songForDetails = mediaItem?.localConfiguration?.let { config ->
             Song(
@@ -1567,12 +1580,15 @@ private fun AuroraApp(
                 dateAdded = 0L,
             )
         }
+        // Sin pista local, los detalles no quedan de la anterior.
+        currentSongDetails = null
         qualityText = songForDetails?.let { song ->
             // Ronda USB Serie B: un DSD muestra su tasa real (DoP),
             // no lo que diga el retriever (que no lee DSD).
             val dsdInfo = loadDsdInfo(context, song)
             if (dsdInfo != null) return@let dsdQualityLine(dsdInfo)
             val details = loadSongDetails(context, song)
+            currentSongDetails = details
             if (details.bitrateKbps == null && details.sampleRateHz == null) {
                 null
             } else {
@@ -2236,6 +2252,9 @@ private fun AuroraApp(
             lyricsError = lyricsError,
             translatedLyrics = translatedLyrics,
             qualityText = qualityText,
+            // Ficha completa (copia BitChord): detalles + canción real.
+            songDetails = currentSongDetails,
+            currentSong = currentSong,
             onlineMode = playerSettings.onlineMode,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
