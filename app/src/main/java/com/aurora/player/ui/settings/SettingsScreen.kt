@@ -65,6 +65,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.alarm.AlarmScreen
+import com.aurora.player.audio.AtmosSupport
+import com.aurora.player.audio.detectAtmosSupport
 import com.aurora.player.data.BackupData
 import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.FolderStore
@@ -136,6 +138,12 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val applied by store.settingsFlow.collectAsState(initial = ThemeSettings.DEFAULT)
     val player by playerStore.settingsFlow.collectAsState(initial = PlayerSettings.DEFAULT)
+    // Slice 5 paso 5: soporte Atmos del dispositivo, calculado una
+    // sola vez (la sonda toca AudioCapabilities y la lista de
+    // códecs). Solo decide si se muestra el interruptor.
+    val atmosSupported = remember(context) {
+        detectAtmosSupport(context) == AtmosSupport.ATMOS
+    }
     var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
     // RONDA 7 P4: alarma musical.
     var showAlarm by remember { mutableStateOf(false) }
@@ -245,6 +253,7 @@ fun SettingsScreen(
                 player = player,
                 onSavePlayer = { savePlayer(it) },
                 onOpenEq = onOpenEq,
+                atmosSupported = atmosSupported,
             )
         }
         if (section == SettingsSection.PLAYBACK) {
