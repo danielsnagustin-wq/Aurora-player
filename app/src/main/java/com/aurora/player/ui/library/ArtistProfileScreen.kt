@@ -16,30 +16,49 @@ package com.aurora.player.ui.library
 // - Solo cifras reales (recuentos de la biblioteca y de la búsqueda); sin dato, sin número (R-17).
 // - Sin portadas inventadas: las filas locales usan AlbumCover real; los resultados
 //   online llevan icono de nota (R-38). Las filas de álbum son información, no controles (R-26).
+// - R8c (2026-11-12): layout como la captura de BitChord (estructura, no
+//   colores: nada de rojo, identidad AMOLED nuestra). Banner con la mejor
+//   portada real del artista (o fondo #17171B sin imagen), acciones
+//   Reproducir/Aleatorio reales, tarjeta de sencillo reciente, Canciones
+//   principales (online + local con origen distinto), Álbumes en cuadrícula
+//   de 2 columnas, Singles y EPs y Vídeos en horizontal, resto local y
+//   búsqueda online al final ("Más en YouTube Music"). Sin botón de
+//   favorito: no existe store de artistas favoritos y un control sin
+//   efecto real es un defecto (R-26).
 
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +69,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -69,6 +92,7 @@ import com.aurora.player.online.OnlineTrack
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
+import com.aurora.player.util.rememberRemoteBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -134,6 +158,74 @@ fun ArtistProfileScreen(
     }
     val albumReleases = remember(albums) { albums.filter { it.songCount >= 8 } }
     val singleEpReleases = remember(albums) { albums.filter { it.songCount < 8 } }
+
+    // R8c: portada del banner (la mejor thumbnail real: primer álbum o
+    // sencillo online con portada, o la del primer vídeo; sin ninguna,
+    // null y el banner queda en #17171B). Sencillo destacado: el
+    // primero de la lista (el más nuevo).
+    val bannerCoverUrl = remember(artistPage) {
+        val page = artistPage
+        page?.albums?.firstOrNull { it.thumbnailUrl != null }?.thumbnailUrl
+            ?: page?.singles?.firstOrNull { it.thumbnailUrl != null }?.thumbnailUrl
+            ?: page?.videos?.firstOrNull { it.thumbnailUrl != null }?.thumbnailUrl
+    }
+    val featuredSingle = remember(artistPage, expandedSingles) {
+        (expandedSingles ?: artistPage?.singles)?.firstOrNull()
+    }
+
+    // R8c: tarjetas de la cuadrícula de álbumes (locales + online, en
+    // parejas) y de la fila de sencillos y EP. Las locales son
+    // información (sin tap); las online guardan su release para abrir
+    // sus canciones cuando tienen browseId. Sin remember con funs:
+    // el tap se resuelve al dibujar, no aquí.
+    val albumCardRows = remember(albumReleases, artistPage, expandedAlbums, songs) {
+        val online = expandedAlbums ?: artistPage?.albums.orEmpty()
+        val local = albumReleases.map { album ->
+            ReleaseCardData(
+                key = "alb-local:${album.id}",
+                title = album.name,
+                subtitle = albumSubtitle(album),
+                coverSong = songs.firstOrNull { it.album == album.name },
+                thumbnailUrl = null,
+                release = null,
+            )
+        }
+        val remote = online.mapIndexed { index, release ->
+            ReleaseCardData(
+                key = "alb:$index:${release.browseId ?: release.title}",
+                title = release.title,
+                subtitle = onlineReleaseSubtitle(release),
+                coverSong = null,
+                thumbnailUrl = release.thumbnailUrl,
+                release = release,
+            )
+        }
+        (local + remote).chunked(2)
+    }
+    val singlesCards = remember(singleEpReleases, artistPage, expandedSingles, songs) {
+        val online = expandedSingles ?: artistPage?.singles.orEmpty()
+        val local = singleEpReleases.map { album ->
+            ReleaseCardData(
+                key = "sloc:${album.id}",
+                title = album.name,
+                subtitle = releaseSubtitle(album),
+                coverSong = songs.firstOrNull { it.album == album.name },
+                thumbnailUrl = null,
+                release = null,
+            )
+        }
+        val remote = online.mapIndexed { index, release ->
+            ReleaseCardData(
+                key = "son:$index:${release.browseId ?: release.title}",
+                title = release.title,
+                subtitle = onlineReleaseSubtitle(release),
+                coverSong = null,
+                thumbnailUrl = release.thumbnailUrl,
+                release = release,
+            )
+        }
+        local + remote
+    }
 
     fun searchOnline() {
         if (!onlineMode) return
@@ -267,6 +359,29 @@ fun ArtistProfileScreen(
         }
     }
 
+    // R8c: acciones del banner. Reproducir: todo lo local primero; sin
+    // local, la primera canción principal online. Aleatorio: baraja lo
+    // local y suena desde una al azar; sin local, una principal online
+    // al azar. Sin local ni online, los botones se desactivan (R-26).
+    fun playAllArtist() {
+        if (songs.isNotEmpty()) {
+            onPlayAll()
+            return
+        }
+        val first = artistPage?.topSongs?.firstOrNull() ?: return
+        playOnline(first)
+    }
+
+    fun playRandomArtist() {
+        if (songs.isNotEmpty()) {
+            val shuffled = songs.shuffled()
+            onSongClick(shuffled.first(), shuffled)
+            return
+        }
+        val top = artistPage?.topSongs
+        if (!top.isNullOrEmpty()) playOnline(top.random())
+    }
+
     LaunchedEffect(artistName, onlineMode) {
         if (onlineMode) {
             searchOnline()
@@ -275,6 +390,8 @@ fun ArtistProfileScreen(
     }
 
     LazyColumn(modifier = modifier.fillMaxSize()) {
+        // R8c: Atrás queda arriba del banner; el nombre va sobre la
+        // portada y las acciones debajo, con los recuentos reales.
         item {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp, end = 16.dp),
@@ -286,50 +403,291 @@ fun ArtistProfileScreen(
                         contentDescription = "Volver",
                     )
                 }
-                Text(
-                    artistName,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    modifier = Modifier.weight(1f),
-                )
             }
+        }
+        item {
+            ArtistBanner(artistName = artistName, coverUrl = bannerCoverUrl)
+        }
+        item {
             Text(
                 "${songs.size} canciones · ${albums.size} álbumes",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 12.dp),
             )
-            Button(
-                onClick = onPlayAll,
-                enabled = songs.isNotEmpty(),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .padding(horizontal = 16.dp),
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                Text("Reproducir todo", modifier = Modifier.padding(start = 8.dp))
+                val hasSomethingToPlay = songs.isNotEmpty() ||
+                    artistPage?.topSongs?.isNullOrEmpty() == false
+                Button(
+                    onClick = { playAllArtist() },
+                    enabled = hasSomethingToPlay,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                ) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                    Text("Reproducir", modifier = Modifier.padding(start = 8.dp))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedButton(
+                    onClick = { playRandomArtist() },
+                    enabled = hasSomethingToPlay,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                ) {
+                    Icon(Icons.Filled.Shuffle, contentDescription = null)
+                    Text("Aleatorio", modifier = Modifier.padding(start = 8.dp))
+                }
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // R8a: secciones tipo Spotify, cada una solo si tiene datos reales.
-        // Las claves llevan prefijo porque la misma canción sale en varias
-        // secciones y la clave debe ser única en toda la lista.
-        if (topSongs.isNotEmpty()) {
-            item {
-                SectionTitle("Más escuchadas")
+        // R8a/R8c: secciones locales. "Más escuchadas" ya no va suelta:
+        // sus canciones locales viven dentro de "Canciones principales",
+        // junto a las online y con el origen marcado.
+        // R8c: "Lo más reciente" y "En tu biblioteca" van después de
+        // las secciones online (se reinsertan tras "Vídeos").
+        // R8c: "En tu biblioteca" se reinsertan tras "Vídeos".
+
+        if (onlineMode) {
+            // R8c: la carga y el error de la página van justo tras las
+            // acciones: si la página falla, se ve por qué no hay nada
+            // online. La búsqueda queda al final ("Más en YouTube Music").
+            if (loadingPage) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            "Cargando la página del artista…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
             }
-            items(topSongs, key = { "top:${it.id}" }) { song ->
-                ProfileSongRow(
-                    song = song,
-                    queue = songs,
-                    onSongClick = onSongClick,
-                    subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)} · ${song.playCount} reproducciones",
-                )
+            if (pageError != null) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            pageError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = { loadArtistPage() },
+                            modifier = Modifier.height(48.dp).padding(top = 8.dp),
+                        ) {
+                            Text("Reintentar")
+                        }
+                    }
+                }
+            }
+
+            // R8b: secciones de la página del artista en YouTube Music.
+            // Cada una sale solo si trae datos reales (R-17); si la
+            // página falla, error con Reintentar (R-27).
+            val page = artistPage
+            if (page != null) {
+                // R8c: tarjeta del sencillo más reciente (solo si hay
+                // singles online; tap abre sus canciones con browseId).
+                val single = featuredSingle
+                if (single != null) {
+                    item {
+                        FeaturedSingleCard(
+                            release = single,
+                            onClick = if (single.browseId != null) {
+                                { loadAlbumTracks(single) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                }
+                // R8c: "Canciones principales" junta online y local,
+                // cada una con su origen marcado (no se mezclan sin
+                // decirlo). Solo sale si alguna trae datos.
+                if (page.topSongs.isNotEmpty() || topSongs.isNotEmpty()) {
+                    item {
+                        SectionTitle("Canciones principales")
+                    }
+                    if (page.topSongs.isNotEmpty()) {
+                        item {
+                            Text(
+                                "En YouTube Music",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        items(page.topSongs, key = { "top-online:${it.videoId}" }) { track ->
+                            OnlineTrackRow(track = track, onPlay = { playOnline(track) })
+                        }
+                    }
+                    if (topSongs.isNotEmpty()) {
+                        item {
+                            Text(
+                                "En tu biblioteca",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            )
+                        }
+                        items(topSongs, key = { "top:${it.id}" }) { song ->
+                            ProfileSongRow(
+                                song = song,
+                                queue = songs,
+                                onSongClick = onSongClick,
+                                subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)} · ${song.playCount} reproducciones",
+                            )
+                        }
+                    }
+                }
+                // R8c: "Álbumes" en cuadrícula de 2 columnas, locales y
+                // online juntos. Las tarjetas locales usan la portada
+                // real de su primera canción; las online, su thumbnail.
+                if (albumCardRows.isNotEmpty()) {
+                    item {
+                        SectionTitle("Álbumes")
+                    }
+                    items(albumCardRows, key = { row -> "albgrid:${row.first().key}" }) { row ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        ) {
+                            ReleaseCard(
+                                data = row[0],
+                                onOpenTracks = { release -> loadAlbumTracks(release) },
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (row.size > 1) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                ReleaseCard(
+                                    data = row[1],
+                                    onOpenTracks = { release -> loadAlbumTracks(release) },
+                                    modifier = Modifier.weight(1f),
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
+                    if (expandedAlbums == null && page.albumsBrowseId != null) {
+                        item {
+                            Button(
+                                onClick = { loadMoreReleases(false) },
+                                modifier = Modifier.fillMaxWidth()
+                                    .height(48.dp)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text("Ver todo")
+                            }
+                        }
+                    }
+                }
+                // R8c: "Singles y EPs" en horizontal (locales + online),
+                // con "Ver todo" para la lista online completa.
+                if (singlesCards.isNotEmpty()) {
+                    item {
+                        SectionTitle("Singles y EPs")
+                    }
+                    item {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(singlesCards, key = { it.key }) { data ->
+                                ReleaseCard(
+                                    data = data,
+                                    onOpenTracks = { release -> loadAlbumTracks(release) },
+                                    modifier = Modifier.width(140.dp),
+                                )
+                            }
+                        }
+                    }
+                    if (expandedSingles == null && page.singlesBrowseId != null) {
+                        item {
+                            Button(
+                                onClick = { loadMoreReleases(true) },
+                                modifier = Modifier.fillMaxWidth()
+                                    .height(48.dp)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text("Ver todo")
+                            }
+                        }
+                    }
+                }
+                if (moreError != null) {
+                    item {
+                        Text(
+                            moreError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                val openAlbum = albumTracks
+                if (openAlbum != null) {
+                    item {
+                        SectionTitle("Canciones de ${openAlbum.first}")
+                    }
+                    items(openAlbum.second, key = { "at:${it.videoId}" }) { track ->
+                        OnlineTrackRow(track = track, onPlay = { playOnline(track) })
+                    }
+                }
+                if (albumTracksError != null) {
+                    item {
+                        Text(
+                            albumTracksError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                // R8c: "Vídeos" en horizontal, miniatura 16:9 real; el
+                // tap reproduce su audio por el camino existente.
+                if (page.videos.isNotEmpty()) {
+                    item {
+                        SectionTitle("Vídeos")
+                    }
+                    item {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            items(page.videos, key = { "vid:${it.videoId}" }) { video ->
+                                VideoCard(
+                                    video = video,
+                                    onPlay = {
+                                        playOnline(
+                                            OnlineTrack(
+                                                videoId = video.videoId,
+                                                title = video.title,
+                                                artist = artistName,
+                                                album = null,
+                                                durationSec = null,
+                                                thumbnailUrl = video.thumbnailUrl,
+                                            ),
+                                        )
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+
+        // R8c: resto local (siempre, con o sin online) y búsqueda online
+        // al final ("Más en YouTube Music").
         if (recentSongs.isNotEmpty()) {
             item {
                 SectionTitle("Lo más reciente")
@@ -341,22 +699,6 @@ fun ArtistProfileScreen(
                     onSongClick = onSongClick,
                     subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)}",
                 )
-            }
-        }
-        if (albumReleases.isNotEmpty()) {
-            item {
-                SectionTitle("Álbumes")
-            }
-            items(albumReleases, key = { it.id }) { album ->
-                ProfileAlbumRow(album, albumSubtitle(album))
-            }
-        }
-        if (singleEpReleases.isNotEmpty()) {
-            item {
-                SectionTitle("Sencillos y EP")
-            }
-            items(singleEpReleases, key = { it.id }) { album ->
-                ProfileAlbumRow(album, releaseSubtitle(album))
             }
         }
         item {
@@ -381,12 +723,11 @@ fun ArtistProfileScreen(
                 )
             }
         }
-
         if (onlineMode) {
             item {
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
                 Text(
-                    "En YouTube Music",
+                    "Más en YouTube Music",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
@@ -430,165 +771,6 @@ fun ArtistProfileScreen(
                     OnlineTrackRow(track = track, onPlay = { playOnline(track) })
                 }
             }
-
-            // R8b: secciones de la página del artista en YouTube Music.
-            // Cada una sale solo si trae datos reales (R-17); si la
-            // página falla, error con Reintentar (R-27).
-            if (loadingPage) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                        Text(
-                            "Cargando la página del artista…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 12.dp),
-                        )
-                    }
-                }
-            }
-            if (pageError != null) {
-                item {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                        Text(
-                            pageError!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Button(
-                            onClick = { loadArtistPage() },
-                            modifier = Modifier.height(48.dp).padding(top = 8.dp),
-                        ) {
-                            Text("Reintentar")
-                        }
-                    }
-                }
-            }
-            val page = artistPage
-            if (page != null) {
-                if (page.topSongs.isNotEmpty()) {
-                    item {
-                        SectionTitle("Canciones principales")
-                    }
-                    items(page.topSongs, key = { "top-online:${it.videoId}" }) { track ->
-                        OnlineTrackRow(track = track, onPlay = { playOnline(track) })
-                    }
-                }
-                val singles = expandedSingles ?: page.singles
-                if (singles.isNotEmpty()) {
-                    item {
-                        SectionTitle("Nuevos lanzamientos")
-                    }
-                    itemsIndexed(singles, key = { index, release ->
-                        "new:$index:${release.browseId ?: release.title}"
-                    }) { _, release ->
-                        ReleaseRow(
-                            release = release,
-                            onClick = if (release.browseId != null) {
-                                { loadAlbumTracks(release) }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                    if (expandedSingles == null && page.singlesBrowseId != null) {
-                        item {
-                            Button(
-                                onClick = { loadMoreReleases(true) },
-                                modifier = Modifier.fillMaxWidth()
-                                    .height(48.dp)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Text("Ver todo")
-                            }
-                        }
-                    }
-                }
-                val albums = expandedAlbums ?: page.albums
-                if (albums.isNotEmpty()) {
-                    item {
-                        SectionTitle("Álbumes")
-                    }
-                    itemsIndexed(albums, key = { index, release ->
-                        "alb:$index:${release.browseId ?: release.title}"
-                    }) { _, release ->
-                        ReleaseRow(
-                            release = release,
-                            onClick = if (release.browseId != null) {
-                                { loadAlbumTracks(release) }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                    if (expandedAlbums == null && page.albumsBrowseId != null) {
-                        item {
-                            Button(
-                                onClick = { loadMoreReleases(false) },
-                                modifier = Modifier.fillMaxWidth()
-                                    .height(48.dp)
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                            ) {
-                                Text("Ver todo")
-                            }
-                        }
-                    }
-                }
-                if (moreError != null) {
-                    item {
-                        Text(
-                            moreError!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-                val openAlbum = albumTracks
-                if (openAlbum != null) {
-                    item {
-                        SectionTitle("Canciones de ${openAlbum.first}")
-                    }
-                    items(openAlbum.second, key = { "at:${it.videoId}" }) { track ->
-                        OnlineTrackRow(track = track, onPlay = { playOnline(track) })
-                    }
-                }
-                if (albumTracksError != null) {
-                    item {
-                        Text(
-                            albumTracksError!!,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-                if (page.videos.isNotEmpty()) {
-                    item {
-                        SectionTitle("Vídeos")
-                    }
-                    items(page.videos, key = { "vid:${it.videoId}" }) { video ->
-                        VideoRow(
-                            video = video,
-                            onPlay = {
-                                playOnline(
-                                    OnlineTrack(
-                                        videoId = video.videoId,
-                                        title = video.title,
-                                        artist = artistName,
-                                        album = null,
-                                        durationSec = null,
-                                        thumbnailUrl = video.thumbnailUrl,
-                                    ),
-                                )
-                            },
-                        )
-                    }
-                }
-            }
         }
     }
 }
@@ -623,39 +805,6 @@ private fun ProfileSongRow(
         Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
             Text(
                 song.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-            )
-            Text(
-                subtitle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
-}
-
-/** Fila de álbum/EP/sencillo del perfil: solo información, no es un control (R-26). */
-@Composable
-private fun ProfileAlbumRow(album: Album, subtitle: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Filled.MusicNote,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(52.dp).padding(14.dp),
-        )
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(
-                album.name,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
@@ -726,11 +875,57 @@ private fun OnlineTrackRow(track: OnlineTrack, onPlay: () -> Unit) {
     }
 }
 
-/** Fila de lanzamiento online (álbum, sencillo o EP): título y tipo con año real. */
+/** "Álbum · 2025", "Sencillo · 2026" o solo el tipo cuando no hay año. */
+private fun onlineReleaseSubtitle(release: ArtistRelease): String {
+    val kind = release.kind ?: "Lanzamiento"
+    return if (release.year != null) "$kind · ${release.year}" else kind
+}
+
+/** Datos de una tarjeta de lanzamiento (álbum, sencillo o EP). */
+private data class ReleaseCardData(
+    val key: String,
+    val title: String,
+    val subtitle: String,
+    val coverSong: Song?,
+    val thumbnailUrl: String?,
+    val release: ArtistRelease?,
+)
+
+/** Banner del perfil: mejor portada real del artista o fondo #17171B. */
 @Composable
-private fun ReleaseRow(release: ArtistRelease, onClick: (() -> Unit)?) {
-    // Solo clicable cuando abre sus canciones (browseId real); sin
-    // browseId es información, no un control (R-26).
+private fun ArtistBanner(artistName: String, coverUrl: String?) {
+    val bitmap = rememberRemoteBitmap(coverUrl)
+    Box(
+        modifier = Modifier.fillMaxWidth().height(220.dp)
+            .background(Color(0xFF17171B)),
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        // Velo plano para que el nombre se lea sobre cualquier portada (R-25).
+        Box(
+            modifier = Modifier.fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.35f)),
+        )
+        Text(
+            artistName,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+            color = Color.White,
+            modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
+        )
+    }
+}
+
+/** Tarjeta del sencillo más reciente: portada 64 dp + tipo, año y título. */
+@Composable
+private fun FeaturedSingleCard(release: ArtistRelease, onClick: (() -> Unit)?) {
     val clickableModifier = if (onClick != null) {
         Modifier.clickable { onClick() }
             .semantics {
@@ -742,18 +937,34 @@ private fun ReleaseRow(release: ArtistRelease, onClick: (() -> Unit)?) {
     }
     Row(
         modifier = Modifier.fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 64.dp)
             .then(clickableModifier)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            Icons.Filled.MusicNote,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(52.dp).padding(14.dp),
-        )
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+        val bitmap = rememberRemoteBitmap(release.thumbnailUrl)
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null)
+            }
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            Text(
+                "Sencillo reciente",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
                 release.title,
                 maxLines = 1,
@@ -771,48 +982,106 @@ private fun ReleaseRow(release: ArtistRelease, onClick: (() -> Unit)?) {
     }
 }
 
-/** Fila de vídeo online: título y subtítulo real (vistas). */
+/** Tarjeta de lanzamiento para la cuadrícula y las filas horizontales. */
 @Composable
-private fun VideoRow(video: ArtistVideo, onPlay: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth()
-            .heightIn(min = 52.dp)
+private fun ReleaseCard(
+    data: ReleaseCardData,
+    onOpenTracks: (ArtistRelease) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    // Solo clicable cuando abre sus canciones (browseId real); sin
+    // browseId es información, no un control (R-26).
+    val release = data.release
+    val clickableModifier = if (release?.browseId != null) {
+        Modifier.clickable { onOpenTracks(release) }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Ver canciones de ${data.title}"
+            }
+    } else {
+        Modifier
+    }
+    Column(
+        modifier = modifier.then(clickableModifier),
+    ) {
+        val localBitmap = if (data.coverSong != null) {
+            rememberArtworkBitmap(data.coverSong.uri)
+        } else {
+            null
+        }
+        val remoteBitmap = rememberRemoteBitmap(data.thumbnailUrl)
+        val bitmap = localBitmap ?: remoteBitmap
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                    .clip(RoundedCornerShape(8.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null)
+            }
+        }
+        Text(
+            data.title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            data.subtitle,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Tarjeta de vídeo: miniatura 16:9 real + título; tap reproduce el audio. */
+@Composable
+private fun VideoCard(video: ArtistVideo, onPlay: () -> Unit) {
+    Column(
+        modifier = Modifier.width(160.dp)
             .clickable { onPlay() }
             .semantics {
                 role = Role.Button
                 contentDescription = "Reproducir ${video.title}"
-            }
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            },
     ) {
-        Icon(
-            Icons.Filled.MusicNote,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(52.dp).padding(14.dp),
-        )
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text(
-                video.title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+        val bitmap = rememberRemoteBitmap(video.thumbnailUrl)
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(8.dp)),
             )
-            if (video.subtitle != null) {
-                Text(
-                    video.subtitle,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        } else {
+            Box(
+                modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Filled.MusicNote, contentDescription = null)
             }
         }
+        Text(
+            video.title,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+            modifier = Modifier.padding(top = 6.dp),
+        )
     }
-}
-
-/** "Álbum · 2025", "Sencillo · 2026" o solo el tipo cuando no hay año. */
-private fun onlineReleaseSubtitle(release: ArtistRelease): String {
-    val kind = release.kind ?: "Lanzamiento"
-    return if (release.year != null) "$kind · ${release.year}" else kind
 }
