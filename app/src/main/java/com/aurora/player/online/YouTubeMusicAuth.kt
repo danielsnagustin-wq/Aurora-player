@@ -29,6 +29,24 @@ object YouTubeMusicAuth {
             ?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * Pegado manual de sesión (RONDA ARREGLOS 2026-11-13; idea de
+     * BitChord "Universal Smart Paste", código propio): acepta el
+     * header crudo de cookies ("a=b; c=d") o el valor suelto de una
+     * clave. Devuelve el valor de [key] o null si el texto no trae
+     * esa clave. Quita el prefijo "Cookie:" y comillas envolventes.
+     * Sin esto, pegar un header crudo se guardaba entero como si
+     * fuera el valor y la sesión se rompía en silencio.
+     */
+    fun parseManualSession(input: String, key: String): String? {
+        val clean = input.trim()
+            .removePrefix("Cookie:").removePrefix("cookie:")
+            .trim().removeSurrounding("\"").trim()
+            .takeIf { it.isNotBlank() } ?: return null
+        if (!clean.contains("=")) return clean // valor suelto, sin clave
+        return extractCookie(clean, key)
+    }
+
     /** SHA-1 en minúsculas (40 hex); null si el algoritmo no existe. */
     fun sha1Hex(text: String): String? {
         return try {
