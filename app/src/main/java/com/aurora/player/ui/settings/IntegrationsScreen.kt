@@ -56,7 +56,10 @@ fun IntegrationsScreen(
     onConnectYouTubeMusic: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
-    streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Calidad por conexión (copia BitChord, slice 3): una para
+    // Wi-Fi y otra para datos móviles.
+    wifiStreamQuality: StreamQuality = StreamQuality.HIGH,
+    mobileStreamQuality: StreamQuality = StreamQuality.MEDIUM,
 ) {
     val context = LocalContext.current
     val spotifyStore = remember { SpotifyStore(context) }
@@ -171,7 +174,8 @@ fun IntegrationsScreen(
             spotifyConnected = true,
             onImportTracks = onImportTracks,
             ytMusicCookies = ytMusicCookies,
-            streamQuality = streamQuality,
+            wifiStreamQuality = wifiStreamQuality,
+            mobileStreamQuality = mobileStreamQuality,
         )
     }
 }
