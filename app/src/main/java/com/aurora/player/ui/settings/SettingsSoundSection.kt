@@ -36,6 +36,7 @@ fun SettingsSoundSection(
     player: PlayerSettings,
     onSavePlayer: (PlayerSettings) -> Unit,
     onOpenEq: () -> Unit,
+    atmosSupported: Boolean = false,
 ) {
     // ETAPA 4: reproducción real (crossfade con efecto, auto-pausa y
     // reanudar la cola). Todo se guarda al tocar, como el tema.
@@ -153,6 +154,21 @@ fun SettingsSoundSection(
         Text(
             usbStatusLine(usbDac, null, usbMixerRate),
             modifier = Modifier.padding(top = 8.dp),
+        )
+    }
+    // Slice 5 paso 5: interruptor Atmos, SOLO si el dispositivo lo
+    // soporta (R-24: lo no construido no aparece). Apagado, las
+    // pistas JOC se decodifican normal y el aviso no sale.
+    if (atmosSupported) {
+        AuroraSectionHeader(
+            title = "Dolby Atmos",
+            description = "Pasa el audio Dolby Atmos (E-AC-3 JOC) directo al hardware cuando el dispositivo lo soporta.",
+        )
+        AuroraSwitchRow(
+            title = "Dolby Atmos (passthrough)",
+            description = "Encendido, la pista va directa al hardware y el ecualizador no se aplica a esa pista.",
+            checked = player.atmosPassthrough,
+            onCheckedChange = { onSavePlayer(player.copy(atmosPassthrough = it)) },
         )
     }
 }
