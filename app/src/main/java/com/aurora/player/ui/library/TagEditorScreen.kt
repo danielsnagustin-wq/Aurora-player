@@ -34,6 +34,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.Checkbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -107,6 +108,7 @@ fun TagEditorDialog(
     var disc by remember { mutableStateOf("") }
     var lyricist by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("") }
+    var renameFile by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var candidates by remember { mutableStateOf<List<TagCandidate>>(emptyList()) }
@@ -233,6 +235,7 @@ fun TagEditorDialog(
                 return@launch
             }
             MediaScannerConnection.scanFile(context, arrayOf(song.path), null, null)
+            maybeRename()
             TagWriter.discard(temp)
             coverFile?.delete()
             onSaved()
@@ -283,6 +286,7 @@ fun TagEditorDialog(
                 }
                 committed = true
                 MediaScannerConnection.scanFile(context, arrayOf(song.path), null, null)
+                maybeRename()
                 coverFile?.delete()
                 onSaved()
             } else {
@@ -304,6 +308,29 @@ fun TagEditorDialog(
         }
     }
     
+    fun maybeRename() {
+        if (!renameFile) return
+        if (title.isBlank() || artist.isBlank()) return
+        try {
+            val target = File(song.path)
+            val ext = song.path.substringAfterLast('.', "")
+            val newName = buildRenamedFileName(artist, title, ext) ?: return
+            if (newName == target.name) return
+            val renamed = File(target.parentFile, newName)
+            if (renamed.exists()) return
+            if (target.renameTo(renamed)) {
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(song.path, renamed.absolutePath),
+                    null,
+                    null
+                )
+            }
+        } catch (_: Exception) {
+            // ignore – rename failure must not affect save success
+        }
+    }
+
     // ---- Online search ----------------------------------------------------
     fun searchOnline() {
         scope.launch {
@@ -456,6 +483,21 @@ fun TagEditorDialog(
                         TagField("Disco", disc, KeyboardType.Number) { disc = it }
                         TagField("Letrista", lyricist) { lyricist = it }
                         TagField("Comentario", comment) { comment = it }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Checkbox(
+                                checked = renameFile,
+                                onCheckedChange = { renameFile = it },
+                                enabled = title.isNotBlank() && artist.isNotBlank()
+                            )
+                            Text(
+                                "Renombrar el archivo como «Artista - Título»",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
                         Text(
                             "Los campos vacíos quedan como están.",
                             style = MaterialTheme.typography.bodySmall,
@@ -538,4 +580,23 @@ private fun TagField(
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = Modifier.fillMaxWidth(),
     )
+}
+
+// Build a safe filename "Artist - Title.ext". Returns null if artist or title are blank.
+internal fun buildRenamedFileName(artist: String, title: String, ext: String): String? {
+    if (artist.isBlank() || title.isBlank()) return null
+
+    fun sanitize(input: String): String {
+        // Replace illegal filename characters and control chars with a space
+        var s = input.replace(Regex("[/\\\\:*?\"<>|\\x00-\\x1F]"), " ")
+        // Collapse consecutive whitespace and trim
+        s = s.replace(Regex("\\s+"), " ").trim()
+        // Truncate each part to 200 characters
+        if (s.length > 200) s = s.substring(0, 200)
+        return s
+    }
+
+    val safeArtist = sanitize(artist)
+    val safeTitle = sanitize(title)
+    return "${safeArtist.take(200)} - ${safeTitle.take(200)}.$ext"
 }
