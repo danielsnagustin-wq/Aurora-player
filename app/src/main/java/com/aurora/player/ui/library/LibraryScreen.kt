@@ -224,6 +224,10 @@ fun LibraryScreen(
     val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
         initial = LibraryPrefsStore.ALL_TABS,
     )
+    // Reordenar pestañas (copia BitChord, slice 2): el orden guardado.
+    val tabOrder by libraryPrefs.tabOrderFlow.collectAsState(
+        initial = (0 until LibraryPrefsStore.TAB_COUNT).toList(),
+    )
     val lastTab by libraryPrefs.lastTabFlow.collectAsState(initial = 0)
     val imageCacheEnabled by libraryPrefs.imageCacheEnabledFlow.collectAsState(initial = true)
     val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
@@ -327,8 +331,10 @@ fun LibraryScreen(
         }
         // 7 pestañas con Online: TabRow las aplastaría; con scroll
         // caben todas sin recortar los nombres. Solo se muestran las
-        // visibles (Ajustes > Biblioteca > Pestañas visibles).
+        // visibles (Ajustes > Biblioteca > Pestañas visibles), en el
+        // orden guardado (Ajustes > Biblioteca > Organizar pestañas).
         val visibleList = LIBRARY_TABS.withIndex().filter { it.index in visibleTabs }
+            .sortedBy { tabOrder.indexOf(it.index) }
         ScrollableTabRow(
             selectedTabIndex = visibleList.indexOfFirst { it.index == tab }.coerceAtLeast(0),
             edgePadding = 0.dp,
