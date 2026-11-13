@@ -93,6 +93,7 @@ import com.aurora.player.ui.theme.brightnessOf
 import com.aurora.player.ui.theme.parseHexOrNull
 import com.aurora.player.util.BackupManager
 import com.aurora.player.util.DiagnosticsSnapshot
+import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.FrameRateMeter
 import com.aurora.player.util.RestoreReport
 import com.aurora.player.util.collectSnapshot
@@ -286,19 +287,32 @@ fun SettingsScreen(
         // compila (run #286: Argument type mismatch, líneas 284 y 297).
         val disconnectSpotify: () -> Unit = {
             scope.launch {
-                spotifyStore.clear()
-                spotifyStatus = null
+                try {
+                    spotifyStore.clear()
+                    spotifyStatus = null
+                } catch (e: Exception) {
+                    ErrorLog.log(context, "Desconectar Spotify", e)
+                    spotifyStatus = "No se pudo desconectar. Inténtalo de nuevo."
+                }
             }
         }
         val connectSpotify: (String) -> Unit = { cookie ->
             scope.launch {
                 spotifyStatus = "Comprobando la sesión…"
-                val token = SpotifyClient().fetchAccessToken(cookie.trim())
-                if (token != null) {
-                    spotifyStore.setCookie(cookie.trim())
-                    spotifyStatus = "Conectado."
-                } else {
-                    spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
+                try {
+                    val token = SpotifyClient().fetchAccessToken(cookie.trim())
+                    if (token != null) {
+                        spotifyStore.setCookie(cookie.trim())
+                        spotifyStatus = "Conectado."
+                    } else {
+                        spotifyStatus = "Esa sesión no funcionó. Vuelve a iniciar sesión con Spotify."
+                    }
+                } catch (e: Exception) {
+                    // fetchAccessToken ya devuelve null ante fallos de
+                    // red; esto cubre el guardado de la cookie, que
+                    // también puede fallar y antes cerraba la app.
+                    ErrorLog.log(context, "Conectar Spotify", e)
+                    spotifyStatus = "No se pudo conectar. Inténtalo de nuevo."
                 }
             }
         }
@@ -313,7 +327,8 @@ fun SettingsScreen(
                 onConnectYouTubeMusic = onConnectYouTubeMusic,
                 onDisconnectYouTubeMusic = onDisconnectYouTubeMusic,
                 ytMusicCookies = ytMusicCookies,
-                streamQuality = player.streamQuality,
+                wifiStreamQuality = player.wifiStreamQuality,
+                mobileStreamQuality = player.mobileStreamQuality,
             )
         }
 
