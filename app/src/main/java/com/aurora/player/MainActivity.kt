@@ -1096,8 +1096,18 @@ private fun AuroraApp(
     // sus reproducciones reales. Antes mezclaba a ciegas: mismo
     // artista, mismo género y resto, sin saber qué se escucha más.
     fun refillRadio() {
-        val c = controller ?: return
-        if (radioBusy) return
+        val c = controller
+        if (c == null) {
+            // RONDA ARREGLOS 2026-11-13: antes era un return mudo y
+            // la radio "no hacía nada" sin decir por qué.
+            ErrorLog.log(context, "Radio local: controlador nulo", null)
+            Toast.makeText(context, "La radio no está lista todavía", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (radioBusy) {
+            ErrorLog.log(context, "Radio local: ya hay una radio en curso", null)
+            return
+        }
         radioBusy = true
         // El controlador solo se lee en el hilo principal: Media3
         // exige su hilo de aplicación y leerlo en IO puede lanzar
@@ -1144,9 +1154,11 @@ private fun AuroraApp(
                 } catch (e: Exception) {
                     ErrorLog.log(context, "Radio local", e)
                 }
-            } else if (playerSettings.localRadio) {
-                // Ronda 4: el Auto-DJ se quedó sin candidatas; avisar
-                // en vez de parar en silencio.
+            } else {
+                // RONDA ARREGLOS 2026-11-13: antes solo se avisaba si
+                // localRadio estaba encendido (apagado por defecto):
+                // con la cola vacía la radio moría en silencio.
+                ErrorLog.log(context, "Radio local: sin candidatas", null)
                 Toast.makeText(context, "Auto-DJ terminó: no quedan canciones parecidas", Toast.LENGTH_SHORT).show()
             }
             radioBusy = false
@@ -2184,7 +2196,12 @@ private fun AuroraApp(
                     refillRadio()
                     return@launch
                 }
-                val c = controller ?: return@launch
+                val c = controller
+                if (c == null) {
+                    ErrorLog.log(context, "Radio online: controlador nulo", null)
+                    Toast.makeText(context, "La radio no está lista todavía", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 try {
                     val startIndex = c.mediaItemCount
                     c.addMediaItems(pairs.map { (track, url) -> onlineMediaItem(track, url) })
@@ -2404,11 +2421,17 @@ private fun AuroraApp(
             }
             val id = albums.firstOrNull { it.name == albumName }?.id
             if (id == null) {
+                ErrorLog.log(context, "Abrir álbum: no encontrado en la biblioteca", null)
                 Toast.makeText(context, "Álbum no encontrado en la biblioteca", Toast.LENGTH_SHORT).show()
                 return@launch
             }
             libraryViewModel.filterByAlbum(id)
-            libraryPrefs.saveLastTab(2)
+            // RONDA ARREGLOS 2026-11-13: "Abrir álbum" iba a la
+            // cuadrícula de Álbumes (tab 2), donde el filtro no se
+            // usa: el usuario caía en la cuadrícula y no veía las
+            // canciones del álbum. Ahora va directo a Canciones
+            // (tab 0) con el filtro del álbum.
+            libraryPrefs.saveLastTab(0)
             tab = Tab.LIBRARY
             showPlayer = false
         }
