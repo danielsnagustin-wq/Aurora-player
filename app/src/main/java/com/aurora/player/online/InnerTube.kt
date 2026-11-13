@@ -182,6 +182,12 @@ fun buildPlayerBody(client: YtClient, videoId: String): String =
         "\"playbackContext\":{\"contentPlaybackContext\":{\"vis\":0,\"splay\":false,\"autoCaptionsDefaultOn\":false,\"autonavState\":\"STATE_OFF\",\"html5Preference\":\"HTML5_PREF_WANTS\",\"lact\":0}}," +
         "\"contentCheckOk\":true,\"racyCheckOk\":true}"
 
+/** Cuerpo de la petición browse (página de artista, álbum, sección). */
+fun buildBrowseBody(browseId: String, params: String? = null): String {
+    val paramsJson = if (params != null) ",\"params\":\"${jsonEscape(params)}\"" else ""
+    return "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"${jsonEscape(browseId)}\"$paramsJson}"
+}
+
 /** "3:24" o "1:02:03" → segundos. Null si no es duración. */
 fun parseDurationToSec(text: String): Long? {
     val parts = text.split(":")
@@ -561,6 +567,264 @@ fun parseQuickPicks(json: String): List<QuickPick> {
     return emptyList()
 }
 
+/** Un álbum, sencillo o EP de la página de un artista en YouTube Music. */
+data class ArtistRelease(
+    val browseId: String?,
+    val title: String,
+    val year: Int?,
+    val kind: String?,
+    val thumbnailUrl: String?,
+)
+
+/** Un vídeo de la página de un artista. */
+data class ArtistVideo(
+    val videoId: String,
+    val title: String,
+    val subtitle: String?,
+    val thumbnailUrl: String?,
+)
+
+/**
+ * La página de un artista: secciones tolerantes (la que falte sale
+ * vacía, nunca inventada). [singlesBrowseId]/[singlesParams] y
+ * [albumsBrowseId]/[albumsParams] son el "Ver todo" de cada sección
+ * (lista completa, orden Recency en sencillos).
+ */
+data class ArtistPage(
+    val topSongs: List<OnlineTrack>,
+    val albums: List<ArtistRelease>,
+    val singles: List<ArtistRelease>,
+    val videos: List<ArtistVideo>,
+    val singlesBrowseId: String?,
+    val singlesParams: String?,
+    val albumsBrowseId: String?,
+    val albumsParams: String?,
+)
+
+/** Secciones de una respuesta browse: contents → tabs[0] → sectionListRenderer. */
+private fun browseSections(root: JsonValue?): List<JsonValue>? =
+    root?.obj("contents")?.obj("singleColumnBrowseResultsRenderer")
+        ?.obj("tabs")?.arr()?.firstOrNull()
+        ?.obj("tabRenderer")?.obj("content")?.obj("sectionListRenderer")
+        ?.obj("contents")?.arr()
+
+/** Título del encabezado de un carrusel (musicCarouselShelfRenderer). */
+private fun shelfHeaderTitle(shelf: JsonValue?): String? =
+    shelf?.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")
+        ?.obj("title")?.obj("runs")?.arr()?.firstOrNull()?.obj("text")?.str()
+
+/** El "Ver todo" de un carrusel: (browseId, params) del botón, o (null, null). */
+private fun shelfMoreBrowse(shelf: JsonValue?): Pair<String?, String?> {
+    val endpoint = shelf?.obj("header")?.obj("musicCarouselShelfBasicHeaderRenderer")
+        ?.obj("moreContentButton")?.obj("buttonRenderer")
+        ?.obj("navigationEndpoint")?.obj("browseEndpoint")
+    return endpoint?.obj("browseId")?.str() to endpoint?.obj("params")?.str()
+}
+
+/** Textos del subtítulo de un ítem de dos filas, sin separadores " • ". */
+private fun twoRowSubtitleTexts(item: JsonValue?): List<String> =
+    item?.obj("musicTwoRowItemRenderer")?.obj("subtitle")?.obj("runs")?.arr()
+        ?.mapNotNull { it.obj("text")?.str() }
+        ?.filter { it != " • " } ?: emptyList()
+
+/** Año (19xx/20xx) dentro de los textos de un subtítulo, o null. */
+private fun subtitleYear(texts: List<String>): Int? {
+    for (text in texts) {
+        val match = Regex("(19|20)\\d{2}").find(text) ?: continue
+        return match.value.toIntOrNull()
+    }
+    return null
+}
+
+/**
+ * Busca el channelId (UC...) de un artista en una respuesta de
+ * búsqueda: el run del artista en la columna 1 de cada canción trae
+ * navigationEndpoint.browseEndpoint.browseId. Primero el run cuyo
+ * texto es el artista pedido; si ninguno coincide, el primer UC de
+ * la columna 1 (la canción de arriba es del artista buscado). Null
+ * si la respuesta no trae ningún UC. JSON inválido → null.
+ */
+fun parseArtistBrowseId(json: String, artistName: String): String? {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return null
+    }
+    val tabs = root.obj("contents")?.obj("tabbedSearchResultsRenderer")
+        ?.obj("tabs")?.arr() ?: return null
+    var firstUc: String? = null
+    for (tab in tabs) {
+        val sections = tab.obj("tabRenderer")?.obj("content")
+            ?.obj("sectionListRenderer")?.obj("contents")?.arr() ?: continue
+        for (section in sections) {
+            val items = section.obj("musicShelfRenderer")?.obj("contents")?.arr() ?: continue
+            for (item in items) {
+                val renderer = item.obj("musicResponsiveListItemRenderer") ?: continue
+                val columns = renderer.obj("flexColumns")?.arr() ?: continue
+                if (columns.size < 2) continue
+                val runs = columns[1].obj("musicResponsiveListItemFlexColumnRenderer")
+                    ?.obj("text")?.obj("runs")?.arr() ?: continue
+                for (run in runs) {
+                    val browseId = run.obj("navigationEndpoint")?.obj("browseEndpoint")
+                        ?.obj("browseId")?.str() ?: continue
+                    if (!browseId.startsWith("UC")) continue
+                    if (firstUc == null) firstUc = browseId
+                    if (run.obj("text")?.str()?.trim().equals(artistName.trim(), ignoreCase = true)) {
+                        return browseId
+                    }
+                }
+            }
+        }
+    }
+    return firstUc
+}
+
+/** Un ítem de dos filas como lanzamiento (álbum/sencillo/EP). */
+private fun twoRowRelease(item: JsonValue?): ArtistRelease? {
+    val title = twoRowTitle(item) ?: return null
+    val texts = twoRowSubtitleTexts(item)
+    val kind = texts.firstOrNull { it != " • " }
+    return ArtistRelease(
+        browseId = twoRowBrowseId(item),
+        title = title,
+        year = subtitleYear(texts),
+        kind = kind,
+        thumbnailUrl = twoRowThumbnail(item),
+    )
+}
+
+/** Un ítem de dos filas como vídeo. */
+private fun twoRowVideo(item: JsonValue?): ArtistVideo? {
+    val twoRow = item?.obj("musicTwoRowItemRenderer") ?: return null
+    val videoId = twoRow.obj("navigationEndpoint")?.obj("watchEndpoint")
+        ?.obj("videoId")?.str() ?: return null
+    val title = twoRowTitle(item) ?: return null
+    val subtitle = twoRowSubtitleTexts(item).joinToString(" • ").ifEmpty { null }
+    return ArtistVideo(videoId, title, subtitle, twoRowThumbnail(item))
+}
+
+/** Una fila de canción (musicResponsiveListItemRenderer) como OnlineTrack. */
+private fun listItemTrack(renderer: JsonValue?): OnlineTrack? {
+    val videoId = itemVideoId(renderer) ?: return null
+    val title = flexColumnTexts(renderer, 0).firstOrNull() ?: return null
+    if (title.isBlank()) return null
+    val second = flexColumnTexts(renderer, 1)
+    val artist = second.firstOrNull() ?: ""
+    val durationText = second.firstOrNull { DURATION_REGEX.matches(it) }
+    val duration = durationText?.let { parseDurationToSec(it) }
+    val album = second.firstOrNull { it != artist && it != durationText }
+    return OnlineTrack(videoId, title, artist, album, duration, itemThumbnail(renderer))
+}
+
+/**
+ * Parsea la página de un artista (browse con browseId = channelId):
+ * contents → singleColumnBrowseResultsRenderer → tabs[0] →
+ * sectionListRenderer → carruseles. La sección se reconoce por su
+ * título (es/en, con lowercase Locale.ROOT como en Quick picks):
+ * canciones top, álbumes, sencillos y EP, vídeos. La sección que
+ * falte sale vacía; JSON inválido → null (fallo, como en search).
+ */
+fun parseArtistPage(json: String): ArtistPage? {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return null
+    }
+    val sections = browseSections(root) ?: return ArtistPage(
+        emptyList(), emptyList(), emptyList(), emptyList(),
+        null, null, null, null,
+    )
+    val topSongs = mutableListOf<OnlineTrack>()
+    val albums = mutableListOf<ArtistRelease>()
+    val singles = mutableListOf<ArtistRelease>()
+    val videos = mutableListOf<ArtistVideo>()
+    var singlesBrowse: Pair<String?, String?> = null to null
+    var albumsBrowse: Pair<String?, String?> = null to null
+    for (section in sections) {
+        val shelf = section.obj("musicCarouselShelfRenderer") ?: continue
+        val title = shelfHeaderTitle(shelf) ?: continue
+        val lower = title.lowercase(Locale.ROOT)
+        val items = shelf.obj("contents")?.arr() ?: continue
+        when {
+            lower.contains("canci") || lower.contains("top") || lower.contains("song") -> {
+                for (item in items) {
+                    listItemTrack(item.obj("musicResponsiveListItemRenderer"))
+                        ?.let { topSongs += it }
+                }
+            }
+            lower.contains("lbum") || lower.contains("album") -> {
+                albumsBrowse = shelfMoreBrowse(shelf)
+                for (item in items) twoRowRelease(item)?.let { albums += it }
+            }
+            lower.contains("sencillo") || lower.contains("single") ||
+                lower.contains("ep") -> {
+                singlesBrowse = shelfMoreBrowse(shelf)
+                for (item in items) twoRowRelease(item)?.let { singles += it }
+            }
+            lower.contains("deo") || lower.contains("video") -> {
+                for (item in items) twoRowVideo(item)?.let { videos += it }
+            }
+        }
+    }
+    return ArtistPage(
+        topSongs = topSongs,
+        albums = albums,
+        singles = singles,
+        videos = videos,
+        singlesBrowseId = singlesBrowse.first,
+        singlesParams = singlesBrowse.second,
+        albumsBrowseId = albumsBrowse.first,
+        albumsParams = albumsBrowse.second,
+    )
+}
+
+/**
+ * Parsea la lista completa de lanzamientos de una sección (browse con
+ * el browseId+params del "Ver todo"): recoge los ítems de dos filas
+ * de cualquier carrusel, estante o cuadrícula de la respuesta. JSON
+ * inválido o sin ítems → lista vacía.
+ */
+fun parseArtistReleases(json: String): List<ArtistRelease> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val sections = browseSections(root) ?: return emptyList()
+    val releases = mutableListOf<ArtistRelease>()
+    for (section in sections) {
+        val shelf = section.obj("musicCarouselShelfRenderer")
+            ?: section.obj("musicShelfRenderer")
+            ?: section.obj("gridRenderer")
+        val items = shelf?.obj("contents")?.arr()
+            ?: shelf?.obj("items")?.arr() ?: continue
+        for (item in items) twoRowRelease(item)?.let { releases += it }
+    }
+    return releases
+}
+
+/**
+ * Parsea las canciones de un álbum (browse con browseId MPRE...):
+ * estantes con filas musicResponsiveListItemRenderer. JSON inválido
+ * → null (fallo); JSON válido sin canciones → lista vacía.
+ */
+fun parseAlbumTracks(json: String): List<OnlineTrack>? {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return null
+    }
+    val sections = browseSections(root) ?: return emptyList()
+    val tracks = mutableListOf<OnlineTrack>()
+    for (section in sections) {
+        val items = section.obj("musicShelfRenderer")?.obj("contents")?.arr() ?: continue
+        for (item in items) {
+            listItemTrack(item.obj("musicResponsiveListItemRenderer"))?.let { tracks += it }
+        }
+    }
+    return tracks
+}
+
 /** Elige el formato de audio segun la calidad pedida: se
  * recorre su escalera de itags; si ninguno esta, cae al de
  * mayor bitrate. Sin formatos no hay audio (null). */
@@ -617,6 +881,57 @@ class InnerTubeClient(
         val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_home\"}"
         val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext emptyList()
         parseQuickPicks(response)
+    }
+
+    /**
+     * Página de un artista (R8b): POST browse con browseId = channelId.
+     * Null si falló el transporte o el JSON es inválido; página vacía
+     * si YouTube respondió sin las secciones esperadas.
+     */
+    suspend fun browseArtist(channelId: String): ArtistPage? = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = postJson(url, buildBrowseBody(channelId), SEARCH_CLIENT)
+            ?: return@withContext null
+        parseArtistPage(body)
+    }
+
+    /**
+     * ChannelId (UC...) de un artista por su nombre (R8b, opción A):
+     * busca el artista y lee el browseId del run del artista en los
+     * resultados. Null si la búsqueda falló o no trae ningún UC.
+     */
+    suspend fun findArtistChannelId(artistName: String): String? = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/search" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = postJson(url, buildSearchBody(artistName), SEARCH_CLIENT)
+            ?: return@withContext null
+        parseArtistBrowseId(body, artistName)
+    }
+
+    /**
+     * Lista completa de lanzamientos de una sección (R8b, "Ver todo"):
+     * browse con el browseId+params del encabezado. Vacía si falló.
+     */
+    suspend fun getArtistReleases(browseId: String, params: String?): List<ArtistRelease> =
+        withContext(Dispatchers.IO) {
+            val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+                "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+            val body = postJson(url, buildBrowseBody(browseId, params), SEARCH_CLIENT)
+                ?: return@withContext emptyList()
+            parseArtistReleases(body)
+        }
+
+    /**
+     * Canciones de un álbum online (R8b): browse con browseId MPRE...
+     * Null si falló el transporte o el JSON es inválido.
+     */
+    suspend fun getAlbumTracks(browseId: String): List<OnlineTrack>? = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = postJson(url, buildBrowseBody(browseId), SEARCH_CLIENT)
+            ?: return@withContext null
+        parseAlbumTracks(body)
     }
 
     /** Resuelve el audio probando la escalera de clientes; en cada
