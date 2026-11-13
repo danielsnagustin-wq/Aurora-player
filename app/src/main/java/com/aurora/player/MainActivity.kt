@@ -131,6 +131,7 @@ import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.ResolvedVideo
 import com.aurora.player.online.fetchCaptions
 import com.aurora.player.online.selectCaptionTrack
+import com.aurora.player.ui.online.OnlineScreen
 import com.aurora.player.ui.online.VideoPlayerDialog
 import com.aurora.player.playback.songToMediaItem
 import com.aurora.player.ui.eq.EqScreen
