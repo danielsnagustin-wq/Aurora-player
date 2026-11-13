@@ -35,10 +35,12 @@ import com.aurora.player.MainActivity
 import com.aurora.player.alarm.AlarmScheduler
 import com.aurora.player.alarm.AlarmSettings
 import com.aurora.player.alarm.AlarmSource
+import com.aurora.player.audio.AtmosSupport
 import com.aurora.player.audio.ChannelBalanceAudioProcessor
 import com.aurora.player.audio.EqualizerManager
 import com.aurora.player.audio.isDirectMode
 import com.aurora.player.audio.currentOutputRoute
+import com.aurora.player.audio.detectAtmosSupport
 import com.aurora.player.audio.findUsbDac
 import com.aurora.player.audio.routeKey
 import com.aurora.player.audio.ReplayGainProcessor
@@ -128,6 +130,48 @@ class PlaybackService : MediaLibraryService() {
     // Ronda USB Serie A: los sumideros de audio (principal + solape)
     // para fijarles el DAC USB como dispositivo preferido.
     private val audioSinks = mutableListOf<DefaultAudioSink>()
+    // Slice 5 paso 4: ¿este dispositivo pasa Atmos por offload?
+    // Se decide una vez al arrancar (paso 5: el interruptor
+    // "Dolby Atmos (passthrough)" re-aplica el modo con
+    // applyAtmosOffloadMode). El modo vive en el sink y el sink
+    // decide POR FORMATO: con offload activado, un E-AC-3 que el
+    // dispositivo soporta va directo al hardware (passthrough) y
+    // el resto se decodifica a PCM como siempre. La distinción JOC
+    // (badge y aviso) vive en la UI con SongDetails.isAtmosJoc: el
+    // sink no distingue JOC de E-AC-3 normal, y un E-AC-3 sin JOC
+    // también pasa en offload cuando el dispositivo lo soporta (es
+    // el mismo passthrough DD+). En offload los procesadores (EQ,
+    // ReplayGain, balance, silencio) NO se aplican: es el sink
+    // quien los salta, no los apagamos nosotros. Si el dispositivo
+    // no lo soporta, la pista se decodifica normal (núcleo DD+ sin
+    // Atmos): nunca silencio ni crash.
+    private var atmosOffloadOn: Boolean = false
+
+    /**
+     * Fija el modo offload de un sink según la decisión actual.
+     * setOffloadMode exige API 29+ (Media3 lo comprueba con
+     * checkState): por debajo de Q no se toca, aunque la detección
+     * ya devuelva NONE. El modo se lee en el próximo configure(),
+     * así que vale para la siguiente pista.
+     */
+    private fun applyOffloadModeToSink(sink: DefaultAudioSink) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        sink.setOffloadMode(
+            if (atmosOffloadOn) AudioSink.OFFLOAD_MODE_ENABLED_GAPLESS_NOT_REQUIRED
+            else AudioSink.OFFLOAD_MODE_DISABLED,
+        )
+    }
+
+    /** Reaplica el modo offload a todos los sinks conocidos. */
+    private fun applyAtmosOffloadMode() {
+        for (sink in audioSinks) {
+            try {
+                applyOffloadModeToSink(sink)
+            } catch (e: Exception) {
+                ErrorLog.log(this@PlaybackService, "Atmos", e)
+            }
+        }
+    }
     private var visualizerCapture: VisualizerCapture? = null
 
     /** Ajustes vivos: crossfade y auto-pausa se leen de DataStore. */
@@ -226,6 +270,10 @@ class PlaybackService : MediaLibraryService() {
         ).also { silenceProcessor = it }
         // SPEC 005 FR-001: balance L/R, tercer procesador de la cadena.
         val balance = ChannelBalanceAudioProcessor().also { balanceProcessor = it }
+        // Slice 5 paso 4: ¿este dispositivo pasa Atmos por offload?
+        // detectAtmosSupport ya caza Throwable y devuelve NONE si
+        // algo falla, así que aquí no hace falta otro try/catch.
+        atmosOffloadOn = detectAtmosSupport(this) == AtmosSupport.ATMOS
         // RONDA 6 (fix run #68, VERIFICADO EN EL CÓDIGO FUENTE 1.4.1):
         // en 1.4.1 buildAudioSink tiene TRES parámetros (context,
         // enableFloatOutput, enableAudioTrackPlaybackParams) y el
@@ -245,6 +293,9 @@ class PlaybackService : MediaLibraryService() {
                     .setAudioProcessors(arrayOf(gainProcessor, silenceDetector, balance))
                     .build()
                 audioSinks.add(sink)
+                // Slice 5 paso 4: offload Atmos cuando el dispositivo
+                // lo soporta (el sink decide por formato).
+                applyOffloadModeToSink(sink)
                 return sink
             }
         }
@@ -965,6 +1016,9 @@ class PlaybackService : MediaLibraryService() {
                     .setAudioProcessors(arrayOf(gainB, balanceB))
                     .build()
                 audioSinks.add(sink)
+                // Slice 5 paso 4: offload Atmos también en el
+                // reproductor de solape (mismo modo que el principal).
+                applyOffloadModeToSink(sink)
                 return sink
             }
         }
