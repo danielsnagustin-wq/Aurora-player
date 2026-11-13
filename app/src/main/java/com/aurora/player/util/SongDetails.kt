@@ -34,6 +34,13 @@ data class SongDetails(
     val bitDepth: Int? = null,
     /** Letrista (MediaMetadataRetriever METADATA_KEY_WRITER). Null = sin dato. */
     val writer: String? = null,
+    /**
+     * Dolby Atmos real: el archivo es E-AC-3 con JOC (Joint Object
+     * Coding), detectado en la cabecera del primer frame. False
+     * también cuando no se pudo comprobar: el badge exige prueba
+     * positiva, nunca se adivina.
+     */
+    val isAtmosJoc: Boolean = false,
 )
 
 /** Nombre legible del códec ("audio/flac" -> "FLAC"). Función pura, testeable. */
@@ -116,6 +123,206 @@ fun wavBitDepth(bytes: ByteArray): Int? {
     return null
 }
 
+/**
+ * Slice 5 paso 2 — Dolby Atmos real: ¿lleva este archivo E-AC-3
+ * con JOC (Joint Object Coding)? Layout de bits según ETSI TS 102
+ * 366 Anexo E, verificado contra el recorrido de cabecera de
+ * ffmpeg (libavcodec/ac3_parser.c, LGPL; el código aquí es propio,
+ * solo se sigue el mismo orden de bits — las posiciones de bits
+ * son hechos de la especificación, no código copiado):
+ *
+ * syncword 0x0B77 (16 bits) → strmtyp(2) + substreamid(3) +
+ * frmsiz(11) + fscod(2) + numblkscod(2) + acmod(3) + lfeon(1) +
+ * bsid(5, en el bit 40; 16 = E-AC-3) → resto de la cabecera
+ * E-AC-3 (longitud variable según acmod/strmtyp/bloques) → al
+ * final, "additional bitstream info": el LSB del primer byte es
+ * flag_ec3_extension_type_a (1 = JOC/Atmos) y el byte siguiente
+ * es el índice de complejidad (el "Complexity index" de MediaInfo).
+ *
+ * parseEac3JocAt devuelve true (JOC), false (frame E-AC-3 válido
+ * sin JOC) o null (no es un frame E-AC-3 válido o está truncado).
+ * Solo un frame E-AC-3 válido decide: un AC-3 normal (bsid <= 10)
+ * o un syncword casual en otros datos no cuentan como prueba en
+ * ningún sentido y el escaneo sigue buscando. Sin frame válido no
+ * hay badge.
+ */
+private class Eac3BitReader(private val bytes: ByteArray, startBit: Int) {
+    private var pos = startBit
+
+    /** Lee n bits (1..32) MSB-first; null si no quedan bits. */
+    fun bits(n: Int): Int? {
+        var value = 0
+        for (i in 0 until n) {
+            val byteIndex = pos / 8
+            if (byteIndex >= bytes.size) return null
+            val bit = (bytes[byteIndex].toInt() ushr (7 - (pos % 8))) and 1
+            value = (value shl 1) or bit
+            pos++
+        }
+        return value
+    }
+
+    fun bit(): Int? = bits(1)
+
+    fun skip(n: Int): Boolean {
+        if (n < 0 || pos + n > bytes.size * 8) return false
+        pos += n
+        return true
+    }
+}
+
+fun parseEac3JocAt(bytes: ByteArray, offset: Int): Boolean? {
+    if (offset < 0 || offset + 2 > bytes.size) return null
+    if (bytes[offset] != 0x0B.toByte() || bytes[offset + 1] != 0x77.toByte()) return null
+    val r = Eac3BitReader(bytes, (offset + 2) * 8)
+    val frameType = r.bits(2) ?: return null
+    if (frameType == 3) return null // RESERVED
+    val substreamId = r.bits(3) ?: return null
+    if (substreamId != 0) return null
+    val frameSize = ((r.bits(11) ?: return null) + 1) * 2
+    if (frameSize < 7) return null
+    val fscod = r.bits(2) ?: return null
+    val reducedRate = fscod == 3
+    var numBlocks = 6
+    if (reducedRate) {
+        val fscod2 = r.bits(2) ?: return null
+        if (fscod2 == 3) return null
+    } else {
+        numBlocks = when (r.bits(2) ?: return null) {
+            0 -> 1
+            1 -> 2
+            2 -> 3
+            else -> 6
+        }
+    }
+    val channelMode = r.bits(3) ?: return null
+    val lfeOn = (r.bit() ?: return null) == 1
+    // bsid, en el bit 40: 16 = E-AC-3. Cualquier otro valor no es un
+    // frame E-AC-3 (un AC-3 normal tiene bsid <= 10) y no decide.
+    val bsid = r.bits(5) ?: return null
+    if (bsid != 16) return null
+    // Control de volumen: dialnorm(5) + compr(1) [+ dynrng(8)];
+    // dos rondas en dual-mono (acmod 0), una en el resto.
+    val dialNormRounds = if (channelMode == 0) 2 else 1
+    repeat(dialNormRounds) {
+        if (r.bits(5) == null) return null
+        if ((r.bit() ?: return null) == 1) {
+            if (r.bits(8) == null) return null
+        }
+    }
+    // Mapa de canales del stream dependiente.
+    if (frameType == 1) {
+        if ((r.bit() ?: return null) == 1) {
+            if (r.bits(16) == null) return null
+        }
+    }
+    // Metadatos de mezcla.
+    if ((r.bit() ?: return null) == 1) {
+        if (channelMode > 2) {
+            if (r.bits(2) == null) return null // preferred downmix
+            if (channelMode and 1 != 0) {
+                if (r.bits(3) == null || r.bits(3) == null) return null // cmixlev
+            }
+            if (channelMode and 4 != 0) {
+                if (r.bits(3) == null || r.bits(3) == null) return null // surmixlev
+            }
+        }
+        if (lfeOn && (r.bit() ?: return null) == 1) {
+            if (r.bits(5) == null) return null // lfe mix level
+        }
+        if (frameType == 0) {
+            repeat(dialNormRounds) {
+                if ((r.bit() ?: return null) == 1) {
+                    if (!r.skip(6)) return null // program scale factor
+                }
+            }
+            if ((r.bit() ?: return null) == 1) {
+                if (!r.skip(6)) return null // external program scale factor
+            }
+            when (r.bits(2) ?: return null) {
+                1 -> if (!r.skip(5)) return null
+                2 -> if (!r.skip(12)) return null
+                3 -> {
+                    val mixDataSize = ((r.bits(5) ?: return null) + 2) shl 3
+                    if (!r.skip(mixDataSize)) return null
+                }
+            }
+            if (channelMode < 2) {
+                val panRounds = if (channelMode == 0) 2 else 1
+                repeat(panRounds) {
+                    if ((r.bit() ?: return null) == 1) {
+                        if (!r.skip(8) || !r.skip(6)) return null
+                    }
+                }
+            }
+            if ((r.bit() ?: return null) == 1) {
+                for (i in 0 until numBlocks) {
+                    if (numBlocks == 1 || (r.bit() ?: return null) == 1) {
+                        if (!r.skip(5)) return null
+                    }
+                }
+            }
+        }
+    }
+    // Metadatos informativos.
+    if ((r.bit() ?: return null) == 1) {
+        if (r.bits(3) == null) return null // bitstream mode
+        if (!r.skip(2)) return null // copyright + original
+        if (channelMode == 2) {
+            if (r.bits(2) == null || r.bits(2) == null) return null // dsurmod + dhpmod
+        }
+        if (channelMode >= 6) {
+            if (r.bits(2) == null) return null // dsurexmod
+        }
+        repeat(dialNormRounds) {
+            if ((r.bit() ?: return null) == 1) {
+                if (!r.skip(8)) return null
+            }
+        }
+        if (!reducedRate) {
+            if (!r.skip(1)) return null // source sample rate code
+        }
+    }
+    // Flag de sincronización del conversor.
+    if (frameType == 0 && numBlocks != 6) {
+        if (!r.skip(1)) return null
+    }
+    // Código de tamaño original (solo AC-3 convertido).
+    if (frameType == 2 && (numBlocks == 6 || (r.bit() ?: return null) == 1)) {
+        if (!r.skip(6)) return null
+    }
+    // Additional bitstream info: el LSB del primer byte es el flag JOC.
+    if ((r.bit() ?: return null) == 1) {
+        r.bits(6) ?: return null // addbsil
+        if (!r.skip(7)) return null
+        val extensionTypeA = r.bit() ?: return null
+        if (extensionTypeA == 1) {
+            if (r.bits(8) == null) return null // complexity index
+        }
+        return extensionTypeA == 1
+    }
+    return false
+}
+
+/**
+ * Busca el primer frame E-AC-3 válido en los bytes dados y dice si
+ * lleva JOC. En un .mka/.mkv el frame no está al principio (antes
+ * van las cabeceras EBML), así que se escanea buscando el syncword
+ * 0x0B77; en un .eac3 crudo está en el offset 0. Sin frame válido,
+ * false: sin prueba no hay badge.
+ */
+fun findEac3Joc(bytes: ByteArray): Boolean {
+    var offset = 0
+    while (offset + 1 < bytes.size) {
+        if (bytes[offset] == 0x0B.toByte() && bytes[offset + 1] == 0x77.toByte()) {
+            val result = parseEac3JocAt(bytes, offset)
+            if (result != null) return result
+        }
+        offset++
+    }
+    return false
+}
+
 suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
     withContext(Dispatchers.IO) {
         var genre: String? = null
@@ -143,6 +350,7 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
         // directa del archivo está bloqueada por el almacenamiento
         // con ámbito en Android 10+). Si falla, es null y se muestra "—".
         var channels: Int? = null
+        var audioMime: String? = null
         try {
             context.contentResolver.openFileDescriptor(song.uri, "r")?.use { pfd ->
                 val extractor = android.media.MediaExtractor()
@@ -152,6 +360,7 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
                         val format = extractor.getTrackFormat(i)
                         val mime = format.getString(android.media.MediaFormat.KEY_MIME) ?: ""
                         if (mime.startsWith("audio/")) {
+                            audioMime = mime
                             channels = try {
                                 format.getInteger(android.media.MediaFormat.KEY_CHANNEL_COUNT)
                             } catch (_: Exception) {
@@ -197,7 +406,34 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
         } catch (_: Exception) {
             bitDepth = null
         }
-        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType, channels, bitDepth, writer)
+        // Dolby Atmos real (slice 5 paso 2): solo si la pista de audio
+        // es E-AC-3 (lo dice el extractor) o el mime/extensión apunta
+        // a E-AC-3 o a un contenedor que lo lleva (.mka/.mkv/.mp4).
+        // Se escanean los primeros 64 KB buscando el primer frame
+        // E-AC-3 válido: en un .mka el frame no está al principio
+        // (antes van las cabeceras EBML). Sin frame válido, false.
+        var isAtmosJoc = false
+        try {
+            val ext = song.path.substringAfterLast('.', "").lowercase(Locale.ROOT)
+            val probeEac3 = audioMime?.equals("audio/eac3", ignoreCase = true) == true ||
+                song.mimeType.equals("audio/eac3", ignoreCase = true) ||
+                ext in setOf("eac3", "ec3", "mka", "mkv", "mp4", "m4a")
+            if (probeEac3) {
+                context.contentResolver.openInputStream(song.uri)?.use { input ->
+                    val window = ByteArray(64 * 1024)
+                    var read = 0
+                    while (read < window.size) {
+                        val n = input.read(window, read, window.size - read)
+                        if (n <= 0) break
+                        read += n
+                    }
+                    if (read > 0) isAtmosJoc = findEac3Joc(window.copyOf(read))
+                }
+            }
+        } catch (_: Exception) {
+            isAtmosJoc = false
+        }
+        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType, channels, bitDepth, writer, isAtmosJoc)
     }
 
 /**
