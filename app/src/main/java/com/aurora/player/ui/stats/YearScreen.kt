@@ -103,7 +103,13 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Año que la pantalla está mostrando ahora: si el usuario toca
+    // otro año mientras este carga, el resultado viejo se ignora
+    // (antes podía pisar las estadísticas del año nuevo).
+    private var requestedYear: Int? = null
+
     fun loadYear(year: Int, hasAudioPermission: Boolean) {
+        requestedYear = year
         _stats.value = null
         _playlistCreated.value = null
         _loadFailed.value = false
@@ -119,10 +125,10 @@ class YearViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 ErrorLog.log(getApplication(), "Cargar Tu año", e)
-                _loadFailed.value = true
+                if (requestedYear == year) _loadFailed.value = true
                 null
             }
-            _stats.value = data
+            if (requestedYear == year) _stats.value = data
         }
     }
 
