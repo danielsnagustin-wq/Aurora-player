@@ -100,6 +100,29 @@ fun soundCloudArtwork500(url: String?): String? {
 }
 
 /**
+ * Una canción de SoundCloud a partir de su objeto JSON (búsqueda o
+ * feed). Null si no es reproducible (streamable=false) o le falta
+ * id, título o artista. La usa también el feed de seguidos.
+ */
+fun parseSoundCloudTrack(item: JsonValue?): SoundCloudTrack? {
+    if (item?.obj("streamable")?.bool() == false) return null
+    val id = item?.obj("id")?.long() ?: return null
+    val title = item.obj("title")?.str() ?: return null
+    val artist = item.obj("user")?.obj("username")?.str() ?: return null
+    val durationMs = item.obj("duration")?.long() ?: 0L
+    val artworkUrl = item.obj("artwork_url")?.str()
+    val permalinkUrl = item.obj("permalink_url")?.str()
+    return SoundCloudTrack(
+        id = id,
+        title = title,
+        artist = artist,
+        artworkUrl = artworkUrl,
+        durationMs = durationMs,
+        permalinkUrl = permalinkUrl
+    )
+}
+
+/**
  * Parsea una respuesta de búsqueda de api-v2 a canciones.
  * Descarta las no reproducibles (streamable=false) y las sin título/artista.
  * JSON roto -> lista vacía.
@@ -108,22 +131,49 @@ fun parseSoundCloudSearch(json: String): List<SoundCloudTrack> {
     return try {
         val root = JsonParser.parse(json)
         val collection = root.obj("collection")?.arr() ?: return emptyList()
+        collection.mapNotNull { parseSoundCloudTrack(it) }
+    } catch (e: JsonParseException) {
+        emptyList()
+    }
+}
+
+/** Tu cuenta de SoundCloud (GET /me con el token). */
+data class SoundCloudUser(
+    val id: Long,
+    val username: String,
+    val avatarUrl: String?,
+)
+
+/**
+ * Parsea GET /me: id + nombre + avatar. Null si falta id o nombre,
+ * o si el JSON está roto.
+ */
+fun parseSoundCloudMe(json: String): SoundCloudUser? {
+    return try {
+        val root = JsonParser.parse(json)
+        val id = root.obj("id")?.long() ?: return null
+        val username = root.obj("username")?.str()?.takeIf { it.isNotBlank() } ?: return null
+        SoundCloudUser(id, username, root.obj("avatar_url")?.str())
+    } catch (e: JsonParseException) {
+        null
+    }
+}
+
+/**
+ * Parsea el feed de seguidos (GET /stream, forma documentada por
+ * Cloudify-Player): collection[] con type track / track-repost /
+ * playlist / playlist-repost; solo entran las pistas (la repost trae
+ * la pista dentro, en "track"). Las playlists se saltan.
+ * JSON roto -> lista vacía.
+ */
+fun parseSoundCloudStream(json: String): List<SoundCloudTrack> {
+    return try {
+        val root = JsonParser.parse(json)
+        val collection = root.obj("collection")?.arr() ?: return emptyList()
         collection.mapNotNull { item ->
-            if (item?.obj("streamable")?.bool() == false) return@mapNotNull null
-            val id = item?.obj("id")?.long() ?: return@mapNotNull null
-            val title = item.obj("title")?.str() ?: return@mapNotNull null
-            val artist = item.obj("user")?.obj("username")?.str() ?: return@mapNotNull null
-            val durationMs = item.obj("duration")?.long() ?: 0L
-            val artworkUrl = item.obj("artwork_url")?.str()
-            val permalinkUrl = item.obj("permalink_url")?.str()
-            SoundCloudTrack(
-                id = id,
-                title = title,
-                artist = artist,
-                artworkUrl = artworkUrl,
-                durationMs = durationMs,
-                permalinkUrl = permalinkUrl
-            )
+            val type = item?.obj("type")?.str() ?: return@mapNotNull null
+            if (type != "track" && type != "track-repost") return@mapNotNull null
+            parseSoundCloudTrack(item.obj("track"))
         }
     } catch (e: JsonParseException) {
         emptyList()
@@ -186,14 +236,23 @@ fun parseSoundCloudStreamUrl(json: String): String? {
  * GET de texto con timeouts y desconexión en finally.
  * Null en respuestas no-200. IOException propaga al llamador.
  * CancellationException se relanza sin tocarla.
+ * Con [oauthToken], se manda `Authorization: OAuth <token>` (datos de
+ * la cuenta: /me y /stream); sin él, solo el client_id público.
  */
-private suspend fun soundCloudHttpGet(url: String, userAgent: String): String? {
+private suspend fun soundCloudHttpGet(
+    url: String,
+    userAgent: String,
+    oauthToken: String? = null,
+): String? {
     return withContext(Dispatchers.IO) {
         var conn: HttpURLConnection? = null
         try {
             conn = URL(url).openConnection() as HttpURLConnection
             conn.requestMethod = "GET"
             conn.setRequestProperty("User-Agent", userAgent)
+            if (!oauthToken.isNullOrBlank()) {
+                conn.setRequestProperty("Authorization", "OAuth $oauthToken")
+            }
             conn.connectTimeout = 10_000
             conn.readTimeout = 10_000
 
@@ -266,6 +325,40 @@ suspend fun resolveSoundCloudStreamUrl(trackId: Long, clientId: String): String?
     ) ?: return null
     return try {
         parseSoundCloudStreamUrl(streamText)
+    } catch (e: JsonParseException) {
+        null
+    }
+}
+
+/**
+ * Tu perfil de SoundCloud (GET /me con el token de la sesión).
+ * Null si el token no sirve o SoundCloud no responde.
+ */
+suspend fun fetchSoundCloudMe(clientId: String, oauthToken: String): SoundCloudUser? {
+    val url = "$SOUNDCLOUD_API_V2_URL/me?client_id=$clientId"
+    val text = soundCloudHttpGet(url, SOUNDCLOUD_API_UA, oauthToken) ?: return null
+    return try {
+        parseSoundCloudMe(text)
+    } catch (e: JsonParseException) {
+        null
+    }
+}
+
+/**
+ * Lo nuevo de los artistas que sigues (GET /stream, feed de seguidos).
+ * Null si SoundCloud no responde. OJO: este endpoint está documentado
+ * como "OAuth, sin probar" en la fuente de la que sale — la primera
+ * verificación real es en el teléfono del usuario, con su token.
+ */
+suspend fun fetchSoundCloudStream(
+    clientId: String,
+    oauthToken: String,
+    limit: Int = 25,
+): List<SoundCloudTrack>? {
+    val url = "$SOUNDCLOUD_API_V2_URL/stream?client_id=$clientId&limit=$limit&linked_partitioning=1"
+    val text = soundCloudHttpGet(url, SOUNDCLOUD_API_UA, oauthToken) ?: return null
+    return try {
+        parseSoundCloudStream(text)
     } catch (e: JsonParseException) {
         null
     }
