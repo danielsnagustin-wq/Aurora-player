@@ -568,6 +568,7 @@ fun PlayerScreen(
                 song = currentSong,
                 onSaved = { showTagEditor = false; onTagsSaved() },
                 onDismiss = { showTagEditor = false },
+                onlineMode = onlineMode,
             )
         }
         if (castDeviceName != null) {
