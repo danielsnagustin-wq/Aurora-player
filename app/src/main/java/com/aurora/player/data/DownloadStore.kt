@@ -51,7 +51,13 @@ internal fun decodeDownloadRecord(line: String): DownloadRecord? {
     val sep = '\u001F'
     val parts = line.split(sep)
     if (parts.size != 7) return null
-    val (videoId, title, artist, sizeStr, downloadedStr, statusStr, uriPart) = parts
+    val videoId = parts[0]
+    val title = parts[1]
+    val artist = parts[2]
+    val sizeStr = parts[3]
+    val downloadedStr = parts[4]
+    val statusStr = parts[5]
+    val uriPart = parts[6]
     val size = sizeStr.toLongOrNull() ?: return null
     val downloaded = downloadedStr.toLongOrNull() ?: return null
     val status = try {
