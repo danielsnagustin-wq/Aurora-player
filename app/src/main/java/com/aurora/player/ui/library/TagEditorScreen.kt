@@ -174,6 +174,29 @@ fun TagEditorDialog(
         onDismiss()
     }
 
+    fun maybeRename() {
+        if (!renameFile) return
+        if (title.isBlank() || artist.isBlank()) return
+        try {
+            val target = File(song.path)
+            val ext = song.path.substringAfterLast('.', "")
+            val newName = buildRenamedFileName(artist, title, ext) ?: return
+            if (newName == target.name) return
+            val renamed = File(target.parentFile, newName)
+            if (renamed.exists()) return
+            if (target.renameTo(renamed)) {
+                MediaScannerConnection.scanFile(
+                    context,
+                    arrayOf(song.path, renamed.absolutePath),
+                    null,
+                    null
+                )
+            }
+        } catch (_: Exception) {
+            // ignore – rename failure must not affect save success
+        }
+    }
+
     // Portada nueva: se copia a cacheDir y se muestra. Sin vista
     // previa no hay botón de guardar que la use (R-26).
     val coverPicker = rememberLauncherForActivityResult(
@@ -308,29 +331,6 @@ fun TagEditorDialog(
         }
     }
     
-    fun maybeRename() {
-        if (!renameFile) return
-        if (title.isBlank() || artist.isBlank()) return
-        try {
-            val target = File(song.path)
-            val ext = song.path.substringAfterLast('.', "")
-            val newName = buildRenamedFileName(artist, title, ext) ?: return
-            if (newName == target.name) return
-            val renamed = File(target.parentFile, newName)
-            if (renamed.exists()) return
-            if (target.renameTo(renamed)) {
-                MediaScannerConnection.scanFile(
-                    context,
-                    arrayOf(song.path, renamed.absolutePath),
-                    null,
-                    null
-                )
-            }
-        } catch (_: Exception) {
-            // ignore – rename failure must not affect save success
-        }
-    }
-
     // ---- Online search ----------------------------------------------------
     fun searchOnline() {
         scope.launch {
