@@ -44,7 +44,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.Button
@@ -137,10 +137,10 @@ import com.aurora.player.ui.eq.EqScreen
 import com.aurora.player.ui.library.AlbumArtCache
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.LargeArtCache
+import com.aurora.player.ui.library.ArtistProfileScreen
 import com.aurora.player.ui.library.LibraryScreen
 import com.aurora.player.ui.player.PlayerScreen
 import com.aurora.player.ui.player.SleepTimerOption
-import com.aurora.player.ui.playlists.PlaylistsScreen
 import com.aurora.player.ui.playlists.PlaylistsViewModel
 import com.aurora.player.ui.settings.SettingsScreen
 import com.aurora.player.ui.settings.SettingsSection
@@ -529,7 +529,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String) {
     LIBRARY("Biblioteca"),
-    PLAYLISTS("Playlists"),
+    ONLINE("Online"),
     STATS("Estadísticas"),
     SETTINGS("Ajustes"),
 }
@@ -584,6 +584,7 @@ private fun AuroraApp(
 ) {
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
+    var artistProfile by remember { mutableStateOf<String?>(null) }
     // Ronda 7 (Gemini): sección de Ajustes que se abre directo
     // (p. ej. Red, desde la pestaña Online con el modo apagado).
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -2191,15 +2192,11 @@ private fun AuroraApp(
         }
     }
 
-    /** MENÚ ⋮: abrir el artista de la pista actual en Biblioteca. */
+    /** MENÚ ⋮ y nombre del artista: abrir el perfil del artista. */
     fun openCurrentArtist() {
         val name = currentArtist?.takeIf { it.isNotBlank() } ?: return
-        scope.launch {
-            libraryViewModel.filterByArtist(name)
-            libraryPrefs.saveLastTab(1)
-            tab = Tab.LIBRARY
-            showPlayer = false
-        }
+        artistProfile = name
+        showPlayer = false
     }
 
     if (showEq) {
@@ -2337,6 +2334,34 @@ private fun AuroraApp(
         return
     }
 
+    if (artistProfile != null) {
+        BackHandler { artistProfile = null }
+        val profileName = artistProfile!!
+        val profileSongs = (libraryState as? LibraryUiState.Loaded)?.songs
+            ?.filter { it.artist == profileName } ?: emptyList()
+        val profileAlbums = (libraryState as? LibraryUiState.Loaded)?.albums
+            ?.filter { it.artist == profileName } ?: emptyList()
+        ArtistProfileScreen(
+            artistName = profileName,
+            songs = profileSongs,
+            albums = profileAlbums,
+            onlineMode = playerSettings.onlineMode,
+            ytMusicCookies = ytMusicCookies,
+            ytMusicToken = ytMusicToken,
+            wifiStreamQuality = playerSettings.wifiStreamQuality,
+            mobileStreamQuality = playerSettings.mobileStreamQuality,
+            onYtTokenRejected = onYtTokenRejected,
+            onYtCookiesRejected = onYtCookiesRejected,
+            onPlayAll = { if (profileSongs.isNotEmpty()) playSongs(profileSongs, 0) },
+            onSongClick = { song, songs ->
+                playSongs(songs, songs.indexOfFirst { it.id == song.id })
+            },
+            onPlayOnlineTrack = { track, url -> playOnlineTrack(track, url) },
+            onBack = { artistProfile = null },
+        )
+        return
+    }
+
     Scaffold(
         bottomBar = {
             Column {
@@ -2427,10 +2452,10 @@ private fun AuroraApp(
                         label = { Text("Biblioteca") },
                     )
                     NavigationBarItem(
-                        selected = tab == Tab.PLAYLISTS,
-                        onClick = { tab = Tab.PLAYLISTS },
-                        icon = { Icon(Icons.Filled.PlaylistPlay, contentDescription = null) },
-                        label = { Text("Playlists") },
+                        selected = tab == Tab.ONLINE,
+                        onClick = { tab = Tab.ONLINE },
+                        icon = { Icon(Icons.Filled.Public, contentDescription = null) },
+                        label = { Text("Online") },
                     )
                     NavigationBarItem(
                         selected = tab == Tab.STATS,
@@ -2475,13 +2500,24 @@ private fun AuroraApp(
                 wifiStreamQuality = playerSettings.wifiStreamQuality,
                 mobileStreamQuality = playerSettings.mobileStreamQuality,
                 onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
+                onOpenArtist = { artistProfile = it },
                 modifier = Modifier.padding(padding),
             )
-            Tab.PLAYLISTS -> PlaylistsScreen(
-                hasAudioPermission = hasAudioPermission,
-                onSongClick = { song, songs ->
-                    playSongs(songs, songs.indexOfFirst { it.id == song.id })
-                },
+            Tab.ONLINE -> OnlineScreen(
+                onlineMode = playerSettings.onlineMode,
+                onPlayTrack = { track, url -> playOnlineTrack(track, url) },
+                onPlayVideo = { track, video -> playVideo(track, video) },
+                spotifyConnected = spotifyConnected,
+                onImportOnlineTracks = { tracks -> playOnlineTracks(tracks) },
+                ytMusicCookies = ytMusicCookies,
+                ytMusicToken = ytMusicToken,
+                onYtTokenRejected = onYtTokenRejected,
+                onYtCookiesRejected = onYtCookiesRejected,
+                wifiStreamQuality = playerSettings.wifiStreamQuality,
+                mobileStreamQuality = playerSettings.mobileStreamQuality,
+                localCount = (libraryState as? LibraryUiState.Loaded)?.songs?.size ?: 0,
+                onShowLocal = { tab = Tab.LIBRARY },
+                onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
                 modifier = Modifier.padding(padding),
             )
             Tab.STATS -> StatsScreen(
