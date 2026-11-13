@@ -84,6 +84,7 @@ fun TagEditorDialog(
     onSaved: () -> Unit,
     onDismiss: () -> Unit,
     onlineMode: Boolean = false,
+    albumSongs: List<Song> = emptyList(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -94,7 +95,7 @@ fun TagEditorDialog(
     var coverFile by remember { mutableStateOf<File?>(null) }
     var saving by remember { mutableStateOf(false) }
     var committed by remember { mutableStateOf(false) }
-    var pendingTemp by remember { mutableStateOf<File?>(null) }
+    var pendingAlbum by remember { mutableStateOf<List<Pair<File, Song>>>(emptyList()) }
     var saveError by remember { mutableStateOf<String?>(null) }
 
     var title by remember { mutableStateOf("") }
@@ -109,6 +110,7 @@ fun TagEditorDialog(
     var lyricist by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("") }
     var renameFile by remember { mutableStateOf(false) }
+    var applyToAlbum by remember { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var candidates by remember { mutableStateOf<List<TagCandidate>>(emptyList()) }
@@ -242,29 +244,36 @@ fun TagEditorDialog(
             return@rememberLauncherForActivityResult
         }
         scope.launch {
-            val temp = pendingTemp ?: return@launch
-            val ok = withContext(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openOutputStream(song.uri, "wt")?.use { out ->
-                        temp.inputStream().use { it.copyTo(out) }
-                    } != null
-                } catch (_: Exception) {
-                    false
+            val pending = pendingAlbum
+            var anyFail = false
+            for ((temp, tgtSong) in pending) {
+                val ok = withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.openOutputStream(tgtSong.uri, "wt")?.use { out ->
+                            temp.inputStream().use { it.copyTo(out) }
+                        } != null
+                    } catch (_: Exception) {
+                        false
+                    }
                 }
+                if (ok) {
+                    MediaScannerConnection.scanFile(context, arrayOf(tgtSong.path), null, null)
+                } else {
+                    anyFail = true
+                }
+                TagWriter.discard(temp)
             }
-            if (!ok) {
-                saveError = "No se pudo escribir en el archivo."
-                saving = false
-                return@launch
-            }
-            MediaScannerConnection.scanFile(context, arrayOf(song.path), null, null)
-            maybeRename()
-            TagWriter.discard(temp)
             coverFile?.delete()
-            onSaved()
+            if (anyFail) {
+                saveError = "No se pudo escribir en algún archivo del álbum."
+                saving = false
+            } else {
+                if (!applyToAlbum) maybeRename()
+                saving = false
+                onSaved()
+            }
         }
     }
-
     fun save() {
         val temp = tempFile ?: return
         saving = true
@@ -283,43 +292,77 @@ fun TagEditorDialog(
                 lyricist = lyricist.takeIf { it.isNotBlank() },
                 comment = comment.takeIf { it.isNotBlank() },
             )
-            val written = withContext(Dispatchers.IO) {
-                if (!TagIO.write(temp, edited)) {
-                    false
-                } else if (coverFile != null) {
-                    TagIO.writeCover(temp, coverFile!!)
+            val tagsToWrite = if (applyToAlbum) albumOnlyTags(edited) else edited
+            val targets = if (applyToAlbum && albumSongs.isNotEmpty()) albumSongs else listOf(song)
+            // Un temporal por canción: la actual reusa tempFile, las demás se copian ahora.
+            val prepared = mutableListOf<Pair<File, Song>>()
+            for (targetSong in targets) {
+                val targetTemp = if (targetSong.id == song.id) {
+                    temp
                 } else {
-                    true
+                    withContext(Dispatchers.IO) {
+                        try {
+                            val ext = targetSong.path.substringAfterLast('.', "")
+                                .lowercase().takeIf { it.isNotBlank() } ?: "tmp"
+                            val out = File(context.cacheDir, "tagedit-${targetSong.id}.$ext")
+                            context.contentResolver.openInputStream(targetSong.uri)?.use { input ->
+                                out.outputStream().use { input.copyTo(it) }
+                            }
+                            out.takeIf { it.exists() && it.length() > 0 }
+                        } catch (_: Exception) {
+                            null
+                        }
+                    }
                 }
-            }
-            if (!written) {
-                saveError = "No se pudo escribir las etiquetas."
-                saving = false
-                return@launch
-            }
-            val target = File(song.path)
-            // En Android 9 o menos no existe createWriteRequest y el
-            // acceso directo al archivo sí funciona: se intenta igual.
-            if (target.canWrite() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                val done = withContext(Dispatchers.IO) { TagWriter.commit(temp, target) }
-                if (!done) {
-                    saveError = "No se pudo guardar en el archivo."
+                if (targetTemp == null) {
+                    saveError = "No se pudo leer algún archivo del álbum."
                     saving = false
                     return@launch
                 }
-                committed = true
-                MediaScannerConnection.scanFile(context, arrayOf(song.path), null, null)
-                maybeRename()
+                val written = withContext(Dispatchers.IO) {
+                    if (!TagIO.write(targetTemp, tagsToWrite)) {
+                        false
+                    } else if (coverFile != null) {
+                        TagIO.writeCover(targetTemp, coverFile!!)
+                    } else {
+                        true
+                    }
+                }
+                if (!written) {
+                    saveError = "No se pudo escribir las etiquetas."
+                    saving = false
+                    return@launch
+                }
+                prepared.add(targetTemp to targetSong)
+            }
+            // Escritura: directa inmediata, o un solo permiso por lote para MediaStore.
+            val pending = mutableListOf<Pair<File, Song>>()
+            for ((targetTemp, targetSong) in prepared) {
+                val target = File(targetSong.path)
+                if (target.canWrite() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                    val done = withContext(Dispatchers.IO) { TagWriter.commit(targetTemp, target) }
+                    if (!done) {
+                        saveError = "No se pudo guardar en el archivo."
+                        saving = false
+                        return@launch
+                    }
+                    if (targetSong.id == song.id) committed = true
+                    MediaScannerConnection.scanFile(context, arrayOf(targetSong.path), null, null)
+                } else {
+                    pending.add(targetTemp to targetSong)
+                }
+            }
+            if (pending.isEmpty()) {
+                if (!applyToAlbum) maybeRename()
                 coverFile?.delete()
                 onSaved()
             } else {
-                // Android 10+: el sistema pide permiso una vez por lote.
                 try {
                     val request = MediaStore.createWriteRequest(
                         context.contentResolver,
-                        listOf(song.uri),
+                        pending.map { it.second.uri },
                     )
-                    pendingTemp = temp
+                    pendingAlbum = pending
                     writeLauncher.launch(
                         IntentSenderRequest.Builder(request.intentSender).build(),
                     )
@@ -330,7 +373,7 @@ fun TagEditorDialog(
             }
         }
     }
-    
+
     // ---- Online search ----------------------------------------------------
     fun searchOnline() {
         scope.launch {
@@ -472,31 +515,57 @@ fun TagEditorDialog(
                                 )
                             }
                         }
-                        TagField("Título", title) { title = it }
-                        TagField("Artista", artist) { artist = it }
+                        TagField("Título", title, enabled = !applyToAlbum) { title = it }
+                        TagField("Artista", artist, enabled = !applyToAlbum) { artist = it }
                         TagField("Artista de álbum", albumArtist) { albumArtist = it }
                         TagField("Álbum", album) { album = it }
                         TagField("Compositor", composer) { composer = it }
                         TagField("Género", genre) { genre = it }
                         TagField("Año", year, KeyboardType.Number) { year = it }
-                        TagField("Pista", track, KeyboardType.Number) { track = it }
-                        TagField("Disco", disc, KeyboardType.Number) { disc = it }
-                        TagField("Letrista", lyricist) { lyricist = it }
-                        TagField("Comentario", comment) { comment = it }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 8.dp)
-                        ) {
-                            Checkbox(
-                                checked = renameFile,
-                                onCheckedChange = { renameFile = it },
-                                enabled = title.isNotBlank() && artist.isNotBlank()
-                            )
-                            Text(
-                                "Renombrar el archivo como «Artista - Título»",
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
+                        TagField("Pista", track, KeyboardType.Number, enabled = !applyToAlbum) { track = it }
+                        TagField("Disco", disc, KeyboardType.Number, enabled = !applyToAlbum) { disc = it }
+                        TagField("Letrista", lyricist, enabled = !applyToAlbum) { lyricist = it }
+                        TagField("Comentario", comment, enabled = !applyToAlbum) { comment = it }
+                        if (albumSongs.size > 1) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = applyToAlbum,
+                                    onCheckedChange = { applyToAlbum = it }
+                                )
+                                Text(
+                                    "Aplicar a todo el álbum (${albumSongs.size} canciones)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
+                            if (applyToAlbum) {
+                                Text(
+                                    "Solo se aplican álbum, artista del álbum, compositor, género, año y portada.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                        if (!applyToAlbum) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(top = 8.dp)
+                            ) {
+                                Checkbox(
+                                    checked = renameFile,
+                                    onCheckedChange = { renameFile = it },
+                                    enabled = title.isNotBlank() && artist.isNotBlank()
+                                )
+                                Text(
+                                    "Renombrar el archivo como «Artista - Título»",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(start = 8.dp)
+                                )
+                            }
                         }
                         Text(
                             "Los campos vacíos quedan como están.",
@@ -564,12 +633,27 @@ fun TagEditorDialog(
     }
 }
 
+// Returns a copy of the tags containing only the fields that apply to the whole album.
+internal fun albumOnlyTags(tags: SongTags): SongTags {
+    return tags.copy(
+        title = null,
+        artist = null,
+        track = null,
+        trackTotal = null,
+        disc = null,
+        discTotal = null,
+        lyricist = null,
+        comment = null,
+    )
+}
+
 /** Campo de texto del editor (una línea; los números usan teclado numérico). */
 @Composable
 private fun TagField(
     label: String,
     value: String,
     keyboardType: KeyboardType = KeyboardType.Text,
+    enabled: Boolean = true,
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
@@ -577,6 +661,7 @@ private fun TagField(
         onValueChange = onChange,
         label = { Text(label) },
         singleLine = true,
+        enabled = enabled,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
         modifier = Modifier.fillMaxWidth(),
     )
