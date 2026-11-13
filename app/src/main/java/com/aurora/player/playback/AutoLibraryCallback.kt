@@ -90,6 +90,12 @@ class AuroraLibraryCallback(
                 val to = minOf(from + pageSize, items.size)
                 val pageItems = if (from >= items.size) emptyList() else items.subList(from, to)
                 future.set(LibraryResult.ofItemList(ImmutableList.copyOf(pageItems), params))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // A7-1 (auditoría 2026-11-12): el withContext de arriba
+                // es un punto de suspensión; sin relanzar, la
+                // cancelación quedaba como error BAD_VALUE para el coche.
+                future.cancel(false)
+                throw e
             } catch (_: Exception) {
                 future.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
             }
@@ -108,6 +114,10 @@ class AuroraLibraryCallback(
                 val item = withContext(Dispatchers.IO) { itemOf(mediaId) }
                 if (item != null) future.set(LibraryResult.ofItem(item, null))
                 else future.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // A7-2 (auditoría 2026-11-12): igual que onGetChildren.
+                future.cancel(false)
+                throw e
             } catch (_: Exception) {
                 future.set(LibraryResult.ofError(LibraryResult.RESULT_ERROR_BAD_VALUE))
             }
