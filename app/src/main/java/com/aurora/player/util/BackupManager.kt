@@ -153,7 +153,7 @@ object BackupManager {
     /** Escribe el respaldo en Descargas. Devuelve dónde quedó. */
     suspend fun exportBackup(context: Context, data: BackupData): Result<ExportResult> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 val fileName = backupFileName(data.createdAtMs)
                 val text = data.toJsonString()
                 val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -181,9 +181,15 @@ object BackupManager {
                 context.backupDataStore.edit { prefs ->
                     prefs[Keys.LAST_NAME] = fileName
                 }
-                result
-            }.onFailure { e ->
+                Result.success(result)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // A5-1 (auditoría 2026-11-12): el .edit de arriba es
+                // suspend; el runCatching anterior tragaba la
+                // cancelación y la dejaba como fallo de exportación.
+                throw e
+            } catch (e: Exception) {
                 ErrorLog.log(context, "Exportar respaldo", e)
+                Result.failure(e)
             }
         }
 
@@ -200,7 +206,7 @@ object BackupManager {
         folderUri: Uri,
     ): Result<ExportResult> =
         withContext(Dispatchers.IO) {
-            runCatching {
+            try {
                 val fileName = backupFileName(data.createdAtMs)
                 val text = data.toJsonString()
                 val docUri = android.provider.DocumentsContract.createDocument(
@@ -214,9 +220,15 @@ object BackupManager {
                 }
                 val folderName = backupFolderDisplayName(folderUri.toString())
                 val location = if (folderName.isEmpty()) fileName else "$folderName/$fileName"
-                ExportResult(docUri, fileName, location)
-            }.onFailure { e ->
+                Result.success(ExportResult(docUri, fileName, location))
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // A5-2 (auditoría 2026-11-12): el .edit de arriba es
+                // suspend; el runCatching anterior tragaba la
+                // cancelación y la dejaba como fallo de exportación.
+                throw e
+            } catch (e: Exception) {
                 ErrorLog.log(context, "Exportar respaldo a carpeta", e)
+                Result.failure(e)
             }
         }
 
@@ -388,6 +400,12 @@ object BackupManager {
             } else {
                 false
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // A5-3 (revisión propia, auditoría 2026-11-12): este try
+            // cubre .first(), collectBackup() y .edit (todos suspend);
+            // sin relanzar, la cancelación quedaba como "fallo" del
+            // respaldo automático.
+            throw e
         } catch (e: Exception) {
             ErrorLog.log(context, "Respaldo automático", e)
             false
