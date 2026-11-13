@@ -151,6 +151,9 @@ import com.aurora.player.online.searchItunes
 import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.rememberRemoteBitmap
 import java.io.IOException
+import com.aurora.player.model.StreamQuality
+import androidx.compose.material.icons.filled.Cached
+import androidx.compose.material3.RadioButton
 
 /**
  * Aurora Player — reproductor a pantalla completa, cableado.
@@ -265,6 +268,8 @@ fun PlayerScreen(
     onShowVideo: () -> Unit = {},
     onImproveQuality: () -> Unit = {},
     onDownload: () -> Unit = {},
+    preselectedDownloadQuality: StreamQuality = StreamQuality.HIGH,
+    onDownloadPermanent: (StreamQuality?) -> Unit = {},
     onRemoveFromCache: () -> Unit = {},
     onOpenAlbum: () -> Unit = {},
     onOpenArtist: () -> Unit = {},
@@ -306,6 +311,7 @@ fun PlayerScreen(
     var showSongInfo by remember { mutableStateOf(false) }
     var showTagEditor by remember { mutableStateOf(false) }
     var showAddToPlaylist by remember { mutableStateOf(false) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
     var dragTotal by remember { mutableStateOf(0f) }
     var itunesCoverUrl by remember(title, artist) { mutableStateOf<String?>(null) }
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
@@ -534,6 +540,7 @@ fun PlayerScreen(
                     onOpenSleepMenu = { sleepMenuOpen = true },
                     onOpenLyrics = { showLyrics = true },
                     onShareErrorLog = onShareErrorLog,
+                    onShowDownloadDialog = { showDownloadDialog = true },
                 )
                 // MENÚ ⋮ (2026-11-11): Dormir ya no tiene botón propio;
                 // su desplegable vive aquí, anclado al ⋮.
@@ -598,6 +605,16 @@ fun PlayerScreen(
                 onDismiss = { showTagEditor = false },
                 onlineMode = onlineMode,
                 albumSongs = albumSongs,
+            )
+        }
+        if (showDownloadDialog) {
+            DownloadQualityDialog(
+                preselected = preselectedDownloadQuality,
+                onConfirm = { q ->
+                    showDownloadDialog = false
+                    onDownloadPermanent(q)
+                },
+                onDismiss = { showDownloadDialog = false },
             )
         }
         if (castDeviceName != null) {
@@ -1741,6 +1758,7 @@ private fun SongOptionsMenu(
     onPlayNextCurrent: () -> Unit,
     onAddToQueueCurrent: () -> Unit,
     onDownload: () -> Unit,
+    onShowDownloadDialog: () -> Unit,
     onRemoveFromCache: () -> Unit,
     onOpenAlbum: () -> Unit,
     onOpenArtist: () -> Unit,
@@ -1816,9 +1834,16 @@ private fun SongOptionsMenu(
         )
         if (isOnline && !isCached) {
             DropdownMenuItem(
-                text = { Text("Descargar") },
-                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                text = { Text("Descargar a la caché") },
+                leadingIcon = { Icon(Icons.Filled.Cached, contentDescription = null) },
                 onClick = { onDismiss(); onDownload() },
+            )
+        }
+        if (isOnline) {
+            DropdownMenuItem(
+                text = { Text("Descargar…") },
+                leadingIcon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                onClick = { onDismiss(); onShowDownloadDialog() },
             )
         }
         if (isOnline && isCached) {
@@ -1884,7 +1909,82 @@ private fun SongOptionsMenu(
         )
     }
 }
-
+ 
+@Composable
+private fun DownloadQualityDialog(
+    preselected: StreamQuality,
+    onConfirm: (StreamQuality?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var selected by remember { mutableStateOf<StreamQuality?>(preselected) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Descargar") },
+        text = {
+            Column {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { selected = null },
+                ) {
+                    RadioButton(
+                        selected = selected == null,
+                        onClick = { selected = null },
+                    )
+                    Text("La mejor disponible", modifier = Modifier.padding(start = 8.dp))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { selected = StreamQuality.HIGH },
+                ) {
+                    RadioButton(
+                        selected = selected == StreamQuality.HIGH,
+                        onClick = { selected = StreamQuality.HIGH },
+                    )
+                    Text("Alta", modifier = Modifier.padding(start = 8.dp))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { selected = StreamQuality.MEDIUM },
+                ) {
+                    RadioButton(
+                        selected = selected == StreamQuality.MEDIUM,
+                        onClick = { selected = StreamQuality.MEDIUM },
+                    )
+                    Text("Media", modifier = Modifier.padding(start = 8.dp))
+                }
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .clickable { selected = StreamQuality.LOW },
+                ) {
+                    RadioButton(
+                        selected = selected == StreamQuality.LOW,
+                        onClick = { selected = StreamQuality.LOW },
+                    )
+                    Text("Baja", modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(selected) }) { Text("Descargar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        },
+    )
+}
+ 
 /** Una acción de la fila superior del menú ⋮ (icono + nombre debajo). */
 @Composable
 private fun MenuTopAction(
