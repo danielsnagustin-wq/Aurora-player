@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -38,6 +39,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.data.DownloadRecord
+import com.aurora.player.data.DownloadStatus
+import com.aurora.player.data.DownloadStore
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
@@ -52,6 +56,8 @@ import com.aurora.player.online.SpotifyPlaylist
 import com.aurora.player.online.SpotifyTrack
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.text.Normalizer
+import java.util.Locale
 
 /**
  * Spotify como BitChord — tus listas en la pestaña Online
@@ -66,6 +72,43 @@ import kotlinx.coroutines.launch
  * guardan como cola con nombre (el esquema solo guarda canciones
  * locales): van a la cola de reproducción.
  */
+/**
+ * Slice 4 paso 7: marca de descarga en listas importadas. El
+ * registro de descargas (DownloadStore) guarda el título y el
+ * artista de YouTube; la lista de Spotify trae los suyos. La
+ * comparación normaliza ambos lados (minúsculas, sin acentos,
+ * espacios colapsados) y acepta que el título de YouTube traiga
+ * un sufijo ("(Official Video)"), siempre que el artista
+ * coincida: sin el artista, dos canciones homónimas marcarían
+ * mal. Solo cuentan las descargas READY (lista permanente).
+ */
+internal fun normalizeDownloadTitle(value: String): String {
+    val noAccents = Normalizer.normalize(value, Normalizer.Form.NFD)
+        .replace(Regex("\\p{Mn}+"), "")
+    return noAccents.lowercase(Locale.ROOT).trim().replace(Regex("\\s+"), " ")
+}
+
+internal fun isTrackDownloaded(
+    trackName: String,
+    trackArtist: String,
+    records: List<DownloadRecord>,
+): Boolean {
+    val name = normalizeDownloadTitle(trackName)
+    val artist = normalizeDownloadTitle(trackArtist)
+    if (name.isEmpty()) return false
+    return records.any { record ->
+        if (record.status != DownloadStatus.READY) return@any false
+        val recordName = normalizeDownloadTitle(record.title)
+        val recordArtist = normalizeDownloadTitle(record.artist)
+        val titleMatches = recordName == name ||
+            recordName.contains(name) || name.contains(recordName)
+        val artistMatches = artist.isEmpty() || recordArtist.isEmpty() ||
+            recordArtist == artist ||
+            recordArtist.contains(artist) || artist.contains(recordArtist)
+        titleMatches && artistMatches
+    }
+}
+
 @Composable
 fun SpotifyPlaylistsSection(
     spotifyConnected: Boolean,
@@ -87,6 +130,15 @@ fun SpotifyPlaylistsSection(
     val cookie by spotifyStore.cookieFlow.collectAsState(initial = "")
     val spotify = remember { SpotifyClient() }
     val cacheStore = remember { StreamCacheStore(context) }
+    // Slice 4 paso 7: registro de descargas permanentes. La marca
+    // de "descargada" en la lista y el salto de la re-descarga se
+    // derivan de aquí: nada se guarda en la canción ni en la lista.
+    val downloadStore = remember { DownloadStore(context) }
+    val downloads by downloadStore.recordsFlow.collectAsState(initial = emptyList())
+    val downloadedByVideoId = remember(downloads) {
+        downloads.filter { it.status == DownloadStatus.READY && it.uri != null }
+            .associateBy { it.videoId }
+    }
     val tube = remember(ytMusicCookies, ytMusicToken) { InnerTubeClient(ytMusicCookies, ytMusicToken, onYtTokenRejected) }
 
     var playlists by remember { mutableStateOf<List<SpotifyPlaylist>?>(null) }
@@ -198,25 +250,33 @@ fun SpotifyPlaylistsSection(
                     }
                     if (searched == null) searchErrors++
                     val found = searched?.firstOrNull()
-                    // Calidad por conexión (slice 3): se resuelve por
-                    // pista, según la red activa al importarla.
-                    val quality = effectiveStreamQuality(
-                        isWifiConnected(context),
-                        wifiStreamQuality,
-                        mobileStreamQuality,
-                    )
                     val url = found?.let {
-                        cacheStore.cachedFile(it.videoId, quality)?.toURI()?.toString()
-                            ?: try {
-                                val stream = tube.resolveStream(it.videoId, quality)
-                                stream?.also { resolved ->
-                                    scope.launch {
-                                        cacheStore.download(it.videoId, resolved.itag, resolved.url, quality)
-                                    }
-                                }?.url
-                            } catch (_: Exception) {
-                                null
-                            }
+                        // Slice 4 paso 7: ya descargada permanente:
+                        // suena el archivo local; no se resuelve el
+                        // stream ni se baja a la caché otra vez. Al
+                        // reimportar la lista, las descargadas no se
+                        // vuelven a bajar.
+                        downloadedByVideoId[it.videoId]?.uri ?: run {
+                            // Calidad por conexión (slice 3): se
+                            // resuelve por pista, según la red activa
+                            // al importarla.
+                            val quality = effectiveStreamQuality(
+                                isWifiConnected(context),
+                                wifiStreamQuality,
+                                mobileStreamQuality,
+                            )
+                            cacheStore.cachedFile(it.videoId, quality)?.toURI()?.toString()
+                                ?: try {
+                                    val stream = tube.resolveStream(it.videoId, quality)
+                                    stream?.also { resolved ->
+                                        scope.launch {
+                                            cacheStore.download(it.videoId, resolved.itag, resolved.url, quality)
+                                        }
+                                    }?.url
+                                } catch (_: Exception) {
+                                    null
+                                }
+                        }
                     }
                     if (found != null && url != null) {
                         matched.add(found to url)
@@ -320,6 +380,17 @@ fun SpotifyPlaylistsSection(
                         ListItem(
                             headlineContent = { Text(track.name) },
                             supportingContent = { Text(track.artist) },
+                            // Slice 4 paso 7: marca de descarga en la
+                            // lista (derivada del registro; la canción
+                            // no guarda nada).
+                            trailingContent = {
+                                if (isTrackDownloaded(track.name, track.artist, downloads)) {
+                                    Icon(
+                                        Icons.Filled.Download,
+                                        contentDescription = "Descargada",
+                                    )
+                                }
+                            },
                         )
                     }
                 }
