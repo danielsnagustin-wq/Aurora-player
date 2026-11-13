@@ -6,7 +6,9 @@ package com.aurora.player.util
  * canción (misma carpeta, mismo nombre). Nunca se inventan letras ni
  * se usan las de otra canción. Sin .lrc, la UI dice "Sin letras".
  * Formato: [mm:ss.xx]texto por línea; las etiquetas [ti:], [ar:]
- * y demás sin tiempo se ignoran.
+ * y demás sin tiempo se ignoran. La etiqueta [offset:±ms] desplaza
+ * TODAS las marcas (un .lrc hecho para otra mezcla quedaba
+ * desincronizado entero y solo se podía corregir de 100 en 100 ms).
  * Karaoke palabra por palabra (Fase 1b, formato mejorado A2):
  * [mm:ss.xx]palabra1 <mm:ss.xx>palabra2 <mm:ss.xx>palabra3.
  * Las etiquetas de palabra son tiempos ABSOLUTOS; la primera palabra
@@ -31,6 +33,10 @@ object LrcParser {
     private val TAG_REGEX = Regex("""\[(\d+):(\d+)(?:[.:](\d+))?\]""")
     private val WORD_TAG_REGEX = Regex("""<(\d+):(\d+)(?:[.:](\d+))?>""")
     private val SPACES_REGEX = Regex("""\s+""")
+    // Etiqueta [offset:±ms]: desplazamiento global de las marcas.
+    // Se SUMA a cada tiempo (positivo = las letras van por delante
+    // y hay que retrasarlas). Sin signo también vale.
+    private val OFFSET_REGEX = Regex("""\[offset:\s*([+-]?\d+)\]""")
 
     /**
      * Parsea texto LRC; ignora etiquetas sin tiempo ([ti:], [ar:]…).
@@ -40,6 +46,10 @@ object LrcParser {
      * con el mismo texto.
      */
     fun parse(text: String): List<LrcLine> {
+        // RONDA ARREGLOS 2026-11-13: la etiqueta [offset:] se leía
+        // como "sin tiempo" y se ignoraba; el .lrc quedaba
+        // desincronizado entero.
+        val offsetMs = OFFSET_REGEX.find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
         val lines = mutableListOf<LrcLine>()
         for (raw in text.lineSequence()) {
             val line = raw.trim()
@@ -88,7 +98,14 @@ object LrcParser {
                 lines += LrcLine(timeMs, lineText, parseWords(rawText, timeMs))
             }
         }
-        return lines.sortedBy { it.timeMs }
+        val parsed = lines.sortedBy { it.timeMs }
+        if (offsetMs == 0L) return parsed
+        return parsed.map { line ->
+            line.copy(
+                timeMs = (line.timeMs + offsetMs).coerceAtLeast(0L),
+                words = line.words.map { it.copy(timeMs = (it.timeMs + offsetMs).coerceAtLeast(0L)) },
+            )
+        }
     }
 
     private fun tagToMs(match: MatchResult): Long? {
