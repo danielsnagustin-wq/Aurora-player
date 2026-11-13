@@ -82,7 +82,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import com.aurora.player.audio.AtmosSupport
 import com.aurora.player.audio.WaveformCache
+import com.aurora.player.audio.detectAtmosSupport
 import com.aurora.player.audio.measureWaveform
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -2030,6 +2032,13 @@ private fun SongInfoDialog(
     onEditTags: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
+    // Slice 5 paso 3: el soporte Atmos del dispositivo se calcula
+    // una sola vez mientras el diálogo está abierto (la sonda toca
+    // AudioCapabilities y la lista de códecs; no en cada frame).
+    val context = LocalContext.current
+    val atmosSupported = remember(context) {
+        detectAtmosSupport(context) == AtmosSupport.ATMOS
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -2069,6 +2078,14 @@ private fun SongInfoDialog(
                 qualityText?.let { text ->
                     val full = if (song?.isLossless == true) "$text · Sin pérdida" else text
                     SongInfoRow("Calidad", full)
+                }
+                // Slice 5 paso 3: "Dolby Atmos" solo cuando el archivo
+                // es E-AC-3 JOC de verdad Y el dispositivo lo soporta.
+                // Un eac3 sin JOC no es Atmos, y sin soporte en el
+                // dispositivo no se promete nada. Solo local: YouTube
+                // Music no tiene Atmos.
+                if (details?.isAtmosJoc == true && atmosSupported && !isOnline) {
+                    SongInfoRow("Audio espacial", "Dolby Atmos")
                 }
                 details?.bitrateKbps?.let { SongInfoRow("Velocidad de bits", "$it kbps") }
                 details?.sampleRateHz?.let { SongInfoRow("Frecuencia", "$it Hz") }
