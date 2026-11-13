@@ -95,7 +95,15 @@ object DiskArtCache {
                 } else {
                     bitmap
                 }
-                val tmp = File(directory, fileName(albumId, sizePx) + ".tmp")
+                // RONDA CAZA 2026-11-13 (P1): el temporal tenía nombre
+                // fijo por (álbum, tamaño): dos escrituras concurrentes
+                // (varias filas esperando el mismo Deferred, y la
+                // portada grande sin deduplicación en vuelo) escribían
+                // el MISMO .tmp a la vez → JPEG roto que se renombraba
+                // a destino y quedaba envenenado hasta borrar la
+                // caché. Nombre único por escritura; el renameTo final
+                // es atómico y el contenido es el mismo en ambos.
+                val tmp = File(directory, fileName(albumId, sizePx) + "." + System.nanoTime() + ".tmp")
                 FileOutputStream(tmp).use { out ->
                     if (!soft.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) {
                         tmp.delete()
