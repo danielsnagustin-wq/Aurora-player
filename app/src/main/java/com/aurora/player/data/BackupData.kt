@@ -135,6 +135,8 @@ private fun playerToJson(p: PlayerSettings): JsonValue.Obj = JsonValue.Obj(
         "localRadio" to JsonValue.Bool(p.localRadio),
         "onlineMode" to JsonValue.Bool(p.onlineMode),
         "streamQuality" to JsonValue.Str(p.streamQuality.name),
+        "wifiStreamQuality" to JsonValue.Str(p.wifiStreamQuality.name),
+        "mobileStreamQuality" to JsonValue.Str(p.mobileStreamQuality.name),
         "swipeToChangeTrack" to JsonValue.Bool(p.swipeToChangeTrack),
         "doubleTapToFavorite" to JsonValue.Bool(p.doubleTapToFavorite),
         "doubleTapAction" to JsonValue.Str(p.doubleTapAction),
@@ -259,6 +261,14 @@ private fun playerFromJson(v: JsonValue?): PlayerSettings {
         localRadio = v.obj("localRadio").bool() ?: d.localRadio,
         onlineMode = v.obj("onlineMode").bool() ?: d.onlineMode,
         streamQuality = enumFrom(v.obj("streamQuality").str(), StreamQuality.entries.toTypedArray(), d.streamQuality),
+        // Calidad por conexión (slice 3): si la copia solo trae la
+        // calidad única vieja, las dos heredan ese valor.
+        wifiStreamQuality = v.obj("wifiStreamQuality").str()?.let {
+            enumFrom(it, StreamQuality.entries.toTypedArray(), d.wifiStreamQuality)
+        } ?: enumFrom(v.obj("streamQuality").str(), StreamQuality.entries.toTypedArray(), d.wifiStreamQuality),
+        mobileStreamQuality = v.obj("mobileStreamQuality").str()?.let {
+            enumFrom(it, StreamQuality.entries.toTypedArray(), d.mobileStreamQuality)
+        } ?: enumFrom(v.obj("streamQuality").str(), StreamQuality.entries.toTypedArray(), d.mobileStreamQuality),
         swipeToChangeTrack = v.obj("swipeToChangeTrack").bool() ?: d.swipeToChangeTrack,
         doubleTapToFavorite = v.obj("doubleTapToFavorite").bool() ?: d.doubleTapToFavorite,
         doubleTapAction = parseGestureAction(v.obj("doubleTapAction").str(), GestureAction.FAVORITE).name,
