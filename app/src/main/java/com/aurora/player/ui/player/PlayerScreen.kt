@@ -121,6 +121,7 @@ import androidx.media3.common.Player
 import com.aurora.player.data.NamedQueueWithCount
 import com.aurora.player.model.GestureAction
 import com.aurora.player.model.KaraokeMode
+import com.aurora.player.model.Song
 import com.aurora.player.model.karaokeWordsActive
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
@@ -138,6 +139,8 @@ import com.aurora.player.ui.theme.dominantColor
 import com.aurora.player.ui.theme.relativeLuminance
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.LrcParser
+import com.aurora.player.util.SongDetails
+import com.aurora.player.util.codecDisplayName
 import com.aurora.player.util.shareVerse
 import com.aurora.player.util.TimeFormat
 
@@ -243,6 +246,10 @@ fun PlayerScreen(
     isDisliked: Boolean = false,
     isCached: Boolean = false,
     songPath: String? = null,
+    // Ficha completa (copia BitChord): detalles reales + canción real
+    // de la biblioteca. Null cuando suena online o aún no cargó.
+    songDetails: SongDetails? = null,
+    currentSong: Song? = null,
     onShareSong: () -> Unit = {},
     onPlayNextCurrent: () -> Unit = {},
     onAddToQueueCurrent: () -> Unit = {},
@@ -528,8 +535,9 @@ fun PlayerScreen(
                 },
             )
         }
-        // MENÚ ⋮: información de la canción.
-        if (showSongInfo) {
+        // MENÚ ⋮: información de la canción. Sin canción no hay
+        // ficha: no se abre un diálogo vacío.
+        if (showSongInfo && (title != null || currentSong != null)) {
             SongInfoDialog(
                 title = title,
                 artist = artist,
@@ -538,6 +546,8 @@ fun PlayerScreen(
                 qualityText = qualityText,
                 songPath = songPath,
                 isOnline = isOnline,
+                song = currentSong,
+                details = songDetails,
                 onDismiss = { showSongInfo = false },
             )
         }
@@ -1837,7 +1847,11 @@ private fun MenuTopAction(
     }
 }
 
-/** MENÚ ⋮: ficha de la pista actual (título, artista, álbum, duración, calidad, ruta). */
+/** MENÚ ⋮: ficha completa de la pista actual (como BitChord, con código propio).
+ * Solo se muestra la fila cuando el dato existe de verdad: sin dato no
+ * hay fila, nunca un invento ni un marcador. El aspecto es el de Aurora
+ * (AMOLED, SongInfoRow), no una copia visual de BitChord. Con tantas
+ * filas, el contenido hace scroll dentro del diálogo. */
 @Composable
 private fun SongInfoDialog(
     title: String?,
@@ -1847,6 +1861,8 @@ private fun SongInfoDialog(
     qualityText: String?,
     songPath: String?,
     isOnline: Boolean,
+    song: Song?,
+    details: SongDetails?,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -1854,16 +1870,45 @@ private fun SongInfoDialog(
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } },
         title = { Text("Información de la canción") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SongInfoRow("Título", title ?: "—")
-                SongInfoRow("Artista", artist ?: "—")
-                SongInfoRow("Álbum", album ?: "—")
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // Nombre de archivo y ubicación: de la ruta real.
+                songPath?.takeIf { it.isNotBlank() }?.let { path ->
+                    SongInfoRow("Nombre de archivo", path.substringAfterLast('/'))
+                    SongInfoRow("Ubicación", path)
+                }
+                title?.let { SongInfoRow("Título", it) }
+                artist?.let { SongInfoRow("Artista", it) }
+                album?.let { SongInfoRow("Álbum", it) }
+                song?.albumArtist?.takeIf { it.isNotBlank() }?.let { SongInfoRow("Artista de álbum", it) }
+                (song?.composer ?: details?.composer)?.takeIf { it.isNotBlank() }?.let { SongInfoRow("Compositor", it) }
+                (details?.genre ?: song?.genre)?.takeIf { it.isNotBlank() }?.let { SongInfoRow("Género", it) }
+                details?.writer?.takeIf { it.isNotBlank() }?.let { SongInfoRow("Letrista", it) }
+                song?.takeIf { it.trackNumber > 0 }?.let { SongInfoRow("Número de pista", it.trackNumber.toString()) }
+                song?.takeIf { it.discNumber > 1 }?.let { SongInfoRow("Número de disco", it.discNumber.toString()) }
+                song?.year?.let { SongInfoRow("Año", it.toString()) }
                 SongInfoRow("Duración", formatInfoDuration(durationMs))
-                if (qualityText != null) SongInfoRow("Calidad", qualityText)
+                // Calidad: la línea real (códec/bitrate/muestreo) y,
+                // si el archivo es sin pérdida, se dice tal cual.
+                qualityText?.let { text ->
+                    val full = if (song?.isLossless == true) "$text · Sin pérdida" else text
+                    SongInfoRow("Calidad", full)
+                }
+                details?.bitrateKbps?.let { SongInfoRow("Velocidad de bits", "$it kbps") }
+                details?.sampleRateHz?.let { SongInfoRow("Frecuencia", "$it Hz") }
+                details?.bitDepth?.let { SongInfoRow("Profundidad de bits", "$it") }
+                if (!isOnline && song != null) {
+                    SongInfoRow("Formato", codecDisplayName(song.mimeType, song.path))
+                }
+                details?.channelCount?.let { SongInfoRow("Canal", it.toString()) }
+                song?.takeIf { it.sizeBytes > 0 }?.let { SongInfoRow("Tamaño", formatInfoFileSize(it.sizeBytes)) }
+                song?.takeIf { it.dateAdded > 0 }?.let { SongInfoRow("Fecha agregada a biblioteca", formatInfoDate(it.dateAdded)) }
+                song?.takeIf { it.dateModified > 0 }?.let { SongInfoRow("Fecha modificada", formatInfoDate(it.dateModified)) }
+                song?.lastPlayedAt?.let { SongInfoRow("Fecha de última reproducción", formatInfoDate(it)) }
                 if (isOnline) {
                     SongInfoRow("Origen", "YouTube Music")
-                } else if (songPath != null) {
-                    SongInfoRow("Ruta", songPath)
                 }
             }
         },
@@ -1881,6 +1926,20 @@ private fun SongInfoRow(label: String, value: String) {
 private fun formatInfoDuration(ms: Long): String {
     val totalSec = (ms / 1000L).coerceAtLeast(0L)
     return String.format(java.util.Locale.US, "%d:%02d", totalSec / 60, totalSec % 60)
+}
+
+/** Fecha legible en el idioma del teléfono ("16 ene 2026, 12:47"). */
+private fun formatInfoDate(ms: Long): String =
+    SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault()).format(Date(ms))
+
+/** Tamaño legible con la coma decimal del idioma del teléfono. */
+private fun formatInfoFileSize(bytes: Long): String {
+    val locale = Locale.getDefault()
+    return when {
+        bytes < 1024L -> "$bytes B"
+        bytes < 1024L * 1024L -> String.format(locale, "%.1f KB", bytes / 1024.0)
+        else -> String.format(locale, "%.2f MB", bytes / (1024.0 * 1024.0))
+    }
 }
 
 /**
