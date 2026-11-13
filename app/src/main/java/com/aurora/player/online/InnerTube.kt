@@ -188,6 +188,18 @@ fun buildBrowseBody(browseId: String, params: String? = null): String {
     return "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"${jsonEscape(browseId)}\"$paramsJson}"
 }
 
+/**
+ * Cuerpo de la petición `next` (radio de YouTube Music, Descubrimiento):
+ * la radio de una canción es la lista RDAMVM+videoId; params wAEB = radio
+ * (forma documentada por ytmusicapi; para playlist/álbum sería
+ * RDAMPL+playlistId). El panel persistente es lo que YouTube Music
+ * muestra al tocar una canción.
+ */
+fun buildWatchBody(videoId: String): String =
+    "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"videoId\":\"${jsonEscape(videoId)}\"," +
+        "\"playlistId\":\"RDAMVM${jsonEscape(videoId)}\",\"params\":\"wAEB\"," +
+        "\"enablePersistentPlaylistPanel\":true}"
+
 /** "3:24" o "1:02:03" → segundos. Null si no es duración. */
 fun parseDurationToSec(text: String): Long? {
     val parts = text.split(":")
@@ -567,6 +579,129 @@ fun parseQuickPicks(json: String): List<QuickPick> {
     return emptyList()
 }
 
+/** Un lanzamiento nuevo de YouTube Music (estante "New releases" del inicio con login). */
+data class YtNewRelease(
+    val browseId: String?,
+    val title: String,
+    val artist: String,
+    val year: Int?,
+    val kind: String?,
+    val thumbnailUrl: String?,
+)
+
+/**
+ * Parsea el estante "New releases" del inicio de YouTube Music
+ * (browseId FEmusic_home CON login; sin login el estante no aparece).
+ * Sus ítems son musicTwoRowItemRenderer con el álbum en el browseId
+ * del título y el artista + año en el subtítulo. Sin el estante →
+ * lista vacía; JSON inválido → lista vacía (como parseQuickPicks).
+ */
+fun parseNewReleasesFromHome(json: String): List<YtNewRelease> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val sections = browseSections(root) ?: return emptyList()
+    for (section in sections) {
+        val shelf = section.obj("musicCarouselShelfRenderer") ?: continue
+        val header = shelfHeaderTitle(shelf) ?: continue
+        val lower = header.lowercase(Locale.ROOT)
+        if (!lower.contains("new release") && !lower.contains("nuevo lanzamiento") &&
+            !lower.contains("nuevos lanzamientos")
+        ) continue
+        val items = shelf.obj("contents")?.arr() ?: return emptyList()
+        val releases = mutableListOf<YtNewRelease>()
+        for (item in items) {
+            val title = twoRowTitle(item) ?: continue
+            if (title.isBlank()) continue
+            val subtitle = twoRowSubtitleTexts(item)
+            val artist = subtitle.firstOrNull() ?: ""
+            val year = subtitleYear(subtitle)
+            val kind = subtitle.firstOrNull { it != artist && it != year?.toString() }
+            releases += YtNewRelease(
+                browseId = twoRowBrowseId(item),
+                title = title,
+                artist = artist,
+                year = year,
+                kind = kind,
+                thumbnailUrl = twoRowThumbnail(item),
+            )
+        }
+        return releases
+    }
+    return emptyList()
+}
+
+/**
+ * Parsea la radio de YouTube Music (endpoint `next`, forma documentada
+ * por ytmusicapi): contents → singleColumnMusicWatchNextResultsRenderer
+ * → tabbedRenderer → watchNextTabbedResultsRenderer → tabs[0] → content
+ * → musicQueueRenderer → content → playlistPanelRenderer → contents[]
+ * → playlistPanelVideoRenderer. Forma antigua de respaldo: contents →
+ * singleColumnMusicWatchNextResults → playlist → playlist → contents[].
+ * Cada ítem: videoId, título, artista (primer run de longBylineText),
+ * duración (lengthText), portada. Sin la estructura → lista vacía;
+ * JSON inválido → lista vacía (como parseQuickPicks). La primera suele
+ * ser la propia canción (la semilla): quien la usa la filtra.
+ */
+fun parseWatchPlaylist(json: String): List<OnlineTrack> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val contents = watchPlaylistContents(root) ?: return emptyList()
+    val results = mutableListOf<OnlineTrack>()
+    for (item in contents) {
+        val renderer = item.obj("playlistPanelVideoRenderer") ?: continue
+        val videoId = renderer.obj("videoId")?.str() ?: continue
+        val title = renderer.obj("title")?.obj("runs")?.arr()
+            ?.firstOrNull()?.obj("text")?.str() ?: continue
+        if (title.isBlank()) continue
+        val byline = renderer.obj("longBylineText")?.obj("runs")?.arr()
+            ?.mapNotNull { it.obj("text")?.str() }
+            ?.filter { it != " • " } ?: emptyList()
+        val artist = byline.firstOrNull() ?: ""
+        val durationText = renderer.obj("lengthText")?.obj("runs")?.arr()
+            ?.firstOrNull()?.obj("text")?.str()
+        val duration = durationText?.let { parseDurationToSec(it) }
+        val album = byline.firstOrNull { it != artist }
+        results += OnlineTrack(
+            videoId = videoId,
+            title = title,
+            artist = artist,
+            album = album,
+            durationSec = duration,
+            thumbnailUrl = panelThumbnail(renderer),
+        )
+    }
+    return results
+}
+
+/** contents[] de la radio: ruta actual (tabbed) o forma antigua. */
+private fun watchPlaylistContents(root: JsonValue?): List<JsonValue>? {
+    val tabbed = root?.obj("contents")?.obj("singleColumnMusicWatchNextResultsRenderer")
+        ?.obj("tabbedRenderer")?.obj("watchNextTabbedResultsRenderer")
+        ?.obj("tabs")?.arr()?.firstOrNull()
+        ?.obj("tabRenderer")?.obj("content")?.obj("musicQueueRenderer")
+        ?.obj("content")?.obj("playlistPanelRenderer")?.obj("contents")?.arr()
+    if (tabbed != null) return tabbed
+    return root?.obj("contents")?.obj("singleColumnMusicWatchNextResults")
+        ?.obj("playlist")?.obj("playlist")?.obj("contents")?.arr()
+}
+
+/**
+ * Portada de un ítem de la radio: thumbnails directos o con el wrapper
+ * musicThumbnailRenderer (la forma cambia según el cliente).
+ */
+private fun panelThumbnail(renderer: JsonValue?): String? {
+    val direct = renderer?.obj("thumbnail")?.obj("thumbnails")?.arr()
+    val thumbs = direct ?: renderer?.obj("thumbnail")?.obj("musicThumbnailRenderer")
+        ?.obj("thumbnail")?.obj("thumbnails")?.arr()
+    return thumbs?.lastOrNull()?.obj("url")?.str()
+}
+
 /** Un álbum, sencillo o EP de la página de un artista en YouTube Music. */
 data class ArtistRelease(
     val browseId: String?,
@@ -881,6 +1016,34 @@ class InnerTubeClient(
         val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_home\"}"
         val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext emptyList()
         parseQuickPicks(response)
+    }
+
+    /**
+     * Radio online de YouTube Music (Descubrimiento): canciones parecidas
+     * a [videoId] (endpoint `next`, lista RDAMVM). La primera suele ser
+     * la propia canción (la semilla); quien la usa la filtra. Lista vacía
+     * si YouTube no respondió o no trae la estructura; nunca lanza.
+     */
+    suspend fun getWatchPlaylist(videoId: String): List<OnlineTrack> =
+        withContext(Dispatchers.IO) {
+            val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/next" +
+                "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+            val body = postJson(url, buildWatchBody(videoId), SEARCH_CLIENT)
+                ?: return@withContext emptyList()
+            parseWatchPlaylist(body)
+        }
+
+    /**
+     * Nuevos lanzamientos de YouTube Music (Descubrimiento): el estante
+     * "New releases" del inicio CON login. Sin login el estante no
+     * aparece y la lista sale vacía. Nunca lanza.
+     */
+    suspend fun getNewReleases(): List<YtNewRelease> = withContext(Dispatchers.IO) {
+        val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
+            "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
+        val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_home\"}"
+        val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext emptyList()
+        parseNewReleasesFromHome(response)
     }
 
     /**
