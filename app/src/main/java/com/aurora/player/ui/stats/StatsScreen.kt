@@ -29,6 +29,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -238,11 +239,24 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     // como clave, al cambiar se vuelve a cargar.
     LaunchedEffect(hasAudioPermission) { viewModel.refresh(hasAudioPermission) }
     // RONDA 7 P3: Tu año.
-    var showYear by remember { mutableStateOf(false) }
+    var showYear by rememberSaveable { mutableStateOf(false) }
     // Fase 1b: exportar estadísticas a CSV.
     var exportMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val data = stats
+    // RONDA CAZA 2026-11-13 (P0): "Tu año" iba como item dentro de la
+    // LazyColumn, pero YearScreen es un Column(fillMaxSize +
+    // verticalScroll): dentro de un ítem la altura máxima es infinita
+    // y Compose lanza IllegalStateException al tocar el botón. Ahora
+    // es pantalla propia encima, como artistProfile/showDownloads.
+    if (showYear) {
+        YearScreen(
+            hasAudioPermission = hasAudioPermission,
+            onClose = { showYear = false },
+            modifier = modifier,
+        )
+        return
+    }
     // RONDA ARREGLOS 2026-11-13 (prueba en el teléfono): la pantalla
     // era un Column sin scroll con un LazyColumn anidado para "Tus más
     // escuchadas": el primer renglón podía quedar fuera de alcance y
@@ -255,12 +269,6 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     ) {
         item {
             Text("Estadísticas", style = MaterialTheme.typography.titleLarge)
-        }
-        if (showYear) {
-            item {
-                YearScreen(hasAudioPermission = hasAudioPermission, onClose = { showYear = false })
-            }
-            return@LazyColumn
         }
         // Rediseño: las acciones van en cabecera, en una fila, no
         // como dos botones anchos apilados (eran los bloques altos
