@@ -57,6 +57,14 @@ import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.aurora.player.online.TagCandidate
+import com.aurora.player.online.searchMusicBrainz
+import com.aurora.player.online.searchDeezer
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.clickable
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Editor manual de etiquetas (slice 6, paso 3): título, artista,
@@ -74,6 +82,7 @@ fun TagEditorDialog(
     song: Song,
     onSaved: () -> Unit,
     onDismiss: () -> Unit,
+    onlineMode: Boolean = false,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -98,6 +107,10 @@ fun TagEditorDialog(
     var disc by remember { mutableStateOf("") }
     var lyricist by remember { mutableStateOf("") }
     var comment by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var candidates by remember { mutableStateOf<List<TagCandidate>>(emptyList()) }
+    var showCandidates by remember { mutableStateOf(false) }
 
     // Cargar la copia temporal y las etiquetas actuales una sola vez.
     LaunchedEffect(song.id) {
@@ -290,7 +303,73 @@ fun TagEditorDialog(
             }
         }
     }
+    
+    // ---- Online search ----------------------------------------------------
+    fun searchOnline() {
+        scope.launch {
+            searching = true
+            searchError = null
+            try {
+                val qTitle = title.takeIf { it.isNotBlank() } ?: song.title
+                val qArtist = artist.takeIf { it.isNotBlank() } ?: song.artist
+                val mb = searchMusicBrainz(qTitle, qArtist) ?: emptyList()
+                val dz = searchDeezer(qTitle, qArtist) ?: emptyList()
+                val all = mb + dz
+                if (all.isEmpty()) {
+                    searchError = "Sin resultados en internet."
+                } else {
+                    candidates = all
+                    showCandidates = true
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: java.io.IOException) {
+                searchError = "Sin conexión a internet."
+            } catch (_: Exception) {
+                searchError = "No se pudo buscar."
+            } finally {
+                searching = false
+            }
+        }
+    }
 
+    // ---- Apply candidate from online search ---------------------------------
+    fun applyCandidate(c: TagCandidate) {
+        c.title?.let { if (it.isNotBlank()) title = it }
+        c.artist?.let { if (it.isNotBlank()) artist = it }
+        c.album?.let { if (it.isNotBlank()) album = it }
+        c.year?.let { year = it.toString() }
+        if (c.coverUrl != null) {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    var connection: HttpURLConnection? = null
+                    try {
+                        val url = URL(c.coverUrl)
+                        connection = url.openConnection() as HttpURLConnection
+                        connection.connectTimeout = 10000
+                        connection.readTimeout = 10000
+                        connection.connect()
+                        if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                            val bytes = connection.inputStream.readBytes()
+                            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (bitmap != null) {
+                                val file = File(context.cacheDir, "tagedit-cover-${song.id}")
+                                file.outputStream().use { it.write(bytes) }
+                                coverFile = file
+                                coverBitmap = bitmap
+                            }
+                        }
+                    } catch (_: Exception) {
+                        // ignore failures
+                    } finally {
+                        connection?.disconnect()
+                    }
+                }
+            }
+        }
+        showCandidates = false
+    }
+    
     AlertDialog(
         onDismissRequest = { if (!saving) dismissCleanly() },
         title = { Text("Editar etiquetas") },
@@ -350,6 +429,22 @@ fun TagEditorDialog(
                                 Text(if (coverFile != null) "Portada nueva lista" else "Elegir portada")
                             }
                         }
+                        if (onlineMode) {
+                            OutlinedButton(
+                                onClick = { searchOnline() },
+                                enabled = !searching && initial != null,
+                                modifier = Modifier.height(48.dp).padding(start = 12.dp),
+                            ) {
+                                Text(if (searching) "Buscando…" else "Buscar en internet")
+                            }
+                            if (searchError != null) {
+                                Text(
+                                    searchError!!,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
                         TagField("Título", title) { title = it }
                         TagField("Artista", artist) { artist = it }
                         TagField("Artista de álbum", albumArtist) { albumArtist = it }
@@ -391,6 +486,40 @@ fun TagEditorDialog(
             }
         },
     )
+    if (showCandidates) {
+        AlertDialog(
+            onDismissRequest = { showCandidates = false },
+            title = { Text("Elegir resultado") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 320.dp)) {
+                    itemsIndexed(candidates, key = { index, c -> "$index|${c.source}|${c.mbid ?: c.title}" }) { _, c ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { applyCandidate(c) }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                "${c.title} — ${c.artist}",
+                                style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                listOfNotNull(c.album, c.year?.toString(), c.source).joinToString(" · "),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showCandidates = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }
 
 /** Campo de texto del editor (una línea; los números usan teclado numérico). */
