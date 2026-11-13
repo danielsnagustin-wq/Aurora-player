@@ -825,6 +825,14 @@ private fun AuroraApp(
     val libraryState by libraryViewModel.uiState.collectAsState()
     val currentSong = (libraryState as? LibraryUiState.Loaded)?.songs
         ?.firstOrNull { it.id == currentSongId }
+    // Slice 6 paso 5b: canciones del mismo álbum que la actual, para
+    // aplicar las etiquetas a todo el álbum desde el editor.
+    val albumSongs = if (currentSong == null) {
+        emptyList()
+    } else {
+        (libraryState as? LibraryUiState.Loaded)?.songs
+            ?.filter { it.albumId == currentSong.albumId } ?: emptyList()
+    }
     val playlistsViewModel: PlaylistsViewModel = viewModel()
     val playlists by playlistsViewModel.playlists.collectAsState()
     // MENÚ ⋮ Stage 2: el diálogo "Añadir a la lista" necesita las
@@ -2334,6 +2342,7 @@ private fun AuroraApp(
             // Slice 6 (2026-11-12): tras guardar etiquetas, recargar
             // la biblioteca para que título/artista/álbum se vean.
             onTagsSaved = { libraryViewModel.refresh() },
+            albumSongs = albumSongs,
         )
         return
     }
