@@ -39,6 +39,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.aurora.player.data.SpotifyStore
+import com.aurora.player.util.effectiveStreamQuality
+import com.aurora.player.util.isWifiConnected
 import com.aurora.player.util.rememberRemoteBitmap
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.model.StreamQuality
@@ -71,7 +73,10 @@ fun SpotifyPlaylistsSection(
     ytMusicCookies: String? = null,
     ytMusicToken: String? = null,
     onYtTokenRejected: (String) -> Unit = {},
-    streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Calidad por conexión (copia BitChord, slice 3): una para
+    // Wi-Fi y otra para datos móviles; se resuelve al importar.
+    wifiStreamQuality: StreamQuality = StreamQuality.HIGH,
+    mobileStreamQuality: StreamQuality = StreamQuality.MEDIUM,
     modifier: Modifier = Modifier,
 ) {
     if (!spotifyConnected) return
@@ -193,13 +198,20 @@ fun SpotifyPlaylistsSection(
                     }
                     if (searched == null) searchErrors++
                     val found = searched?.firstOrNull()
+                    // Calidad por conexión (slice 3): se resuelve por
+                    // pista, según la red activa al importarla.
+                    val quality = effectiveStreamQuality(
+                        isWifiConnected(context),
+                        wifiStreamQuality,
+                        mobileStreamQuality,
+                    )
                     val url = found?.let {
-                        cacheStore.cachedFile(it.videoId, streamQuality)?.toURI()?.toString()
+                        cacheStore.cachedFile(it.videoId, quality)?.toURI()?.toString()
                             ?: try {
-                                val stream = tube.resolveStream(it.videoId, streamQuality)
+                                val stream = tube.resolveStream(it.videoId, quality)
                                 stream?.also { resolved ->
                                     scope.launch {
-                                        cacheStore.download(it.videoId, resolved.itag, resolved.url, streamQuality)
+                                        cacheStore.download(it.videoId, resolved.itag, resolved.url, quality)
                                     }
                                 }?.url
                             } catch (_: Exception) {
