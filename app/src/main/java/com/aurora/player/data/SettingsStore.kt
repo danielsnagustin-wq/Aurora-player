@@ -161,6 +161,11 @@ class PlayerSettingsStore(private val context: Context) {
         val LOCAL_RADIO = booleanPreferencesKey("local_radio")
         val ONLINE_MODE = booleanPreferencesKey("online_mode")
         val STREAM_QUALITY = stringPreferencesKey("stream_quality")
+        // Calidad por conexión (copia BitChord, slice 3): la clave
+        // vieja se sigue escribiendo hasta quitar el campo (paso D);
+        // la lectura ya migra su valor a las dos nuevas.
+        val WIFI_STREAM_QUALITY = stringPreferencesKey("wifi_stream_quality")
+        val MOBILE_STREAM_QUALITY = stringPreferencesKey("mobile_stream_quality")
         val SWIPE_TRACK = booleanPreferencesKey("swipe_to_change_track")
         val DOUBLE_TAP_FAV = booleanPreferencesKey("double_tap_to_favorite")
         val DOUBLE_TAP_ACTION = stringPreferencesKey("double_tap_action")
@@ -197,6 +202,14 @@ class PlayerSettingsStore(private val context: Context) {
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
             onlineMode = prefs[Keys.ONLINE_MODE] ?: d.onlineMode,
             streamQuality = StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] } ?: d.streamQuality,
+            // Calidad por conexión (slice 3): si aún no hay calidad
+            // por conexión guardada, se hereda la única que había.
+            wifiStreamQuality = StreamQuality.entries.find { it.name == prefs[Keys.WIFI_STREAM_QUALITY] }
+                ?: StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] }
+                ?: d.wifiStreamQuality,
+            mobileStreamQuality = StreamQuality.entries.find { it.name == prefs[Keys.MOBILE_STREAM_QUALITY] }
+                ?: StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] }
+                ?: d.mobileStreamQuality,
             swipeToChangeTrack = prefs[Keys.SWIPE_TRACK] ?: d.swipeToChangeTrack,
             doubleTapToFavorite = prefs[Keys.DOUBLE_TAP_FAV] ?: d.doubleTapToFavorite,
             doubleTapAction = parseGestureAction(prefs[Keys.DOUBLE_TAP_ACTION], GestureAction.FAVORITE).name,
@@ -225,6 +238,8 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
             prefs[Keys.ONLINE_MODE] = settings.onlineMode
             prefs[Keys.STREAM_QUALITY] = settings.streamQuality.name
+            prefs[Keys.WIFI_STREAM_QUALITY] = settings.wifiStreamQuality.name
+            prefs[Keys.MOBILE_STREAM_QUALITY] = settings.mobileStreamQuality.name
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
             prefs[Keys.DOUBLE_TAP_FAV] = settings.doubleTapToFavorite
             prefs[Keys.DOUBLE_TAP_ACTION] = settings.doubleTapAction
