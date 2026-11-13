@@ -3,7 +3,11 @@ package com.aurora.player.ui.settings
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Message
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -35,10 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.aurora.player.online.YouTubeMusicAuth
 import com.aurora.player.ui.theme.auroraButtonColors
 import kotlinx.coroutines.delay
 
@@ -62,6 +68,7 @@ fun SpotifyLoginDialog(
     var hint by remember { mutableStateOf<String?>(null) }
     var manual by remember { mutableStateOf(false) }
     var manualCookie by remember { mutableStateOf("") }
+    val appContext = LocalContext.current
 
     // Si la página no termina de cargar (redirecciones de Spotify
     // que nunca disparan onPageFinished), el spinner tapaba el
@@ -177,7 +184,13 @@ fun SpotifyLoginDialog(
                             settings.setSupportZoom(true)
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            // RONDA ARREGLOS 2026-11-13: fondo NEGRO
+                            // opaco (el TRANSPARENT sobre AMOLED se
+                            // veía negro antes del primer frame de la
+                            // SPA) y ventanas múltiples para el login
+                            // por popup.
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.setSupportMultipleWindows(true)
                             CookieManager.getInstance().setAcceptCookie(true)
                             // RONDA LOGIN 2026-11-11: Spotify pone la
                             // cookie sp_dc desde otro dominio al iniciar
@@ -265,6 +278,43 @@ fun SpotifyLoginDialog(
                                     }
                                 }
                             }
+                            // RONDA ARREGLOS 2026-11-13: el login de
+                            // Spotify puede abrir popup (sin onCreateWindow
+                            // el toque no hacía nada) y los errores JS de
+                            // la SPA quedaban invisibles. El progreso
+                            // real quita el spinner aunque la SPA no
+                            // dispare onPageFinished.
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onCreateWindow(
+                                    view: WebView?,
+                                    isDialog: Boolean,
+                                    isUserGesture: Boolean,
+                                    resultMsg: Message?,
+                                ): Boolean {
+                                    val newWebView = WebView(view!!.context).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.userAgentString = view.settings.userAgentString
+                                        webViewClient = view.webViewClient
+                                    }
+                                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                                    transport?.webView = newWebView
+                                    resultMsg?.sendToTarget()
+                                    return true
+                                }
+
+                                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                    android.util.Log.d(
+                                        "SpotifyLogin",
+                                        "${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})",
+                                    )
+                                    return true
+                                }
+
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    if (newProgress >= 100) loading = false
+                                }
+                            }
                             // RONDA LOGIN 2026-11-11: entrar por el
                             // reproductor web (open.spotify.com), como
                             // hacen Spotube y MuSicX. La entrada vieja
@@ -311,22 +361,55 @@ fun SpotifyLoginDialog(
                     }
                 }
             }
-            TextButton(
-                onClick = { manual = !manual },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Pegar la cookie manualmente")
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = { manual = !manual },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Pegar la cookie manualmente")
+                }
+                TextButton(
+                    onClick = {
+                        try {
+                            appContext.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/")),
+                            )
+                        } catch (_: Exception) {
+                            hint = "No se pudo abrir el navegador."
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Abrir en Chrome")
+                }
             }
             if (manual) {
+                Text(
+                    "Inicia sesión en Chrome y pega la cookie sp_dc (el valor o el header completo). Queda solo en tu teléfono.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 OutlinedTextField(
                     value = manualCookie,
                     onValueChange = { manualCookie = it },
                     label = { Text("Cookie sp_dc") },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 )
                 Button(
-                    onClick = { onConnect(manualCookie) },
+                    onClick = {
+                        // RONDA ARREGLOS 2026-11-13: el campo acepta
+                        // el header crudo o el valor suelto; antes el
+                        // header entero se guardaba como valor y la
+                        // sesión se rompía en silencio.
+                        val spDc = YouTubeMusicAuth.parseManualSession(manualCookie, "sp_dc")
+                        if (spDc == null) {
+                            hint = "Falta sp_dc en lo pegado."
+                            return@Button
+                        }
+                        triedCookie = spDc
+                        onConnect(spDc)
+                    },
                     colors = auroraButtonColors(),
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     enabled = manualCookie.isNotBlank(),
