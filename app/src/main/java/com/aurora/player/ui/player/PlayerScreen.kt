@@ -389,7 +389,11 @@ fun PlayerScreen(
             // RONDA 55: songUri en las claves — al cambiar de canción
             // con el mismo currentLine (-1/0 al inicio), el efecto no se
             // relanzaba y la lista quedaba en la posición vieja.
-            val target = if (currentLine >= 0) currentLine else 0
+            // RONDA ARREGLOS 2026-11-13: la línea que suena quedaba
+            // pegada arriba de la lista; ahora se dejan dos líneas
+            // por encima, para que quede en el centro de la vista
+            // (como BitChord) y se vea el contexto.
+            val target = if (currentLine >= 0) (currentLine - 2).coerceAtLeast(0) else 0
             if (animationsEnabled) lyricsListState.animateScrollToItem(target)
             else lyricsListState.scrollToItem(target)
         }
@@ -1419,9 +1423,13 @@ private fun LyricsLines(
                 kotlin.math.abs(index - currentLine) == 2 -> 0.55f
                 else -> 0.4f
             }
+            // RONDA ARREGLOS 2026-11-13: más aire entre líneas (las
+            // letras se veían amontonadas) y la que suena más grande
+            // también dentro del reproductor, no solo a pantalla
+            // completa (como BitChord).
             Column(
                 modifier = Modifier.fillMaxWidth()
-                    .padding(vertical = if (isCurrent) 16.dp else 8.dp)
+                    .padding(vertical = if (isCurrent) 20.dp else 12.dp)
                     .alpha(lineFade),
             ) {
                 // Fase 2 — modos de karaoke: las palabras solo se
@@ -1452,7 +1460,7 @@ private fun LyricsLines(
                             if (fullscreen) {
                                 MaterialTheme.typography.titleLarge.copy(fontSize = 28.sp)
                             } else {
-                                MaterialTheme.typography.titleLarge
+                                MaterialTheme.typography.titleLarge.copy(fontSize = 26.sp)
                             }
                         } else if (fullscreen) {
                             MaterialTheme.typography.bodyLarge
