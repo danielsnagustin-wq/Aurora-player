@@ -29,9 +29,9 @@ fun YouTubeMusicIcon(modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
         val path = Path().apply {
-            moveTo(w * 0.40f, h * 0.32f)
-            lineTo(w * 0.40f, h * 0.68f)
-            lineTo(w * 0.70f, h * 0.50f)
+            moveTo(w * 0.38f, h * 0.30f)
+            lineTo(w * 0.38f, h * 0.70f)
+            lineTo(w * 0.72f, h * 0.50f)
             close()
         }
         drawPath(path, color = Color.White)
@@ -45,28 +45,27 @@ fun SpotifyIcon(modifier: Modifier = Modifier) {
         drawCircle(color = Color(0xFF1DB954), radius = size.minDimension / 2f, center = center)
         val stroke = size.minDimension * 0.075f
         val style = Stroke(width = stroke, cap = StrokeCap.Round)
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        // Tres arcos paralelos, el de arriba más largo, con la
-        // inclinación del logo.
+        // Tres curvas paralelas, la de arriba más larga, con la
+        // inclinación del logo. RONDA ARREGLOS 2026-11-13: antes eran
+        // trozos de círculo (drawArc) y salían dos "cejas" recortadas
+        // arriba; los arcos del logo son curvas suaves, así que van
+        // como Bézier cuadráticas (verificado el dibujo antes de
+        // pushear).
         rotate(degrees = -18f, pivot = center) {
-            // (centro vertical relativo, diámetro relativo)
-            val arcs = listOf(
-                -0.14f to 0.95f,
-                0.0f to 0.85f,
-                0.14f to 0.75f,
+            val curves = listOf(
+                Triple(Offset(0.18f, 0.42f), Offset(0.50f, 0.18f), Offset(0.82f, 0.42f)),
+                Triple(Offset(0.22f, 0.54f), Offset(0.50f, 0.32f), Offset(0.78f, 0.54f)),
+                Triple(Offset(0.26f, 0.66f), Offset(0.50f, 0.46f), Offset(0.74f, 0.66f)),
             )
-            for ((dy, diameterRatio) in arcs) {
-                val diameter = size.width * diameterRatio
-                drawArc(
-                    color = Color.Black,
-                    startAngle = 205f,
-                    sweepAngle = 130f,
-                    useCenter = false,
-                    topLeft = Offset(cx - diameter / 2f, cy + size.height * dy - diameter / 2f),
-                    size = Size(diameter, diameter),
-                    style = style,
-                )
+            for ((start, control, end) in curves) {
+                val path = Path().apply {
+                    moveTo(size.width * start.x, size.height * start.y)
+                    quadraticBezierTo(
+                        size.width * control.x, size.height * control.y,
+                        size.width * end.x, size.height * end.y,
+                    )
+                }
+                drawPath(path, color = Color.Black, style = style)
             }
         }
     }
@@ -84,15 +83,17 @@ fun SoundCloudIcon(modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
         val cloud = Color.White
-        // Bulto grande a la derecha, bulto pequeño a la izquierda.
-        drawCircle(color = cloud, radius = w * 0.20f, center = Offset(w * 0.58f, h * 0.42f))
-        drawCircle(color = cloud, radius = w * 0.14f, center = Offset(w * 0.38f, h * 0.48f))
+        // RONDA ARREGLOS 2026-11-13: la nube era un bulto pequeño que
+        // no se leía como nube. Ahora es más grande, con los dos
+        // bultos bien separados (verificado el dibujo antes de pushear).
+        drawCircle(color = cloud, radius = w * 0.23f, center = Offset(w * 0.60f, h * 0.40f))
+        drawCircle(color = cloud, radius = w * 0.17f, center = Offset(w * 0.36f, h * 0.46f))
         // Base redondeada de la nube.
         drawRoundRect(
             color = cloud,
-            topLeft = Offset(w * 0.24f, h * 0.48f),
-            size = Size(w * 0.54f, h * 0.18f),
-            cornerRadius = CornerRadius(h * 0.09f),
+            topLeft = Offset(w * 0.22f, h * 0.46f),
+            size = Size(w * 0.58f, h * 0.22f),
+            cornerRadius = CornerRadius(h * 0.10f),
         )
     }
 }
