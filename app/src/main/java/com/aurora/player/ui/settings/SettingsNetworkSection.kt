@@ -1,6 +1,8 @@
 package com.aurora.player.ui.settings
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -36,17 +38,39 @@ fun SettingsNetworkSection(
     // mejor que da YouTube (Opus ~160 kbps); no hay tier sin
     // perdida porque YouTube no lo ofrece. El coste en MB/h es
     // el real del bitrate.
+    // Calidad por conexión (slice 3): una para Wi-Fi y otra para
+    // datos móviles; la app usa la que toque al reproducir.
     AuroraSectionHeader(title = "Calidad de streaming")
     SettingsGroupDescription(
-        "Cuanto suena cada hora al escuchar de YouTube. " +
-            player.streamQuality.description,
+        "Cuanto suena cada hora al escuchar de YouTube, según la conexión.",
     )
+    Text(
+        "Con Wi-Fi",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    SettingsGroupDescription(player.wifiStreamQuality.description)
     AuroraOptionChips(
         options = StreamQuality.entries.map { it.name to it.label },
-        selected = player.streamQuality.name,
+        selected = player.wifiStreamQuality.name,
         onSelect = { name ->
             StreamQuality.entries.find { it.name == name }?.let {
-                onSavePlayer(player.copy(streamQuality = it))
+                onSavePlayer(player.copy(wifiStreamQuality = it))
+            }
+        },
+    )
+    Text(
+        "Con datos móviles",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+    SettingsGroupDescription(player.mobileStreamQuality.description)
+    AuroraOptionChips(
+        options = StreamQuality.entries.map { it.name to it.label },
+        selected = player.mobileStreamQuality.name,
+        onSelect = { name ->
+            StreamQuality.entries.find { it.name == name }?.let {
+                onSavePlayer(player.copy(mobileStreamQuality = it))
             }
         },
     )
