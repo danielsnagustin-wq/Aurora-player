@@ -90,6 +90,12 @@ dependencies {
     // Guava: la necesita el cargador de portadas de la notificación
     // (SettableFuture para el BitmapLoader de Media3).
     implementation("com.google.guava:guava:33.3.1-android")
+    // Editor de etiquetas (slice 6): leer/escribir ID3, Vorbis, MP4...
+    // en los archivos de audio. Java puro, sin NDK. Coordenadas
+    // verificadas en Maven Central 2026-11-12: el groupId correcto es
+    // net.jthink (org.jaudiotagger solo llega a 2.0.1, de 2011).
+    // Licencia LGPL, documentada en THIRD-PARTY.md.
+    implementation("net.jthink:jaudiotagger:3.0.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
