@@ -4,6 +4,7 @@ import java.io.File
 import org.jaudiotagger.audio.AudioFileIO
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.Tag
+import org.jaudiotagger.tag.images.ArtworkFactory
 
 /**
  * Etiquetas de una canción (las que edita el usuario).
@@ -70,7 +71,10 @@ object TagIO {
             return false
         }
         val tag = try {
-            audioFile.tagOrCreateAndSetDefault()
+            // OJO: en Kotlin un getter Java getXxx() se usa como
+            // propiedad (xxx) o por su nombre real (getXxx()); NUNCA
+            // como xxx(): eso no compila (run 43358492817).
+            audioFile.getTagOrCreateAndSetDefault()
         } catch (_: Exception) {
             return false
         }
@@ -88,6 +92,44 @@ object TagIO {
         tag.setOrSkip(FieldKey.LYRICIST, tags.lyricist)
         tag.setOrSkip(FieldKey.COMMENT, tags.comment)
         return try {
+            AudioFileIO.write(audioFile)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** Lee la portada embebida de [file] como bytes (JPEG/PNG); null si no tiene. */
+    fun readCover(file: File): ByteArray? {
+        val tag = try {
+            AudioFileIO.read(file).tag
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+        return try {
+            tag.firstArtwork?.binaryData?.takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Escribe la portada de [imageFile] (JPEG/PNG) en [file].
+     * False si el archivo no se pudo leer o la imagen no vale.
+     */
+    fun writeCover(file: File, imageFile: File): Boolean {
+        val audioFile = try {
+            AudioFileIO.read(file)
+        } catch (_: Exception) {
+            return false
+        }
+        val tag = try {
+            audioFile.getTagOrCreateAndSetDefault()
+        } catch (_: Exception) {
+            return false
+        }
+        return try {
+            tag.setField(ArtworkFactory.createArtworkFromFile(imageFile))
             AudioFileIO.write(audioFile)
             true
         } catch (_: Exception) {
