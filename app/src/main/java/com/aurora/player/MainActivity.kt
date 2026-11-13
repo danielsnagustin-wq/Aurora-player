@@ -129,6 +129,7 @@ import com.aurora.player.playback.PlaybackService
 import com.aurora.player.playback.PlayerControls
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.ResolvedVideo
+import com.aurora.player.online.ResolvedStream
 import com.aurora.player.online.fetchCaptions
 import com.aurora.player.online.selectCaptionTrack
 import com.aurora.player.ui.online.OnlineScreen
@@ -169,6 +170,10 @@ import com.aurora.player.util.saveLyricsForSong
 import com.aurora.player.util.dsdQualityLine
 import com.aurora.player.util.loadDsdInfo
 import com.aurora.player.util.loadSongDetails
+import com.aurora.player.data.DownloadRecord
+import com.aurora.player.data.DownloadStatus
+import com.aurora.player.data.DownloadStore
+import com.aurora.player.online.TrackDownloader
 import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
 import com.aurora.player.util.SongDetails
@@ -2146,6 +2151,91 @@ private fun AuroraApp(
         }
     }
 
+    /**
+     * Descarga permanente de la pista actual.
+     *
+     * @param quality Calidad deseada; si es null se elige la mejor disponible.
+     */
+    fun downloadPermanent(quality: StreamQuality?) {
+        val videoId = currentVideoId ?: return
+        val title = currentTitle?.takeIf { it.isNotBlank() } ?: "Sin título"
+        val artist = currentArtist?.takeIf { it.isNotBlank() } ?: "Sin artista"
+        scope.launch {
+            try {
+                // Si la opción obliga a Wi-Fi y no hay, registrar pendiente.
+                if (playerSettings.downloadWifiOnly && !isWifiConnected(context)) {
+                    DownloadStore(context).upsert(
+                        DownloadRecord(
+                            videoId = videoId,
+                            title = title,
+                            artist = artist,
+                            sizeBytes = 0L,
+                            downloadedAtMs = System.currentTimeMillis(),
+                            status = DownloadStatus.PENDING_WIFI,
+                            uri = null,
+                        ),
+                    )
+                    Toast.makeText(context, "Sin Wi-Fi: descarga pendiente", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                // Registrar que la descarga está en curso.
+                DownloadStore(context).upsert(
+                    DownloadRecord(
+                        videoId = videoId,
+                        title = title,
+                        artist = artist,
+                        sizeBytes = 0L,
+                        downloadedAtMs = System.currentTimeMillis(),
+                        status = DownloadStatus.DOWNLOADING,
+                        uri = null,
+                    ),
+                )
+
+                // Función de resolución de streams.
+                val resolve: suspend (String, StreamQuality) -> ResolvedStream? = { id, q ->
+                    innerTubeClient().resolveStream(id, q)
+                }
+
+                // Elegir la calidad o la mejor disponible.
+                val result = if (quality == null) {
+                    TrackDownloader(context).downloadBestAvailable(videoId, title, artist, resolve)
+                } else {
+                    TrackDownloader(context).downloadTrack(videoId, title, artist, quality, resolve)
+                }
+
+                result.onSuccess { uri ->
+                    // Obtener tamaño del archivo descargado.
+                    val size = try {
+                        context.contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize.coerceAtLeast(0L) } ?: 0L
+                    } catch (e: Exception) {
+                        0L
+                    }
+                    DownloadStore(context).upsert(
+                        DownloadRecord(
+                            videoId = videoId,
+                            title = title,
+                            artist = artist,
+                            sizeBytes = size,
+                            downloadedAtMs = System.currentTimeMillis(),
+                            status = DownloadStatus.READY,
+                            uri = uri.toString(),
+                        ),
+                    )
+                    Toast.makeText(context, "Descargada", Toast.LENGTH_SHORT).show()
+                }.onFailure {
+                    DownloadStore(context).setStatus(videoId, DownloadStatus.FAILED)
+                    Toast.makeText(context, "No se pudo descargar", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                DownloadStore(context).setStatus(videoId, DownloadStatus.FAILED)
+                Toast.makeText(context, "No se pudo descargar", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
     /** MENÚ ⋮: quitar el audio online actual de la caché. */
     fun removeCurrentFromCache() {
         val videoId = currentVideoId ?: return
@@ -2290,6 +2380,12 @@ private fun AuroraApp(
             onShowVideo = { showCurrentVideo() },
             onImproveQuality = { improveCurrentQuality() },
             onDownload = { downloadCurrent() },
+            preselectedDownloadQuality = effectiveStreamQuality(
+                isWifiConnected(context),
+                playerSettings.wifiStreamQuality,
+                playerSettings.mobileStreamQuality,
+            ),
+            onDownloadPermanent = { downloadPermanent(it) },
             onRemoveFromCache = { removeCurrentFromCache() },
             onOpenAlbum = { openCurrentAlbum() },
             onOpenArtist = { openCurrentArtist() },
