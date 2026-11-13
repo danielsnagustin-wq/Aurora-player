@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -112,7 +114,17 @@ fun SettingsInterfaceSection(
                     Text(name)
                 }
             } else {
-                OutlinedButton(onClick = { onSaveTheme(applied.copy(accentHex = hex)) }) {
+                // RONDA ARREGLOS 2026-11-13: el texto del chip NO va
+                // en el color del acento (el OutlinedButton de M3 lo
+                // pinta con primary y los acentos oscuros no se leían
+                // sobre negro). Texto claro siempre; el color queda
+                // solo en el punto de muestra.
+                OutlinedButton(
+                    onClick = { onSaveTheme(applied.copy(accentHex = hex)) },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
                     if (color != null) {
                         Box(
                             Modifier.size(16.dp).clip(RoundedCornerShape(8.dp))
