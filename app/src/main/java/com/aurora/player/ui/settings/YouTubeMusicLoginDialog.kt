@@ -1,7 +1,12 @@
 package com.aurora.player.ui.settings
 
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Message
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -20,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -32,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -58,6 +65,12 @@ fun YouTubeMusicLoginDialog(
     var loadFailed by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
+    // RONDA ARREGLOS 2026-11-13: pegado manual de la sesión (la
+    // ruta fiable cuando Google bloquea el WebView) + abrir la
+    // página en Chrome, donde la cuenta ya está puesta.
+    var manual by remember { mutableStateOf(false) }
+    var manualCookies by remember { mutableStateOf("") }
+    val appContext = LocalContext.current
 
     // Ronda 20: igual que el diálogo de Spotify — si la página no
     // termina de cargar (redirecciones que nunca disparan
@@ -172,7 +185,12 @@ fun YouTubeMusicLoginDialog(
                             settings.setSupportZoom(true)
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            // RONDA ARREGLOS 2026-11-13: fondo NEGRO
+                            // opaco (el TRANSPARENT sobre AMOLED se
+                            // veía negro antes del primer frame) y
+                            // ventanas múltiples para el login por popup.
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.setSupportMultipleWindows(true)
                             CookieManager.getInstance().setAcceptCookie(true)
                             // RONDA LOGIN 2026-11-11: Google pone sus
                             // cookies de sesión desde otro dominio al
@@ -235,6 +253,43 @@ fun YouTubeMusicLoginDialog(
                                     }
                                 }
                             }
+                            // RONDA ARREGLOS 2026-11-13: el login de
+                            // Google puede abrir popup (sin onCreateWindow
+                            // el toque no hacía nada) y los errores JS de
+                            // la página quedaban invisibles. El progreso
+                            // real quita el spinner aunque la SPA no
+                            // dispare onPageFinished.
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onCreateWindow(
+                                    view: WebView?,
+                                    isDialog: Boolean,
+                                    isUserGesture: Boolean,
+                                    resultMsg: Message?,
+                                ): Boolean {
+                                    val newWebView = WebView(view!!.context).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.userAgentString = view.settings.userAgentString
+                                        webViewClient = view.webViewClient
+                                    }
+                                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                                    transport?.webView = newWebView
+                                    resultMsg?.sendToTarget()
+                                    return true
+                                }
+
+                                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                    android.util.Log.d(
+                                        "YtMusicLogin",
+                                        "${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})",
+                                    )
+                                    return true
+                                }
+
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    if (newProgress >= 100) loading = false
+                                }
+                            }
                             loadUrl("https://music.youtube.com")
                         }
                     },
@@ -271,6 +326,67 @@ fun YouTubeMusicLoginDialog(
                             Text("Reintentar")
                         }
                     }
+                }
+            }
+            // RONDA ARREGLOS 2026-11-13: Google bloquea el inicio en
+            // WebView ("navegador no seguro") por política; la ruta
+            // fiable es pegar la sesión que ya está puesta en Chrome.
+            // Android no deja leer las cookies de otra app, así que el
+            // pegado es el puente (igual que hace BitChord en TV).
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = { manual = !manual },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Pegar las cookies manualmente")
+                }
+                TextButton(
+                    onClick = {
+                        try {
+                            appContext.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com")),
+                            )
+                        } catch (_: Exception) {
+                            hint = "No se pudo abrir el navegador."
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Abrir en Chrome")
+                }
+            }
+            if (manual) {
+                Text(
+                    "Inicia sesión en Chrome (ahí ya está tu cuenta) y pega aquí el header de cookies. Queda solo en tu teléfono.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = manualCookies,
+                    onValueChange = { manualCookies = it },
+                    label = { Text("Cookies de music.youtube.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                Button(
+                    onClick = {
+                        // Se guarda el HEADER COMPLETO (buildAuthHeaders
+                        // lo necesita entero); aquí solo se comprueba
+                        // que trae SAPISID, sin el cual no hay sesión.
+                        val header = manualCookies.trim()
+                            .removePrefix("Cookie:").removePrefix("cookie:").trim()
+                        if (YouTubeMusicAuth.parseManualSession(header, "SAPISID") == null) {
+                            hint = "Falta SAPISID en lo pegado. Copia el header completo de cookies."
+                            return@Button
+                        }
+                        triedCookies = header
+                        onConnect(header)
+                    },
+                    colors = auroraButtonColors(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    enabled = manualCookies.isNotBlank(),
+                ) {
+                    Text("Conectar YouTube Music")
                 }
             }
         }
