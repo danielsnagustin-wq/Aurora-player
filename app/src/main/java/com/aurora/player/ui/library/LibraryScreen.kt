@@ -198,6 +198,8 @@ fun LibraryScreen(
     mobileStreamQuality: StreamQuality = StreamQuality.MEDIUM,
     // Ronda 7 (Gemini): abrir Ajustes directo en Red desde Online.
     onOpenSettings: () -> Unit = {},
+    // Rediseño: tocar un artista abre su perfil (no solo filtrar).
+    onOpenArtist: (String) -> Unit = {},
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -416,10 +418,7 @@ fun LibraryScreen(
                     )
                     1 -> ArtistsTab(
                         artists = state.artists,
-                        onArtistClick = {
-                            viewModel.filterByArtist(it.name)
-                            tab = 0
-                        },
+                        onArtistClick = { onOpenArtist(it.name) },
                     )
                     2 -> AlbumsTab(
                         albums = state.albums,
