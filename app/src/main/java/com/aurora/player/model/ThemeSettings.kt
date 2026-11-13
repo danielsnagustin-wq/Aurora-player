@@ -197,6 +197,11 @@ data class PlayerSettings(
     // mejor que da YouTube (Opus ~160 kbps); no hay tier sin
     // perdida porque YouTube no lo ofrece.
     val streamQuality: StreamQuality = StreamQuality.HIGH,
+    // Calidad por conexión (copia BitChord, slice 3): una calidad
+    // para Wi-Fi y otra para datos móviles. La única se migra en
+    // SettingsStore/BackupData y se quita después (paso D).
+    val wifiStreamQuality: StreamQuality = StreamQuality.HIGH,
+    val mobileStreamQuality: StreamQuality = StreamQuality.MEDIUM,
     // Gestos (Etapa 1: ya existen en el reproductor; el interruptor
     // decide si están activos. El doble toque viene activado porque
     // así suena hoy: apagarlo por defecto cambiaría el gesto actual.)
