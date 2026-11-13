@@ -1171,6 +1171,19 @@ class PlaybackService : MediaLibraryService() {
         // alarma antes de sonar. Se quita en stopAlarm().
         alarmActive = true
         updateAutoCloseTimer()
+        try {
+            playAlarmInner()
+        } catch (e: Exception) {
+            // Sin esto, un fallo al cargar los ajustes, resolver la
+            // música o preparar el reproductor escapaba de la
+            // corrutina y cerraba la app al sonar la alarma.
+            ErrorLog.log(this, "Sonar alarma", e)
+            alarmActive = false
+            updateAutoCloseTimer()
+        }
+    }
+
+    private suspend fun playAlarmInner() {
         val settings = withContext(Dispatchers.IO) {
             AlarmStore(this@PlaybackService).settingsFlow.first()
         }
