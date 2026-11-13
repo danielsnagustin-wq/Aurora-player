@@ -2426,6 +2426,7 @@ private fun AuroraApp(
             songDetails = currentSongDetails,
             currentSong = currentSong,
             onlineMode = playerSettings.onlineMode,
+            atmosPassthrough = playerSettings.atmosPassthrough,
             sleepTimer = sleepTimer,
             onSleepTimerSelected = { onSleepTimerSelected(it) },
             isFavorite = currentSongId in favoriteIds,
