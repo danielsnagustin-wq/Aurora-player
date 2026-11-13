@@ -46,6 +46,8 @@ import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -200,6 +202,7 @@ fun LibraryScreen(
     onOpenSettings: () -> Unit = {},
     // Rediseño: tocar un artista abre su perfil (no solo filtrar).
     onOpenArtist: (String) -> Unit = {},
+    onOpenDownloads: () -> Unit = {},
     showStart: Boolean = false,
     onStartFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
@@ -457,11 +460,30 @@ fun LibraryScreen(
                     )
                     // Fase 2 — Listas inteligentes: se calculan solas
                     // desde los datos reales de uso.
-                    7 -> SmartPlaylistsTab(
-                        songs = enrichedSongs,
-                        onSongClick = onSongClick,
-                        onShuffleAll = onShuffleAll,
-                    )
+                    7 -> Column(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenDownloads() }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Filled.Download, contentDescription = null)
+                            Text(
+                                "Descargas",
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 12.dp),
+                            )
+                            Icon(Icons.Filled.ChevronRight, contentDescription = null)
+                        }
+                        Divider()
+                        SmartPlaylistsTab(
+                            songs = enrichedSongs,
+                            onSongClick = onSongClick,
+                            onShuffleAll = onShuffleAll,
+                        )
+                    }
                 }
             }
         }
