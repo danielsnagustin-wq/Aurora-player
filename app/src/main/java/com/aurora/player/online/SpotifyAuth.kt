@@ -44,6 +44,13 @@ fun parseSpotifyAccessToken(json: String): String? {
     } catch (_: Exception) {
         return null
     }
+    // RONDA CAZA 2026-11-13 (P0): con sp_dc inválida o ausente Spotify
+    // devuelve 200 con accessToken Y "isAnonymous": true. Ese token
+    // anónimo no sirve para /v1/me: se guardaba como "Conectado", el
+    // perfil daba null ("Sesión caducada") y el diálogo volvía a
+    // auto-conectar la misma cookie en bucle. Sin el campo se acepta
+    // como antes; si viene true, se rechaza.
+    if (root.obj("isAnonymous")?.bool() == true) return null
     return root.obj("accessToken")?.str()?.takeIf { it.isNotBlank() }
 }
 
