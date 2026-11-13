@@ -1,7 +1,12 @@
 package com.aurora.player.ui.settings
 
+import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
+import android.os.Message
+import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -20,6 +25,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.Icons
@@ -32,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
@@ -58,6 +65,11 @@ fun SoundCloudLoginDialog(
     var loadFailed by remember { mutableStateOf(false) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var hint by remember { mutableStateOf<String?>(null) }
+    // RONDA ARREGLOS 2026-11-13: pegado manual del token (la ruta
+    // fiable si la web no deja leer la sesión) + abrir en Chrome.
+    var manual by remember { mutableStateOf(false) }
+    var manualToken by remember { mutableStateOf("") }
+    val appContext = LocalContext.current
 
     // Como el diálogo de YouTube Music: si la página no termina de
     // cargar, el spinner se quita a los 12 s y se avisa.
@@ -70,9 +82,37 @@ fun SoundCloudLoginDialog(
     }
 
     fun readToken(): String? {
-        val cookies = CookieManager.getInstance()
-            .getCookie("https://soundcloud.com") ?: return null
-        return YouTubeMusicAuth.extractCookie(cookies, "oauth_token")
+        // RONDA ARREGLOS 2026-11-13: la cookie puede vivir en otro
+        // host que soundcloud.com (api/secure/m): se prueban todos.
+        val manager = CookieManager.getInstance()
+        for (host in listOf(
+            "https://soundcloud.com",
+            "https://api.soundcloud.com",
+            "https://secure.soundcloud.com",
+            "https://m.soundcloud.com",
+        )) {
+            val cookies = manager.getCookie(host) ?: continue
+            YouTubeMusicAuth.extractCookie(cookies, "oauth_token")?.let { return it }
+        }
+        return null
+    }
+
+    // RONDA ARREGLOS 2026-11-13: la web actual de SoundCloud puede
+    // guardar la sesión en localStorage en vez de en una cookie. Se
+    // sondea en cada vuelta del bucle; el resultado llega por
+    // callback (la lectura JS es asíncrona).
+    fun readTokenFromStorage() {
+        val wv = webView ?: return
+        wv.evaluateJavascript(
+            "(function(){var t=localStorage.getItem('oauth_token')||localStorage.getItem('sc-token');return t||'';})()",
+        ) { result ->
+            val token = result?.trim()?.removeSurrounding("\"")
+                ?.takeIf { it.isNotBlank() && it != "null" } ?: return@evaluateJavascript
+            if (token != triedToken) {
+                triedToken = token
+                onConnect(token)
+            }
+        }
     }
 
     fun tryConnect() {
@@ -103,6 +143,7 @@ fun SoundCloudLoginDialog(
                 onConnect(token)
                 break
             }
+            readTokenFromStorage()
         }
     }
 
@@ -155,7 +196,12 @@ fun SoundCloudLoginDialog(
                             settings.setSupportZoom(true)
                             settings.builtInZoomControls = true
                             settings.displayZoomControls = false
-                            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+                            // RONDA ARREGLOS 2026-11-13: fondo NEGRO
+                            // opaco (el TRANSPARENT sobre AMOLED se
+                            // veía negro antes del primer frame) y
+                            // ventanas múltiples para el login por popup.
+                            setBackgroundColor(android.graphics.Color.BLACK)
+                            settings.setSupportMultipleWindows(true)
                             CookieManager.getInstance().setAcceptCookie(true)
                             CookieManager.getInstance()
                                 .setAcceptThirdPartyCookies(this, true)
@@ -211,6 +257,43 @@ fun SoundCloudLoginDialog(
                                     }
                                 }
                             }
+                            // RONDA ARREGLOS 2026-11-13: el login puede
+                            // abrir popup (sin onCreateWindow el toque no
+                            // hacía nada) y los errores JS quedaban
+                            // invisibles. El progreso real quita el
+                            // spinner aunque la SPA no dispare
+                            // onPageFinished.
+                            webChromeClient = object : WebChromeClient() {
+                                override fun onCreateWindow(
+                                    view: WebView?,
+                                    isDialog: Boolean,
+                                    isUserGesture: Boolean,
+                                    resultMsg: Message?,
+                                ): Boolean {
+                                    val newWebView = WebView(view!!.context).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.userAgentString = view.settings.userAgentString
+                                        webViewClient = view.webViewClient
+                                    }
+                                    val transport = resultMsg?.obj as? WebView.WebViewTransport
+                                    transport?.webView = newWebView
+                                    resultMsg?.sendToTarget()
+                                    return true
+                                }
+
+                                override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                    android.util.Log.d(
+                                        "SoundCloudLogin",
+                                        "${consoleMessage?.message()} (${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})",
+                                    )
+                                    return true
+                                }
+
+                                override fun onProgressChanged(view: WebView?, newProgress: Int) {
+                                    if (newProgress >= 100) loading = false
+                                }
+                            }
                             loadUrl("https://soundcloud.com")
                         }
                     },
@@ -247,6 +330,60 @@ fun SoundCloudLoginDialog(
                             Text("Reintentar")
                         }
                     }
+                }
+            }
+            // RONDA ARREGLOS 2026-11-13: si la web no deja leer la
+            // sesión, el pegado manual del token es la ruta fiable.
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = { manual = !manual },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Pegar el token manualmente")
+                }
+                TextButton(
+                    onClick = {
+                        try {
+                            appContext.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://soundcloud.com")),
+                            )
+                        } catch (_: Exception) {
+                            hint = "No se pudo abrir el navegador."
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text("Abrir en Chrome")
+                }
+            }
+            if (manual) {
+                Text(
+                    "Inicia sesión en Chrome y pega el token oauth_token (el valor o el header completo). Queda solo en tu teléfono.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = manualToken,
+                    onValueChange = { manualToken = it },
+                    label = { Text("Token oauth_token") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                )
+                Button(
+                    onClick = {
+                        val token = YouTubeMusicAuth.parseManualSession(manualToken, "oauth_token")
+                        if (token == null) {
+                            hint = "Falta oauth_token en lo pegado."
+                            return@Button
+                        }
+                        triedToken = token
+                        onConnect(token)
+                    },
+                    colors = auroraButtonColors(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    enabled = manualToken.isNotBlank(),
+                ) {
+                    Text("Conectar SoundCloud")
                 }
             }
         }
