@@ -431,6 +431,22 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
 
+        // RONDA ARREGLOS 2026-11-13: estado real del efecto, para
+        // saber si el EQ está vivo o no (la pantalla antes no decía
+        // en qué sesión estaba ni cuántas bandas tenía el teléfono).
+        val eqStatus = when {
+            manager == null -> "Sin sesión todavía: suena una canción y aparece."
+            !manager.isAvailable -> "No disponible en este teléfono."
+            else -> "Sesión ${manager.sessionId} · ${manager.getBandCount()} bandas · " +
+                if (enabled) "activo" else "apagado"
+        }
+        Text(
+            eqStatus,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
+
         if (manager != null) {
             OutlinedButton(
                 onClick = { showWizard = true },
