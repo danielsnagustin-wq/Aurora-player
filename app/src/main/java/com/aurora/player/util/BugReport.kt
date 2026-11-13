@@ -61,6 +61,12 @@ object BugReport {
         out = out.replace(Regex("(?i)(bearer\\s+)[A-Za-z0-9_\\-.~+/=]+"), "$1<token>")
         out = out.replace(Regex("(?i)(access_token|refresh_token|id_token|api_key|apikey|client_secret|client_id)\\s*[:=]\\s*[^\\s\"',;]+"), "$1=<token>")
         out = out.replace(Regex("ya29\\.[A-Za-z0-9_\\-]+"), "<token>")
+        // Sesiones propias de la app (YouTube Music / Spotify /
+        // SoundCloud): SAPISID, sp_dc, oauth_token y cabeceras Cookie:
+        // completas. Antes un reporte de error podía llevar la sesión
+        // entera dentro del mensaje de una excepción.
+        out = out.replace(Regex("(?i)(SAPISIDHASH|SAPISID|sp_dc|oauth_token|__Secure-[A-Za-z0-9_-]+)\\s*[:=]\\s*[^\\s\"',;]+"), "$1=<token>")
+        out = out.replace(Regex("(?i)(Cookie:\\s*)[^\\n]+"), "$1<token>")
         // Emails -> <email>
         out = out.replace(Regex("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}"), "<email>")
         // Nombre personal del desarrollador original del launcher (nunca
