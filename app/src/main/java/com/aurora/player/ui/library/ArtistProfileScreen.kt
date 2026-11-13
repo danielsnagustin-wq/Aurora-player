@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.MusicNote
@@ -60,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import com.aurora.player.model.Album
 import com.aurora.player.model.Song
 import com.aurora.player.model.StreamQuality
+import com.aurora.player.online.ArtistPage
+import com.aurora.player.online.ArtistRelease
+import com.aurora.player.online.ArtistVideo
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.util.TimeFormat
@@ -96,10 +100,24 @@ fun ArtistProfileScreen(
     var searchError by remember { mutableStateOf<String?>(null) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var resolvingId by remember { mutableStateOf<String?>(null) }
+    // R8b: página del artista en YouTube Music (novedades, álbumes,
+    // sencillos y vídeos reales). Carga independiente de la búsqueda.
+    var artistPage by remember { mutableStateOf<ArtistPage?>(null) }
+    var pageError by remember { mutableStateOf<String?>(null) }
+    var pageJob by remember { mutableStateOf<Job?>(null) }
+    // Canciones de un álbum online abierto con un toque.
+    var albumTracks by remember { mutableStateOf<Pair<String, List<OnlineTrack>>?>(null) }
+    var albumTracksError by remember { mutableStateOf<String?>(null) }
+    var albumTracksJob by remember { mutableStateOf<Job?>(null) }
+    // Listas completas tras "Ver todo" (null = solo lo de la página).
+    var expandedSingles by remember { mutableStateOf<List<ArtistRelease>?>(null) }
+    var expandedAlbums by remember { mutableStateOf<List<ArtistRelease>?>(null) }
+    var moreError by remember { mutableStateOf<String?>(null) }
     // La carga se deriva del estado, no de un flag: un flag puesto en
     // `finally` lo podía apagar la búsqueda anterior cancelada mientras
     // la nueva seguía en vuelo (carrera A3-1, auditoría 2026-11-12).
     val searchingOnline = onlineMode && onlineResults == null && searchError == null
+    val loadingPage = onlineMode && artistPage == null && pageError == null
 
     // R8a: secciones tipo Spotify con datos reales de la biblioteca.
     // "Más escuchadas" por reproducciones reales (30 s por escucha);
@@ -144,6 +162,84 @@ fun ArtistProfileScreen(
         }
     }
 
+    fun loadArtistPage() {
+        if (!onlineMode) return
+        pageJob?.cancel()
+        pageError = null
+        artistPage = null
+        albumTracks = null
+        albumTracksError = null
+        expandedSingles = null
+        expandedAlbums = null
+        moreError = null
+        pageJob = scope.launch {
+            try {
+                val channelId = client.findArtistChannelId(artistName)
+                if (channelId == null) {
+                    pageError = "No se encontró la página de \"$artistName\" en YouTube Music."
+                    return@launch
+                }
+                val page = client.browseArtist(channelId)
+                if (page == null) {
+                    pageError = "La página del artista no respondió. Revisa internet e inténtalo otra vez."
+                } else {
+                    artistPage = page
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                pageError = "Sin conexión o YouTube no respondió."
+            }
+        }
+    }
+
+    fun loadAlbumTracks(release: ArtistRelease) {
+        val browseId = release.browseId ?: return
+        albumTracksJob?.cancel()
+        albumTracksError = null
+        albumTracks = null
+        albumTracksJob = scope.launch {
+            try {
+                val tracks = client.getAlbumTracks(browseId)
+                if (tracks == null) {
+                    albumTracksError = "No se pudieron cargar las canciones de \"${release.title}\"."
+                } else if (tracks.isEmpty()) {
+                    albumTracksError = "YouTube no devolvió canciones para \"${release.title}\"."
+                } else {
+                    albumTracks = release.title to tracks
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                albumTracksError = "Sin conexión o YouTube no respondió."
+            }
+        }
+    }
+
+    fun loadMoreReleases(isSingles: Boolean) {
+        val page = artistPage ?: return
+        val browseId = if (isSingles) page.singlesBrowseId else page.albumsBrowseId
+        val params = if (isSingles) page.singlesParams else page.albumsParams
+        if (browseId == null) return
+        moreError = null
+        pageJob = scope.launch {
+            try {
+                val releases = client.getArtistReleases(browseId, params)
+                if (releases.isEmpty()) {
+                    moreError = "No se pudo cargar la lista completa."
+                } else if (isSingles) {
+                    expandedSingles = releases
+                } else {
+                    expandedAlbums = releases
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                moreError = "Sin conexión o YouTube no respondió."
+            }
+        }
+    }
+
     fun playOnline(track: OnlineTrack) {
         if (resolvingId != null) return
         resolvingId = track.videoId
@@ -172,7 +268,10 @@ fun ArtistProfileScreen(
     }
 
     LaunchedEffect(artistName, onlineMode) {
-        if (onlineMode) searchOnline()
+        if (onlineMode) {
+            searchOnline()
+            loadArtistPage()
+        }
     }
 
     LazyColumn(modifier = modifier.fillMaxSize()) {
@@ -328,43 +427,165 @@ fun ArtistProfileScreen(
             val results = onlineResults
             if (results != null && results.isNotEmpty()) {
                 items(results, key = { it.videoId }) { track ->
+                    OnlineTrackRow(track = track, onPlay = { playOnline(track) })
+                }
+            }
+
+            // R8b: secciones de la página del artista en YouTube Music.
+            // Cada una sale solo si trae datos reales (R-17); si la
+            // página falla, error con Reintentar (R-27).
+            if (loadingPage) {
+                item {
                     Row(
-                        modifier = Modifier.fillMaxWidth()
-                            .heightIn(min = 52.dp)
-                            .clickable { playOnline(track) }
-                            .semantics {
-                                role = Role.Button
-                                contentDescription = "Reproducir ${track.title}"
-                            }
-                            .padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            Icons.Filled.MusicNote,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(52.dp).padding(14.dp),
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            "Cargando la página del artista…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 12.dp),
                         )
-                        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                            Text(
-                                track.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                            )
-                            Text(
-                                track.artist +
-                                    if (track.durationSec != null) {
-                                        " · ${TimeFormat.formatDuration(track.durationSec * 1_000L)}"
-                                    } else {
-                                        ""
-                                    },
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                    }
+                }
+            }
+            if (pageError != null) {
+                item {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                        Text(
+                            pageError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = { loadArtistPage() },
+                            modifier = Modifier.height(48.dp).padding(top = 8.dp),
+                        ) {
+                            Text("Reintentar")
                         }
+                    }
+                }
+            }
+            val page = artistPage
+            if (page != null) {
+                if (page.topSongs.isNotEmpty()) {
+                    item {
+                        SectionTitle("Canciones principales")
+                    }
+                    items(page.topSongs, key = { "top-online:${it.videoId}" }) { track ->
+                        OnlineTrackRow(track = track, onPlay = { playOnline(track) })
+                    }
+                }
+                val singles = expandedSingles ?: page.singles
+                if (singles.isNotEmpty()) {
+                    item {
+                        SectionTitle("Nuevos lanzamientos")
+                    }
+                    itemsIndexed(singles, key = { index, release ->
+                        "new:$index:${release.browseId ?: release.title}"
+                    }) { _, release ->
+                        ReleaseRow(
+                            release = release,
+                            onClick = if (release.browseId != null) {
+                                { loadAlbumTracks(release) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                    if (expandedSingles == null && page.singlesBrowseId != null) {
+                        item {
+                            Button(
+                                onClick = { loadMoreReleases(true) },
+                                modifier = Modifier.fillMaxWidth()
+                                    .height(48.dp)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text("Ver todo")
+                            }
+                        }
+                    }
+                }
+                val albums = expandedAlbums ?: page.albums
+                if (albums.isNotEmpty()) {
+                    item {
+                        SectionTitle("Álbumes")
+                    }
+                    itemsIndexed(albums, key = { index, release ->
+                        "alb:$index:${release.browseId ?: release.title}"
+                    }) { _, release ->
+                        ReleaseRow(
+                            release = release,
+                            onClick = if (release.browseId != null) {
+                                { loadAlbumTracks(release) }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                    if (expandedAlbums == null && page.albumsBrowseId != null) {
+                        item {
+                            Button(
+                                onClick = { loadMoreReleases(false) },
+                                modifier = Modifier.fillMaxWidth()
+                                    .height(48.dp)
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                            ) {
+                                Text("Ver todo")
+                            }
+                        }
+                    }
+                }
+                if (moreError != null) {
+                    item {
+                        Text(
+                            moreError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                val openAlbum = albumTracks
+                if (openAlbum != null) {
+                    item {
+                        SectionTitle("Canciones de ${openAlbum.first}")
+                    }
+                    items(openAlbum.second, key = { "at:${it.videoId}" }) { track ->
+                        OnlineTrackRow(track = track, onPlay = { playOnline(track) })
+                    }
+                }
+                if (albumTracksError != null) {
+                    item {
+                        Text(
+                            albumTracksError!!,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+                if (page.videos.isNotEmpty()) {
+                    item {
+                        SectionTitle("Vídeos")
+                    }
+                    items(page.videos, key = { "vid:${it.videoId}" }) { video ->
+                        VideoRow(
+                            video = video,
+                            onPlay = {
+                                playOnline(
+                                    OnlineTrack(
+                                        videoId = video.videoId,
+                                        title = video.title,
+                                        artist = artistName,
+                                        album = null,
+                                        durationSec = null,
+                                        thumbnailUrl = video.thumbnailUrl,
+                                    ),
+                                )
+                            },
+                        )
                     }
                 }
             }
@@ -460,4 +681,138 @@ private fun releaseSubtitle(album: Album): String {
     val kind = if (album.songCount <= 1) "Sencillo" else "EP"
     val base = if (album.songCount <= 1) kind else "$kind · ${album.songCount} canciones"
     return if (album.year != null) "$base · ${album.year}" else base
+}
+
+/** Fila de canción online: título, artista y duración real. */
+@Composable
+private fun OnlineTrackRow(track: OnlineTrack, onPlay: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable { onPlay() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Reproducir ${track.title}"
+            }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(52.dp).padding(14.dp),
+        )
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                track.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                track.artist +
+                    if (track.durationSec != null) {
+                        " · ${TimeFormat.formatDuration(track.durationSec * 1_000L)}"
+                    } else {
+                        ""
+                    },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Fila de lanzamiento online (álbum, sencillo o EP): título y tipo con año real. */
+@Composable
+private fun ReleaseRow(release: ArtistRelease, onClick: (() -> Unit)?) {
+    // Solo clicable cuando abre sus canciones (browseId real); sin
+    // browseId es información, no un control (R-26).
+    val clickableModifier = if (onClick != null) {
+        Modifier.clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Ver canciones de ${release.title}"
+            }
+    } else {
+        Modifier
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .then(clickableModifier)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(52.dp).padding(14.dp),
+        )
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                release.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                onlineReleaseSubtitle(release),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Fila de vídeo online: título y subtítulo real (vistas). */
+@Composable
+private fun VideoRow(video: ArtistVideo, onPlay: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable { onPlay() }
+            .semantics {
+                role = Role.Button
+                contentDescription = "Reproducir ${video.title}"
+            }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(52.dp).padding(14.dp),
+        )
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                video.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            if (video.subtitle != null) {
+                Text(
+                    video.subtitle,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+/** "Álbum · 2025", "Sencillo · 2026" o solo el tipo cuando no hay año. */
+private fun onlineReleaseSubtitle(release: ArtistRelease): String {
+    val kind = release.kind ?: "Lanzamiento"
+    return if (release.year != null) "$kind · ${release.year}" else kind
 }
