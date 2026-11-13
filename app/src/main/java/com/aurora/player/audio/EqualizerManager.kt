@@ -19,6 +19,9 @@ import android.media.audiofx.Virtualizer
  */
 class EqualizerManager(audioSessionId: Int) {
 
+    /** Sesión de audio real a la que está atado el efecto (para el diagnóstico de la pantalla). */
+    val sessionId: Int = audioSessionId
+
     /** Preset = 10 niveles en dB (-15..+15), en el orden de las bandas del sistema. */
     data class Preset(val name: String, val levelsDb: List<Float>)
 
@@ -190,6 +193,15 @@ class EqualizerManager(audioSessionId: Int) {
             equalizer?.getBandLevel(band.toShort()) ?: 0
         } catch (_: Exception) {
             0
+        }
+    }
+
+    /** ¿Quedó el efecto encendido de verdad? Se relee (Android puede ignorar la asignación sin tirar). */
+    fun isEnabled(): Boolean {
+        return try {
+            equalizer?.enabled == true
+        } catch (_: Exception) {
+            false
         }
     }
 
