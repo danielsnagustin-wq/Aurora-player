@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -30,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
@@ -241,26 +244,34 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
             YearScreen(hasAudioPermission = hasAudioPermission, onClose = { showYear = false })
             return@Column
         }
-        OutlinedButton(
-            onClick = { showYear = true },
+        // Rediseño: las acciones van en cabecera, en una fila, no
+        // como dos botones anchos apilados (eran los bloques altos
+        // y vacíos de la captura).
+        Row(
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Tu año")
-        }
-        OutlinedButton(
-            onClick = {
-                scope.launch {
-                    val result = viewModel.exportCsv(hasAudioPermission)
-                    exportMessage = result.fold(
-                        onSuccess = { "Guardado en $it" },
-                        onFailure = { "No se pudo exportar: ${it.message}" },
-                    )
-                }
-            },
-            enabled = data != null && data.totalPlays > 0,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        ) {
-            Text("Exportar estadísticas (CSV)")
+            OutlinedButton(
+                onClick = { showYear = true },
+                modifier = Modifier.weight(1f).height(48.dp),
+            ) {
+                Text("Tu año")
+            }
+            OutlinedButton(
+                onClick = {
+                    scope.launch {
+                        val result = viewModel.exportCsv(hasAudioPermission)
+                        exportMessage = result.fold(
+                            onSuccess = { "Guardado en $it" },
+                            onFailure = { "No se pudo exportar: ${it.message}" },
+                        )
+                    }
+                },
+                enabled = data != null && data.totalPlays > 0,
+                modifier = Modifier.weight(1f).height(48.dp),
+            ) {
+                Text("Exportar CSV")
+            }
         }
         exportMessage?.let {
             Text(
@@ -295,9 +306,42 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
             )
             return@Column
         }
-        Text("${data.totalPlays} reproducciones", modifier = Modifier.padding(top = 16.dp))
-        Text("Tiempo escuchado: ${TimeFormat.formatTotalListened(data.totalListenedMs)}")
-        Text("${data.favoriteCount} favoritas · ${data.totalSongs} canciones en la biblioteca")
+        // Rediseño: las cifras van en una tarjeta con 4 celdas
+        // (reproducciones, tiempo, favoritas, canciones), no en
+        // tres líneas sueltas. Solo cifras reales (R-17).
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+        ) {
+            Column(modifier = Modifier.padding(4.dp)) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StatCell(
+                        value = "${data.totalPlays}",
+                        label = "reproducciones",
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCell(
+                        value = TimeFormat.formatTotalListened(data.totalListenedMs),
+                        label = "tiempo escuchado",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    StatCell(
+                        value = "${data.favoriteCount}",
+                        label = "favoritas",
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCell(
+                        value = "${data.totalSongs}",
+                        label = "canciones",
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
         // Gráfico semanal (idea open source, Namida): reproducciones
         // por día, últimos 7 días, con datos reales del historial.
         if (data.playsLast7Days.any { it > 0 }) {
@@ -367,6 +411,26 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
                 Divider()
             }
         }
+    }
+}
+
+/** Una celda de cifra real dentro de la tarjeta de resumen. */
+@Composable
+private fun StatCell(value: String, label: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.padding(12.dp)) {
+        Text(
+            value,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        )
+        Text(
+            label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
