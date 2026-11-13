@@ -205,8 +205,19 @@ private fun streamCachePartHasMagic(part: File, itag: Int): Boolean {
     val ext = streamExtensionForItag(itag)
     if (ext == "bin") return true
     val header = ByteArray(12)
-    val read = try {
-        part.inputStream().use { it.read(header) }
+    // RONDA CAZA 2026-11-13 (P1): un solo read() puede devolver menos
+    // de 12 bytes aunque queden más (el contrato no garantiza llenar
+    // el búfer): el .part válido se borraba como corrupto y la caché
+    // nunca se llenaba. Leer en bucle hasta 12 bytes o EOF.
+    var read = 0
+    try {
+        part.inputStream().use { input ->
+            while (read < 12) {
+                val n = input.read(header, read, 12 - read)
+                if (n < 0) break
+                read += n
+            }
+        }
     } catch (_: Exception) {
         return false
     }
