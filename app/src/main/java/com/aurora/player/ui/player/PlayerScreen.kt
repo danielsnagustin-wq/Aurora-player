@@ -322,6 +322,13 @@ fun PlayerScreen(
     // inventada ni se descarga el audio entero para medirlo.
     var waveformPeaks by remember { mutableStateOf<List<Float>>(emptyList()) }
     val playerContext = LocalContext.current
+    // Slice 5 pasos 3-4: soporte Atmos del dispositivo, calculado
+    // una sola vez por composición (la sonda toca AudioCapabilities
+    // y la lista de códecs; no en cada frame ni en cada pista).
+    // Se pasa al diálogo de información y al aviso del reproductor.
+    val atmosSupported = remember(playerContext) {
+        detectAtmosSupport(playerContext) == AtmosSupport.ATMOS
+    }
     LaunchedEffect(songUri) {
         try {
             waveformPeaks = emptyList()
@@ -594,6 +601,7 @@ fun PlayerScreen(
                 isOnline = isOnline,
                 song = currentSong,
                 details = songDetails,
+                atmosSupported = atmosSupported,
                 onEditTags = { showSongInfo = false; showTagEditor = true },
                 onDismiss = { showSongInfo = false },
             )
@@ -810,6 +818,21 @@ fun PlayerScreen(
         if (qualityText != null) {
             Text(
                 qualityText,
+                style = MaterialTheme.typography.bodySmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
+        }
+        // Slice 5 paso 4: aviso corto cuando suena Atmos de verdad:
+        // en offload el ecualizador (y ReplayGain/balance) no se
+        // aplican a esta pista. Solo local: YouTube Music no tiene
+        // Atmos.
+        if (songDetails?.isAtmosJoc == true && atmosSupported && !isOnline) {
+            Text(
+                "Dolby Atmos · sin ecualizador en esta pista",
                 style = MaterialTheme.typography.bodySmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -2029,16 +2052,10 @@ private fun SongInfoDialog(
     isOnline: Boolean,
     song: Song?,
     details: SongDetails?,
+    atmosSupported: Boolean = false,
     onEditTags: (() -> Unit)? = null,
     onDismiss: () -> Unit,
 ) {
-    // Slice 5 paso 3: el soporte Atmos del dispositivo se calcula
-    // una sola vez mientras el diálogo está abierto (la sonda toca
-    // AudioCapabilities y la lista de códecs; no en cada frame).
-    val context = LocalContext.current
-    val atmosSupported = remember(context) {
-        detectAtmosSupport(context) == AtmosSupport.ATMOS
-    }
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
