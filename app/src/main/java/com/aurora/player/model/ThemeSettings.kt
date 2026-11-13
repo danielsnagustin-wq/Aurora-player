@@ -198,6 +198,12 @@ data class PlayerSettings(
     // gastar datos móviles. Apagado (por defecto), descarga con
     // cualquier conexión.
     val downloadWifiOnly: Boolean = false,
+    // Dolby Atmos (slice 5): passthrough al hardware. Encendido
+    // (por defecto), una pista E-AC-3 JOC va directa al hardware
+    // cuando el dispositivo lo soporta; apagado, se decodifica
+    // normal (núcleo DD+ sin Atmos). El interruptor solo se muestra
+    // si el dispositivo lo soporta.
+    val atmosPassthrough: Boolean = true,
     // Calidad por conexión (copia BitChord, slice 3): una calidad
     // para Wi-Fi y otra para datos móviles. La única se migra en
     // SettingsStore/BackupData y se quita después (paso D).
