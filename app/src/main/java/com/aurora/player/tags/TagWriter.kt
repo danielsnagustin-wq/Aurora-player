@@ -41,20 +41,52 @@ object TagWriter {
      * original a .bak, renombra el temporal y borra el .bak. Si el
      * rename falla, restaura el original desde el .bak. False si no
      * se pudo (el original queda como estaba).
+     *
+     * Ahora soporta casos donde [temp] y [target] están en
+     * sistemas de archivos diferentes: si renameTo falla, se
+     * recurre a una copia de streams.
      */
     fun commit(temp: File, target: File): Boolean {
         if (!temp.isFile || !target.isFile) return false
         val backup = File(target.parentFile, "${target.name}.bak")
         return try {
             if (backup.exists()) backup.delete()
+            // Mover el original a .bak
             if (!target.renameTo(backup)) return false
-            if (!temp.renameTo(target)) {
-                backup.renameTo(target)
-                return false
+
+            // Intentar renombrar el temporal al destino
+            if (temp.renameTo(target)) {
+                // Éxito directo
+                backup.delete()
+                true
+            } else {
+                // Fallback: copiar el contenido del temporal al destino
+                var copySuccess = false
+                try {
+                    temp.inputStream().use { input ->
+                        target.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    copySuccess = true
+                } catch (_: Exception) {
+                    // La copia falló
+                }
+
+                if (copySuccess) {
+                    // Copia exitosa: limpiar temporales y backup
+                    temp.delete()
+                    backup.delete()
+                    true
+                } else {
+                    // Copia falló: intentar restaurar el backup
+                    if (target.exists()) target.delete()
+                    backup.renameTo(target)
+                    false
+                }
             }
-            backup.delete()
-            true
         } catch (_: Exception) {
+            // En caso de cualquier excepción inesperada, intentar restaurar
             try {
                 if (!target.exists() && backup.exists()) backup.renameTo(target)
             } catch (_: Exception) {
