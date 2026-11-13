@@ -65,11 +65,17 @@ object LyricsTranslator {
             URLEncoder.encode(joined, "UTF-8")
         val body = try {
             val connection = URL(url).openConnection() as HttpURLConnection
-            connection.connectTimeout = TIMEOUT_MS
-            connection.readTimeout = TIMEOUT_MS
-            connection.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
-            if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
-            connection.inputStream.bufferedReader().use { it.readText() }
+            // La conexión se desconecta en finally: sin esto quedaba
+            // retenida tras cada traducción (auditoría 2026-11-12).
+            try {
+                connection.connectTimeout = TIMEOUT_MS
+                connection.readTimeout = TIMEOUT_MS
+                connection.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                connection.inputStream.bufferedReader().use { it.readText() }
+            } finally {
+                connection.disconnect()
+            }
         } catch (_: Exception) {
             return@withContext null
         }
