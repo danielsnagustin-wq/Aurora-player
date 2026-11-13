@@ -37,6 +37,9 @@ class LibraryPrefsStore(context: Context) {
         // presencia sin robar sitio al título (rango 32..96).
         const val DEFAULT_ROW_COVER_DP = 52
         private val VISIBLE_TABS_KEY = stringPreferencesKey("visible_tabs_csv")
+        // Orden de las pestañas (copia BitChord, slice 2): CSV de
+        // índices 0..7 en el orden que se muestran en el inicio.
+        private val TAB_ORDER_KEY = stringPreferencesKey("tab_order_csv")
         // Cuántas pestañas conocía el teléfono cuando se guardó la
         // selección. Sin esta clave (instalaciones anteriores a
         // Listas) se asume 7, así la pestaña 7 aparece visible.
@@ -61,6 +64,29 @@ class LibraryPrefsStore(context: Context) {
         dataStore.data
             .catch { emit(emptyPreferences()) }
             .map { prefs -> (prefs[LAST_TAB_KEY] ?: 0).coerceIn(0, TAB_COUNT - 1) }
+
+    /** Orden de las pestañas en el inicio (0..7, siempre completo). */
+    val tabOrderFlow: Flow<List<Int>> =
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> normalizeTabOrder(parseTabOrderCsv(prefs[TAB_ORDER_KEY])) }
+
+    suspend fun saveTabOrder(order: List<Int>) {
+        dataStore.edit { prefs ->
+            prefs[TAB_ORDER_KEY] = normalizeTabOrder(order).joinToString(",")
+        }
+    }
+
+    /**
+     * Normaliza un orden: solo índices válidos, sin repetidos, y las
+     * pestañas que falten (CSV viejo o pestaña nueva) van al final,
+     * en su orden natural. El orden guardado siempre es completo.
+     */
+    private fun normalizeTabOrder(parsed: List<Int>): List<Int> =
+        normalizeTabOrderList(parsed)
+
+    private fun parseTabOrderCsv(raw: String?): List<Int> =
+        raw?.split(",")?.mapNotNull { it.toIntOrNull() } ?: emptyList()
 
     val rowCoverSizeFlow: Flow<Int> =
         dataStore.data
@@ -136,4 +162,14 @@ class LibraryPrefsStore(context: Context) {
     suspend fun setRowCoverSize(dp: Int) {
         dataStore.edit { prefs -> prefs[ROW_COVER_KEY] = dp.coerceIn(32, 96) }
     }
+}
+
+/**
+ * Orden de pestañas, puro y con tests (LibraryPrefsTabOrderTest):
+ * solo índices 0..7, sin repetidos, y las pestañas que falten van al
+ * final en su orden natural. El orden resultante siempre es completo.
+ */
+internal fun normalizeTabOrderList(parsed: List<Int>): List<Int> {
+    val clean = parsed.filter { it in 0 until LibraryPrefsStore.TAB_COUNT }.distinct()
+    return clean + (0 until LibraryPrefsStore.TAB_COUNT).filter { it !in clean }
 }
