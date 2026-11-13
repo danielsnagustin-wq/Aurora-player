@@ -35,6 +35,8 @@ data class Song(
     val isFavorite: Boolean = false,
     val playCount: Int = 0,
     val lastPlayedAt: Long? = null,
+    /** Fecha de última modificación del archivo (MediaStore DATE_MODIFIED, ms). 0 = sin dato. */
+    val dateModified: Long = 0L,
 ) {
     val isLossless: Boolean
         get() = mimeType in setOf("audio/flac", "audio/x-flac", "audio/wav", "audio/x-wav")
