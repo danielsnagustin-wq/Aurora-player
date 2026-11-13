@@ -178,6 +178,7 @@ import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
 import com.aurora.player.util.SongDetails
 import com.aurora.player.widget.AuroraWidgetProvider
+import com.aurora.player.ui.library.DownloadsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -591,6 +592,7 @@ private fun AuroraApp(
     val context = LocalContext.current
     var tab by remember { mutableStateOf(Tab.LIBRARY) }
     var artistProfile by remember { mutableStateOf<String?>(null) }
+    var showDownloads by remember { mutableStateOf(false) }
     // Ronda 7 (Gemini): sección de Ajustes que se abre directo
     // (p. ej. Red, desde la pestaña Online con el modo apagado).
     var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
@@ -1819,6 +1821,66 @@ private fun AuroraApp(
         }
     }
 
+    /** Abrir una descarga: si está en la biblioteca suena ahí; si no, con el visor de archivos. */
+    fun openDownload(record: DownloadRecord) {
+        val uriStr = record.uri ?: return
+        val uri = try {
+            android.net.Uri.parse(uriStr)
+        } catch (_: Exception) {
+            return
+        }
+        val segment = uri.lastPathSegment
+        val songs = (libraryState as? LibraryUiState.Loaded)?.songs.orEmpty()
+        val match = songs.firstOrNull {
+            it.uri.toString() == uriStr || (segment != null && it.path.endsWith(segment))
+        }
+        if (match != null) {
+            playSongs(listOf(match), 0)
+            return
+        }
+        try {
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "audio/*")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(view, "Abrir con"))
+        } catch (_: Exception) {
+            Toast.makeText(context, "No se pudo abrir", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /** Eliminar una descarga: borra el archivo y su registro. */
+    fun deleteDownload(record: DownloadRecord) {
+        scope.launch {
+            try {
+                record.uri?.let {
+                    try {
+                        contentResolver.delete(android.net.Uri.parse(it), null, null)
+                    } catch (_: Exception) {
+                    }
+                }
+                DownloadStore(context).remove(record.videoId)
+            } catch (_: Exception) {
+                Toast.makeText(context, "No se pudo eliminar", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Compartir una descarga como archivo de audio. */
+    fun shareDownload(record: DownloadRecord) {
+        val uriStr = record.uri ?: return
+        try {
+            val send = Intent(Intent.ACTION_SEND).apply {
+                type = "audio/*"
+                putExtra(Intent.EXTRA_STREAM, android.net.Uri.parse(uriStr))
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(send, "Compartir descarga"))
+        } catch (_: Exception) {
+            Toast.makeText(context, "No se pudo compartir", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     fun playSongs(songs: List<Song>, startIndex: Int) {
         val c = controller ?: return
         if (songs.isEmpty()) return
@@ -2470,6 +2532,16 @@ private fun AuroraApp(
         )
         return
     }
+    if (showDownloads) {
+        BackHandler { showDownloads = false }
+        DownloadsScreen(
+            onBack = { showDownloads = false },
+            onOpen = { record -> openDownload(record) },
+            onDelete = { record -> deleteDownload(record) },
+            onShare = { record -> shareDownload(record) },
+        )
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -2610,6 +2682,7 @@ private fun AuroraApp(
                 mobileStreamQuality = playerSettings.mobileStreamQuality,
                 onOpenSettings = { settingsSection = SettingsSection.NETWORK; tab = Tab.SETTINGS },
                 onOpenArtist = { artistProfile = it },
+                onOpenDownloads = { showDownloads = true },
                 modifier = Modifier.padding(padding),
             )
             Tab.ONLINE -> OnlineScreen(
