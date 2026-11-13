@@ -102,6 +102,67 @@ data class SpotifyProfile(
     val imageUrl: String?,
 )
 
+/** Un lanzamiento nuevo de Spotify (GET /v1/browse/new-releases). */
+data class SpotifyRelease(
+    val id: String,
+    val name: String,
+    val artistId: String?,
+    val artistName: String,
+    val releaseDate: String?,
+    val imageUrl: String?,
+)
+
+/** Un artista que sigues en Spotify (GET /v1/me/following). */
+data class SpotifyFollowedArtist(
+    val id: String,
+    val name: String,
+)
+
+/** GET /v1/browse/new-releases -> lanzamientos nuevos (globales). */
+fun parseSpotifyNewReleases(json: String): List<SpotifyRelease> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val items = root.obj("albums")?.obj("items")?.arr() ?: return emptyList()
+    return items.mapNotNull { item ->
+        val id = item.obj("id")?.str() ?: return@mapNotNull null
+        val name = item.obj("name")?.str() ?: return@mapNotNull null
+        val firstArtist = item.obj("artists")?.arr()?.firstOrNull()
+        val artistName = firstArtist?.obj("name")?.str() ?: return@mapNotNull null
+        val artistId = firstArtist.obj("id")?.str()
+        val releaseDate = item.obj("release_date")?.str()
+        val image = item.obj("images")?.arr()?.firstOrNull()?.obj("url")?.str()
+        SpotifyRelease(id, name, artistId, artistName, releaseDate, image)
+    }
+}
+
+/** GET /v1/me/following?type=artist -> artistas que sigues. */
+fun parseSpotifyFollowedArtists(json: String): List<SpotifyFollowedArtist> {
+    val root = try {
+        JsonParser.parse(json)
+    } catch (_: Exception) {
+        return emptyList()
+    }
+    val items = root.obj("artists")?.obj("items")?.arr() ?: return emptyList()
+    return items.mapNotNull { item ->
+        val id = item.obj("id")?.str() ?: return@mapNotNull null
+        val name = item.obj("name")?.str() ?: return@mapNotNull null
+        SpotifyFollowedArtist(id, name)
+    }
+}
+
+/**
+ * Solo lo nuevo DE TUS artistas: cruza los lanzamientos con los ids
+ * de los artistas que sigues. Sin id de artista no hay cruce.
+ */
+fun filterSpotifyReleasesByFollowed(
+    releases: List<SpotifyRelease>,
+    followedIds: Set<String>,
+): List<SpotifyRelease> =
+    releases.filter { it.artistId != null && it.artistId in followedIds }
+
 /** GET /v1/me -> tu nombre y tu foto de Spotify. */
 fun parseSpotifyProfile(json: String): SpotifyProfile? {
     val root = try {
@@ -154,6 +215,26 @@ class SpotifyClient {
                 mapOf("Authorization" to "Bearer $token"),
             ) ?: return@withContext null
             parseSpotifyPlaylistTracks(body)
+        }
+
+    /** Lanzamientos nuevos (para el panel de Nuevos lanzamientos). Null si Spotify no respondió. */
+    suspend fun fetchNewReleases(token: String): List<SpotifyRelease>? =
+        withContext(Dispatchers.IO) {
+            val body = httpGet(
+                "https://api.spotify.com/v1/browse/new-releases?limit=20",
+                mapOf("Authorization" to "Bearer $token"),
+            ) ?: return@withContext null
+            parseSpotifyNewReleases(body)
+        }
+
+    /** Artistas que sigues (para filtrar los lanzamientos). Null si Spotify no respondió. */
+    suspend fun fetchFollowedArtists(token: String): List<SpotifyFollowedArtist>? =
+        withContext(Dispatchers.IO) {
+            val body = httpGet(
+                "https://api.spotify.com/v1/me/following?type=artist&limit=50",
+                mapOf("Authorization" to "Bearer $token"),
+            ) ?: return@withContext null
+            parseSpotifyFollowedArtists(body)
         }
 
     private fun httpGet(url: String, headers: Map<String, String>): String? {
