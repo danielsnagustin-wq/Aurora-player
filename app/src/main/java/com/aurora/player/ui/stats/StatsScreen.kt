@@ -184,21 +184,32 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
      * viejas si solo se cargan una vez por arranque. */
     /** Fase 1b: exportar estadísticas a CSV (Descargas/AuroraPlayer). */
     suspend fun exportCsv(hasAudioPermission: Boolean): Result<String> {
-        val minDurationMs = playerStore.settingsFlow.first().minDurationMs
-        val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
-        val byId = songs.associateBy { it.id }
-        val rows = db.libraryDao().statsPerSong().map { r ->
-            val song = byId[r.songId]
-            StatsCsvRow(
-                title = song?.title ?: "Canción eliminada",
-                artist = song?.artist ?: "",
-                album = song?.album ?: "",
-                plays = r.plays,
-                listenedMinutes = r.listenedMs / 60_000,
-                lastPlayedAtMs = r.lastPlayed,
-            )
+        // Antes, un fallo al leer los ajustes o la base de datos
+        // escapaba antes de devolver el Result y cerraba la app al
+        // pulsar "Exportar" (auditoría 2026-11-12). La cancelación
+        // se vuelve a lanzar, como siempre.
+        return try {
+            val minDurationMs = playerStore.settingsFlow.first().minDurationMs
+            val songs = if (hasAudioPermission) repository.loadSongs(minDurationMs) else emptyList()
+            val byId = songs.associateBy { it.id }
+            val rows = db.libraryDao().statsPerSong().map { r ->
+                val song = byId[r.songId]
+                StatsCsvRow(
+                    title = song?.title ?: "Canción eliminada",
+                    artist = song?.artist ?: "",
+                    album = song?.album ?: "",
+                    plays = r.plays,
+                    listenedMinutes = r.listenedMs / 60_000,
+                    lastPlayedAtMs = r.lastPlayed,
+                )
+            }
+            exportStatsCsv(getApplication(), rows)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ErrorLog.log(getApplication(), "Exportar estadísticas", e)
+            Result.failure(e)
         }
-        return exportStatsCsv(getApplication(), rows)
     }
 
     fun refresh(hasAudioPermission: Boolean) {
