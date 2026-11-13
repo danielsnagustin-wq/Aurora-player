@@ -25,7 +25,8 @@ object TagWriter {
     fun prepare(source: File): File? {
         if (!source.isFile || !source.canRead()) return null
         val parent = source.parentFile ?: return null
-        val temp = File(parent, ".${source.name}.tagtmp-${System.nanoTime()}")
+        val ext = source.extension
+        val temp = File(parent, ".${source.nameWithoutExtension}.tagtmp-${System.nanoTime()}.$ext")
         return try {
             source.copyTo(temp, overwrite = true)
             temp
