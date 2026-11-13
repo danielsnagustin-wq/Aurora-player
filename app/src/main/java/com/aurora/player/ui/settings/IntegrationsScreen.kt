@@ -25,11 +25,15 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.aurora.player.data.SoundCloudStore
 import com.aurora.player.data.SpotifyStore
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
+import com.aurora.player.online.SoundCloudUser
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.SpotifyProfile
+import com.aurora.player.online.fetchSoundCloudMe
+import com.aurora.player.online.fetchSoundCloudWebClientId
 import com.aurora.player.ui.design.AuroraSectionHeader
 import com.aurora.player.ui.online.SpotifyPlaylistsSection
 import com.aurora.player.util.rememberRemoteBitmap
@@ -56,6 +60,12 @@ fun IntegrationsScreen(
     onConnectYouTubeMusic: (String) -> Unit = {},
     onDisconnectYouTubeMusic: () -> Unit = {},
     ytMusicCookies: String? = null,
+    // SoundCloud (Descubrimiento): sesión con oauth_token por WebView;
+    // con ella llegan /me y el feed de seguidos al panel de lanzamientos.
+    soundCloudConnected: Boolean = false,
+    soundCloudStatus: String? = null,
+    onConnectSoundCloud: (String) -> Unit = {},
+    onDisconnectSoundCloud: () -> Unit = {},
     // Calidad por conexión (copia BitChord, slice 3): una para
     // Wi-Fi y otra para datos móviles.
     wifiStreamQuality: StreamQuality = StreamQuality.HIGH,
@@ -71,6 +81,11 @@ fun IntegrationsScreen(
     var spotifySessionChecked by remember { mutableStateOf(false) }
     var showSpotifyLogin by remember { mutableStateOf(false) }
     var showYouTubeLogin by remember { mutableStateOf(false) }
+    val soundCloudStore = remember { SoundCloudStore(context) }
+    val scToken by soundCloudStore.tokenFlow.collectAsState(initial = "")
+    var scProfile by remember { mutableStateOf<SoundCloudUser?>(null) }
+    var scSessionChecked by remember { mutableStateOf(false) }
+    var showSoundCloudLogin by remember { mutableStateOf(false) }
 
     // Nombre e imagen de la cuenta cuando hay sesión.
     LaunchedEffect(spotifyConnected, cookie) {
@@ -85,6 +100,20 @@ fun IntegrationsScreen(
         spotifySessionChecked = true
     }
 
+    // Nombre e imagen de SoundCloud cuando hay sesión (el token se
+    // comprueba contra /me; sin client_id web no hay nada que pedir).
+    LaunchedEffect(soundCloudConnected, scToken) {
+        if (!soundCloudConnected || scToken.isBlank()) {
+            scProfile = null
+            scSessionChecked = false
+            return@LaunchedEffect
+        }
+        scSessionChecked = false
+        val clientId = fetchSoundCloudWebClientId()
+        scProfile = clientId?.let { fetchSoundCloudMe(it, scToken) }
+        scSessionChecked = true
+    }
+
     if (showSpotifyLogin) {
         SpotifyLoginDialog(
             onConnect = { onConnectSpotify(it) },
@@ -95,6 +124,12 @@ fun IntegrationsScreen(
         YouTubeMusicLoginDialog(
             onConnect = { onConnectYouTubeMusic(it) },
             onDismiss = { showYouTubeLogin = false },
+        )
+    }
+    if (showSoundCloudLogin) {
+        SoundCloudLoginDialog(
+            onConnect = { onConnectSoundCloud(it) },
+            onDismiss = { showSoundCloudLogin = false },
         )
     }
 
@@ -160,6 +195,50 @@ fun IntegrationsScreen(
         } else {
             Button(onClick = { showSpotifyLogin = true }) { Text("Conectar") }
         }
+    }
+    // SoundCloud abajo: tu cuenta con su foto; con sesión, sus
+    // lanzamientos llegan al panel de Nuevos lanzamientos.
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val scAvatar = rememberRemoteBitmap(scProfile?.avatarUrl)
+        if (scAvatar != null) {
+            Image(
+                bitmap = scAvatar.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(48.dp).clip(CircleShape),
+            )
+        } else {
+            SoundCloudIcon(modifier = Modifier.size(48.dp))
+        }
+        Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+            Text("SoundCloud", style = MaterialTheme.typography.titleMedium)
+            // Con la sesión caducada no se finge "Conectado".
+            val scSubtitle = if (!soundCloudConnected) "Inicia sesión para ver lo nuevo de tus seguidos"
+            else scProfile?.username
+                ?: if (scSessionChecked) "Sesión caducada. Vuelve a iniciar sesión."
+                else "Comprobando la sesión…"
+            Text(
+                scSubtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (soundCloudConnected) {
+            TextButton(onClick = onDisconnectSoundCloud) { Text("Desconectar") }
+        } else {
+            Button(onClick = { showSoundCloudLogin = true }) { Text("Conectar") }
+        }
+    }
+    soundCloudStatus?.let {
+        Text(
+            it,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
     spotifyStatus?.let {
         Text(
