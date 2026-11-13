@@ -9,6 +9,10 @@ package com.aurora.player.ui.library
 // - "Reproducir todo" arriba: nombra la acción real (R-15) y es la principal.
 // - Dos secciones separadas ("En tu biblioteca" / "En YouTube Music"): el usuario
 //   pidió distinguir lo que tiene de todo lo del artista (offline tuyo, online todo).
+// - R8a (2026-11-12): secciones tipo Spotify con datos reales de la biblioteca:
+//   "Más escuchadas" (reproducciones reales), "Lo más reciente" (fecha de
+//   agregado real), "Álbumes" y "Sencillos y EP" (clasificados por nº real de
+//   canciones: 1 = sencillo, 2-7 = EP, 8 o más = álbum). Sin datos, no sale (R-17).
 // - Solo cifras reales (recuentos de la biblioteca y de la búsqueda); sin dato, sin número (R-17).
 // - Sin portadas inventadas: las filas locales usan AlbumCover real; los resultados
 //   online llevan icono de nota (R-38). Las filas de álbum son información, no controles (R-26).
@@ -62,6 +66,7 @@ import com.aurora.player.util.TimeFormat
 import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 @Composable
@@ -88,16 +93,39 @@ fun ArtistProfileScreen(
         InnerTubeClient(ytMusicCookies, ytMusicToken, onYtTokenRejected, onYtCookiesRejected)
     }
     var onlineResults by remember { mutableStateOf<List<OnlineTrack>?>(null) }
-    var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchJob by remember { mutableStateOf<Job?>(null) }
     var resolvingId by remember { mutableStateOf<String?>(null) }
+    // La carga se deriva del estado, no de un flag: un flag puesto en
+    // `finally` lo podía apagar la búsqueda anterior cancelada mientras
+    // la nueva seguía en vuelo (carrera A3-1, auditoría 2026-11-12).
+    val searchingOnline = onlineMode && onlineResults == null && searchError == null
+
+    // R8a: secciones tipo Spotify con datos reales de la biblioteca.
+    // "Más escuchadas" por reproducciones reales (30 s por escucha);
+    // "Lo más reciente" por fecha de agregado real; álbumes, sencillos
+    // y EP clasificados por nº real de canciones (1 = sencillo,
+    // 2-7 = EP, 8 o más = álbum). Sin datos, la sección no sale (R-17).
+    val topSongs = remember(songs) {
+        songs.filter { it.playCount > 0 }
+            .sortedByDescending { it.playCount }.take(5)
+    }
+    val recentSongs = remember(songs) {
+        songs.filter { it.dateAdded > 0 }
+            .sortedByDescending { it.dateAdded }.take(5)
+    }
+    val albumReleases = remember(albums) { albums.filter { it.songCount >= 8 } }
+    val singleEpReleases = remember(albums) { albums.filter { it.songCount < 8 } }
 
     fun searchOnline() {
-        if (!onlineMode || searching) return
-        searching = true
+        if (!onlineMode) return
+        // Cancelar la búsqueda anterior: sin esto, abrir el perfil de
+        // otro artista mientras una búsqueda seguía en vuelo dejaba los
+        // resultados del artista anterior en pantalla (carrera A3-1).
+        searchJob?.cancel()
         searchError = null
         onlineResults = null
-        scope.launch {
+        searchJob = scope.launch {
             try {
                 val found = client.search(artistName)
                 if (found == null) {
@@ -112,8 +140,6 @@ fun ArtistProfileScreen(
             } catch (_: Exception) {
                 searchError = "Sin conexión o YouTube no respondió."
                 onlineResults = emptyList()
-            } finally {
-                searching = false
             }
         }
     }
@@ -189,12 +215,53 @@ fun ArtistProfileScreen(
             Spacer(modifier = Modifier.height(16.dp))
         }
 
+        // R8a: secciones tipo Spotify, cada una solo si tiene datos reales.
+        // Las claves llevan prefijo porque la misma canción sale en varias
+        // secciones y la clave debe ser única en toda la lista.
+        if (topSongs.isNotEmpty()) {
+            item {
+                SectionTitle("Más escuchadas")
+            }
+            items(topSongs, key = { "top:${it.id}" }) { song ->
+                ProfileSongRow(
+                    song = song,
+                    queue = songs,
+                    onSongClick = onSongClick,
+                    subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)} · ${song.playCount} reproducciones",
+                )
+            }
+        }
+        if (recentSongs.isNotEmpty()) {
+            item {
+                SectionTitle("Lo más reciente")
+            }
+            items(recentSongs, key = { "recent:${it.id}" }) { song ->
+                ProfileSongRow(
+                    song = song,
+                    queue = songs,
+                    onSongClick = onSongClick,
+                    subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)}",
+                )
+            }
+        }
+        if (albumReleases.isNotEmpty()) {
+            item {
+                SectionTitle("Álbumes")
+            }
+            items(albumReleases, key = { it.id }) { album ->
+                ProfileAlbumRow(album, albumSubtitle(album))
+            }
+        }
+        if (singleEpReleases.isNotEmpty()) {
+            item {
+                SectionTitle("Sencillos y EP")
+            }
+            items(singleEpReleases, key = { it.id }) { album ->
+                ProfileAlbumRow(album, releaseSubtitle(album))
+            }
+        }
         item {
-            Text(
-                "En tu biblioteca",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
+            SectionTitle("En tu biblioteca")
         }
         if (songs.isEmpty() && albums.isEmpty()) {
             item {
@@ -206,66 +273,13 @@ fun ArtistProfileScreen(
                 )
             }
         } else {
-            items(songs, key = { it.id }) { song ->
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .clickable { onSongClick(song, songs) }
-                        .semantics { role = Role.Button }
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AlbumCover(song, size = 52.dp)
-                    Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(
-                            song.title,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        )
-                        Text(
-                            "${song.album} · ${TimeFormat.formatDuration(song.durationMs)}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-            items(albums, key = { it.id }) { album ->
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .padding(horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        Icons.Filled.MusicNote,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(52.dp).padding(14.dp),
-                    )
-                    Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                        Text(
-                            album.name,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                        )
-                        Text(
-                            if (album.year != null) {
-                                "${album.songCount} canciones · ${album.year}"
-                            } else {
-                                "${album.songCount} canciones"
-                            },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+            items(songs, key = { "all:${it.id}" }) { song ->
+                ProfileSongRow(
+                    song = song,
+                    queue = songs,
+                    onSongClick = onSongClick,
+                    subtitle = "${song.album} · ${TimeFormat.formatDuration(song.durationMs)}",
+                )
             }
         }
 
@@ -278,7 +292,7 @@ fun ArtistProfileScreen(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
-            if (searching) {
+            if (searchingOnline) {
                 item {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -356,4 +370,94 @@ fun ArtistProfileScreen(
             }
         }
     }
+}
+
+/** Título de sección del perfil (mismo estilo en todas las secciones). */
+@Composable
+private fun SectionTitle(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
+/** Fila de canción del perfil: portada real, título y subtítulo. */
+@Composable
+private fun ProfileSongRow(
+    song: Song,
+    queue: List<Song>,
+    onSongClick: (Song, List<Song>) -> Unit,
+    subtitle: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .clickable { onSongClick(song, queue) }
+            .semantics { role = Role.Button }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AlbumCover(song, size = 52.dp)
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                song.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                subtitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** Fila de álbum/EP/sencillo del perfil: solo información, no es un control (R-26). */
+@Composable
+private fun ProfileAlbumRow(album: Album, subtitle: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth()
+            .heightIn(min = 52.dp)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.MusicNote,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(52.dp).padding(14.dp),
+        )
+        Column(modifier = Modifier.weight(1f).padding(horizontal = 12.dp)) {
+            Text(
+                album.name,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+            )
+            Text(
+                subtitle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** "N canciones · año" o "N canciones" cuando no hay año. */
+private fun albumSubtitle(album: Album): String =
+    if (album.year != null) "${album.songCount} canciones · ${album.year}"
+    else "${album.songCount} canciones"
+
+/** "Sencillo" (1 canción) o "EP · N canciones", con el año si lo hay. */
+private fun releaseSubtitle(album: Album): String {
+    val kind = if (album.songCount <= 1) "Sencillo" else "EP"
+    val base = if (album.songCount <= 1) kind else "$kind · ${album.songCount} canciones"
+    return if (album.year != null) "$base · ${album.year}" else base
 }
