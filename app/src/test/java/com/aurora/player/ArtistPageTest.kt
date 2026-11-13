@@ -20,38 +20,9 @@ import org.junit.Test
  */
 class ArtistPageTest {
 
-    private val searchJson = """
-{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[
-{"musicResponsiveListItemRenderer":{"flexColumns":[
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"STONED TO DEATH"}]}}},
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level","navigationEndpoint":{"browseEndpoint":{"browseId":"UCstoned123"}}},{"text":" • "},{"text":"Muerte"}]}}}
-],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid1"}}}},
-{"musicResponsiveListItemRenderer":{"flexColumns":[
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Otra canción"}]}}},
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Otro Artista","navigationEndpoint":{"browseEndpoint":{"browseId":"UCotro999"}}}]}}}
-],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid2"}}}}
-]}}]}}}]}}}
-    """.trimIndent()
+    private val searchJson = """{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"STONED TO DEATH"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level","navigationEndpoint":{"browseEndpoint":{"browseId":"UCstoned123"}}},{"text":" • "},{"text":"Muerte"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid1"}}}},{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Otra canción"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Otro Artista","navigationEndpoint":{"browseEndpoint":{"browseId":"UCotro999"}}}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid2"}}}}]}}]}}}}]}}}""".trimIndent()
 
-    private val pageJson = """
-{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
-{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Canciones principales"}]}}},"contents":[
-{"musicResponsiveListItemRenderer":{"flexColumns":[
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"STONED TO DEATH"}]}}},
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"3:24"}]}}}
-],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid9"}}}}
-]}}},
-{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Álbumes"}]}}},"contents":[
-{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"STONED TO DEATH","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREalbum1"}}}]},"subtitle":{"runs":[{"text":"Álbum"},{"text":" • "},{"text":"2025"}]},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/album.jpg"}]}}}}}
-]}}},
-{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Singles y EPs"}]},"moreContentButton":{"buttonRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":"MPADsingles","params":"paramsRecency"}}}}}},"contents":[
-{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Killers In The Street","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREsingle1"}}}]},"subtitle":{"runs":[{"text":"Single"},{"text":" • "},{"text":"2026"}]},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/single.jpg"}]}}}}}
-]}}},
-{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Vídeos"}]}}},"contents":[
-{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"RIOT - Back To Back"}]},"subtitle":{"runs":[{"text":"Dubstep uNk"},{"text":" • "},{"text":"24 K visualizaciones"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"vidV1"}},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/video.jpg"}]}}}}}
-]}}}
-]}}}]}}}
-    """.trimIndent()
+    private val pageJson = """{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Canciones principales"}]}}},"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"STONED TO DEATH"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"3:24"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"vid9"}}}}]}},{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Álbumes"}]}}},"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"STONED TO DEATH","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREalbum1"}}}]},"subtitle":{"runs":[{"text":"Álbum"},{"text":" • "},{"text":"2025"}]},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/album.jpg"}]}}}}}]}},{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Singles y EPs"}]},"moreContentButton":{"buttonRenderer":{"navigationEndpoint":{"browseEndpoint":{"browseId":"MPADsingles","params":"paramsRecency"}}}}}},"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"Killers In The Street","navigationEndpoint":{"browseEndpoint":{"browseId":"MPREsingle1"}}}]},"subtitle":{"runs":[{"text":"Single"},{"text":" • "},{"text":"2026"}]},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/single.jpg"}]}}}}}]}},{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Vídeos"}]}}},"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"RIOT - Back To Back"}]},"subtitle":{"runs":[{"text":"Dubstep uNk"},{"text":" • "},{"text":"24 K visualizaciones"}]},"navigationEndpoint":{"watchEndpoint":{"videoId":"vidV1"}},"thumbnailRenderer":{"musicThumbnailRenderer":{"thumbnail":{"thumbnails":[{"url":"https://example.com/video.jpg"}]}}}}}]}}]}}}}]}}}""".trimIndent()
 
     @Test
     fun browseIdExactoDelArtista() {
@@ -65,7 +36,7 @@ class ArtistPageTest {
 
     @Test
     fun browseIdSinUcEsNull() {
-        val sinUc = """{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"X"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Y"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"v"}}}}]}}]}}}]}}}"""
+        val sinUc = """{"contents":{"tabbedSearchResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"X"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Y"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"v"}}}}]}}]}}}}]}}}"""
         assertNull(parseArtistBrowseId(sinUc, "Y"))
     }
 
@@ -106,14 +77,7 @@ class ArtistPageTest {
 
     @Test
     fun lanzamientosDeUnaSeccion() {
-        val json = """
-{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
-{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Singles"}]}}},"contents":[
-{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"A"}]},"subtitle":{"runs":[{"text":"Single"},{"text":" • "},{"text":"2026"}]}}},
-{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"B"}]},"subtitle":{"runs":[{"text":"EP"},{"text":" • "},{"text":"2024"}]}}}
-]}}}
-]}}}]}}}
-        """.trimIndent()
+        val json = """{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicCarouselShelfRenderer":{"header":{"musicCarouselShelfBasicHeaderRenderer":{"title":{"runs":[{"text":"Singles"}]}}},"contents":[{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"A"}]},"subtitle":{"runs":[{"text":"Single"},{"text":" • "},{"text":"2026"}]}}},{"musicTwoRowItemRenderer":{"title":{"runs":[{"text":"B"}]},"subtitle":{"runs":[{"text":"EP"},{"text":" • "},{"text":"2024"}]}}}]}}]}}}}]}}}""".trimIndent()
         val releases = parseArtistReleases(json)
         assertEquals(listOf("A", "B"), releases.map { it.title })
         assertEquals(listOf(2026, 2024), releases.map { it.year })
@@ -121,20 +85,7 @@ class ArtistPageTest {
 
     @Test
     fun albumTracksExtraeCanciones() {
-        val json = """
-{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[
-{"musicShelfRenderer":{"contents":[
-{"musicResponsiveListItemRenderer":{"flexColumns":[
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Uno"}]}}},
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"2:10"}]}}}
-],"navigationEndpoint":{"watchEndpoint":{"videoId":"t1"}}}},
-{"musicResponsiveListItemRenderer":{"flexColumns":[
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Dos"}]}}},
-{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"3:00"}]}}}
-],"navigationEndpoint":{"watchEndpoint":{"videoId":"t2"}}}}
-]}}}
-]}}}]}}}
-        """.trimIndent()
+        val json = """{"contents":{"singleColumnBrowseResultsRenderer":{"tabs":[{"tabRenderer":{"content":{"sectionListRenderer":{"contents":[{"musicShelfRenderer":{"contents":[{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Uno"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"2:10"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"t1"}}}},{"musicResponsiveListItemRenderer":{"flexColumns":[{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Dos"}]}}},{"musicResponsiveListItemFlexColumnRenderer":{"text":{"runs":[{"text":"Stoned Level"},{"text":" • "},{"text":"3:00"}]}}}],"navigationEndpoint":{"watchEndpoint":{"videoId":"t2"}}}}]}}]}}}}]}}}""".trimIndent()
         val tracks = parseAlbumTracks(json)!!
         assertEquals(listOf("Uno", "Dos"), tracks.map { it.title })
         assertEquals(listOf(130L, 180L), tracks.map { it.durationSec })
