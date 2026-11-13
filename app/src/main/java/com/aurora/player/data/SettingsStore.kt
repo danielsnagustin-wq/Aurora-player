@@ -201,7 +201,6 @@ class PlayerSettingsStore(private val context: Context) {
             resumeWhereLeft = prefs[Keys.RESUME] ?: d.resumeWhereLeft,
             localRadio = prefs[Keys.LOCAL_RADIO] ?: d.localRadio,
             onlineMode = prefs[Keys.ONLINE_MODE] ?: d.onlineMode,
-            streamQuality = StreamQuality.entries.find { it.name == prefs[Keys.STREAM_QUALITY] } ?: d.streamQuality,
             // Calidad por conexión (slice 3): si aún no hay calidad
             // por conexión guardada, se hereda la única que había.
             wifiStreamQuality = StreamQuality.entries.find { it.name == prefs[Keys.WIFI_STREAM_QUALITY] }
@@ -237,7 +236,6 @@ class PlayerSettingsStore(private val context: Context) {
             prefs[Keys.RESUME] = settings.resumeWhereLeft
             prefs[Keys.LOCAL_RADIO] = settings.localRadio
             prefs[Keys.ONLINE_MODE] = settings.onlineMode
-            prefs[Keys.STREAM_QUALITY] = settings.streamQuality.name
             prefs[Keys.WIFI_STREAM_QUALITY] = settings.wifiStreamQuality.name
             prefs[Keys.MOBILE_STREAM_QUALITY] = settings.mobileStreamQuality.name
             prefs[Keys.SWIPE_TRACK] = settings.swipeToChangeTrack
