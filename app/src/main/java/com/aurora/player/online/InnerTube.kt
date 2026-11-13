@@ -654,7 +654,14 @@ fun parseWatchPlaylist(json: String): List<OnlineTrack> {
     val contents = watchPlaylistContents(root) ?: return emptyList()
     val results = mutableListOf<OnlineTrack>()
     for (item in contents) {
-        val renderer = item.obj("playlistPanelVideoRenderer") ?: continue
+        // RONDA CAZA 2026-11-13 (P1): YouTube envuelve a veces cada
+        // ítem en playlistPanelVideoWrapperRenderer (con primaryRenderer
+        // dentro); sin desenvolver, todos se saltaban con continue y la
+        // radio salía vacía sin error.
+        val renderer = item.obj("playlistPanelVideoRenderer")
+            ?: item.obj("playlistPanelVideoWrapperRenderer")
+                ?.obj("primaryRenderer")?.obj("playlistPanelVideoRenderer")
+            ?: continue
         val videoId = renderer.obj("videoId")?.str() ?: continue
         val title = renderer.obj("title")?.obj("runs")?.arr()
             ?.firstOrNull()?.obj("text")?.str() ?: continue
