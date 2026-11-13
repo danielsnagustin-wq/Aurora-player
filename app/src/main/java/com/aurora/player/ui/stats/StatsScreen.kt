@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,8 +33,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -42,6 +46,7 @@ import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
 import com.aurora.player.model.Song
+import com.aurora.player.ui.library.AlbumCover
 import com.aurora.player.util.ErrorLog
 import com.aurora.player.util.StatsCsvRow
 import com.aurora.player.util.exportStatsCsv
@@ -238,178 +243,238 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     var exportMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val data = stats
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text("Estadísticas", style = MaterialTheme.typography.titleLarge)
+    // RONDA ARREGLOS 2026-11-13 (prueba en el teléfono): la pantalla
+    // era un Column sin scroll con un LazyColumn anidado para "Tus más
+    // escuchadas": el primer renglón podía quedar fuera de alcance y
+    // la lista parecía empezar en "2.". Ahora TODO es una sola
+    // LazyColumn, con portadas en la lista y el podio (1-2-3) marcado
+    // con el acento; el día con más escuchas destaca en el gráfico.
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+    ) {
+        item {
+            Text("Estadísticas", style = MaterialTheme.typography.titleLarge)
+        }
         if (showYear) {
-            YearScreen(hasAudioPermission = hasAudioPermission, onClose = { showYear = false })
-            return@Column
+            item {
+                YearScreen(hasAudioPermission = hasAudioPermission, onClose = { showYear = false })
+            }
+            return@LazyColumn
         }
         // Rediseño: las acciones van en cabecera, en una fila, no
         // como dos botones anchos apilados (eran los bloques altos
         // y vacíos de la captura).
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            OutlinedButton(
-                onClick = { showYear = true },
-                modifier = Modifier.weight(1f).height(48.dp),
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Tu año")
-            }
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        val result = viewModel.exportCsv(hasAudioPermission)
-                        exportMessage = result.fold(
-                            onSuccess = { "Guardado en $it" },
-                            onFailure = { "No se pudo exportar: ${it.message}" },
-                        )
-                    }
-                },
-                enabled = data != null && data.totalPlays > 0,
-                modifier = Modifier.weight(1f).height(48.dp),
-            ) {
-                Text("Exportar CSV")
+                OutlinedButton(
+                    onClick = { showYear = true },
+                    modifier = Modifier.weight(1f).height(48.dp),
+                ) {
+                    Text("Tu año")
+                }
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val result = viewModel.exportCsv(hasAudioPermission)
+                            exportMessage = result.fold(
+                                onSuccess = { "Guardado en $it" },
+                                onFailure = { "No se pudo exportar: ${it.message}" },
+                            )
+                        }
+                    },
+                    enabled = data != null && data.totalPlays > 0,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                ) {
+                    Text("Exportar CSV")
+                }
             }
         }
         exportMessage?.let {
-            Text(
-                it,
-                modifier = Modifier.padding(top = 8.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            item {
+                Text(
+                    it,
+                    modifier = Modifier.padding(top = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
         if (data == null) {
             // RONDA 165: un fallo de carga no es "Cargando…" para
             // siempre: se muestra el error y se puede reintentar.
             if (loadFailed) {
-                Text(
-                    "No se pudieron cargar las estadísticas.",
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-                OutlinedButton(
-                    onClick = { viewModel.refresh(hasAudioPermission) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                ) {
-                    Text("Reintentar")
+                item {
+                    Text(
+                        "No se pudieron cargar las estadísticas.",
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                }
+                item {
+                    OutlinedButton(
+                        onClick = { viewModel.refresh(hasAudioPermission) },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    ) {
+                        Text("Reintentar")
+                    }
                 }
             } else {
-                Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+                item {
+                    Text("Cargando…", modifier = Modifier.padding(top = 16.dp))
+                }
             }
-            return@Column
+            return@LazyColumn
         }
         if (data.totalPlays == 0) {
-            Text(
-                "Aún no hay historial. Escucha música 30 segundos o más y aquí verás tus cifras reales.",
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            return@Column
+            item {
+                Text(
+                    "Aún no hay historial. Escucha música 30 segundos o más y aquí verás tus cifras reales.",
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
+            return@LazyColumn
         }
         // Rediseño: las cifras van en una tarjeta con 4 celdas
         // (reproducciones, tiempo, favoritas, canciones), no en
         // tres líneas sueltas. Solo cifras reales (R-17).
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-            ),
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-        ) {
-            Column(modifier = Modifier.padding(4.dp)) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    StatCell(
-                        value = "${data.totalPlays}",
-                        label = "reproducciones",
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatCell(
-                        value = TimeFormat.formatTotalListened(data.totalListenedMs),
-                        label = "tiempo escuchado",
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    StatCell(
-                        value = "${data.favoriteCount}",
-                        label = "favoritas",
-                        modifier = Modifier.weight(1f),
-                    )
-                    StatCell(
-                        value = "${data.totalSongs}",
-                        label = "canciones",
-                        modifier = Modifier.weight(1f),
-                    )
+        item {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            ) {
+                Column(modifier = Modifier.padding(4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        StatCell(
+                            value = "${data.totalPlays}",
+                            label = "reproducciones",
+                            modifier = Modifier.weight(1f),
+                        )
+                        StatCell(
+                            value = TimeFormat.formatTotalListened(data.totalListenedMs),
+                            label = "tiempo escuchado",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        StatCell(
+                            value = "${data.favoriteCount}",
+                            label = "favoritas",
+                            modifier = Modifier.weight(1f),
+                        )
+                        StatCell(
+                            value = "${data.totalSongs}",
+                            label = "canciones",
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
             }
         }
         // Gráfico semanal (idea open source, Namida): reproducciones
         // por día, últimos 7 días, con datos reales del historial.
         if (data.playsLast7Days.any { it > 0 }) {
-            Text(
-                "Últimos 7 días",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            val max = (data.playsLast7Days.maxOrNull() ?: 0).coerceAtLeast(1)
-            Row(
-                modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                data.playsLast7Days.forEachIndexed { index, count ->
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    ) {
-                        Text("$count", style = MaterialTheme.typography.labelSmall)
-                        Box(
-                            modifier = Modifier.fillMaxWidth(0.6f)
-                                .height((count.toFloat() / max * 64).dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(MaterialTheme.colorScheme.primary),
-                        )
-                        Text(
-                            dayLabel(index),
-                            style = MaterialTheme.typography.labelSmall,
-                            modifier = Modifier.padding(top = 4.dp),
-                        )
+            item {
+                Text(
+                    "Últimos 7 días",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp),
+                )
+            }
+            item {
+                val max = (data.playsLast7Days.maxOrNull() ?: 0).coerceAtLeast(1)
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(120.dp).padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    data.playsLast7Days.forEachIndexed { index, count ->
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Bottom,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        ) {
+                            Text("$count", style = MaterialTheme.typography.labelSmall)
+                            Box(
+                                modifier = Modifier.fillMaxWidth(0.6f)
+                                    .height((count.toFloat() / max * 64).dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(
+                                        if (count == max) MaterialTheme.colorScheme.primary
+                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                    ),
+                            )
+                            Text(
+                                dayLabel(index),
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
                     }
                 }
             }
-        }
-        Text(
-            "Tus más escuchadas",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(top = 16.dp),
-        )
-        LazyColumn(modifier = Modifier.fillMaxSize()) {
-            itemsIndexed(data.mostPlayed) { index, (song, count) ->
-                ListItem(
-                    headlineContent = {
-                        Text(
-                            "${index + 1}. ${song.title}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    supportingContent = {
-                        Text(
-                            song.artist,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    trailingContent = {
-                        Text(
-                            "$count veces",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
+            item {
+                Text(
+                    "Esta semana: ${data.playsLast7Days.sum()} reproducciones",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 8.dp),
                 )
-                Divider()
             }
+        }
+        item {
+            Text(
+                "Tus más escuchadas",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 16.dp),
+            )
+        }
+        itemsIndexed(data.mostPlayed) { index, (song, count) ->
+            ListItem(
+                leadingContent = {
+                    AlbumCover(song, size = 56.dp)
+                },
+                headlineContent = {
+                    Text(
+                        buildAnnotatedString {
+                            val rankColor = when (index) {
+                                0 -> MaterialTheme.colorScheme.primary
+                                1, 2 -> MaterialTheme.colorScheme.onSurfaceVariant
+                                else -> MaterialTheme.colorScheme.onSurface
+                            }
+                            withStyle(
+                                SpanStyle(
+                                    color = rankColor,
+                                    fontWeight = FontWeight.Bold,
+                                ),
+                            ) {
+                                append("${index + 1}. ")
+                            }
+                            append(song.title)
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+                supportingContent = {
+                    Text(
+                        song.artist,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+                trailingContent = {
+                    Text(
+                        "$count veces",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                },
+            )
+            Divider()
         }
     }
 }
