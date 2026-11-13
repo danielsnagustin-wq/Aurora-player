@@ -160,6 +160,10 @@ fun SettingsScreen(
     val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
         initial = LibraryPrefsStore.ALL_TABS,
     )
+    // Reordenar pestañas (copia BitChord, slice 2): orden guardado.
+    val tabOrder by libraryPrefs.tabOrderFlow.collectAsState(
+        initial = (0 until LibraryPrefsStore.TAB_COUNT).toList(),
+    )
     val rowCoverDp by libraryPrefs.rowCoverSizeFlow.collectAsState(
         initial = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
     )
@@ -263,6 +267,10 @@ fun SettingsScreen(
                 visibleTabs = visibleTabs,
                 onSetTabVisible = { index, visible ->
                     scope.launch { libraryPrefs.setTabVisible(index, visible) }
+                },
+                tabOrder = tabOrder,
+                onSaveTabOrder = { order ->
+                    scope.launch { libraryPrefs.saveTabOrder(order) }
                 },
                 rowCoverDp = rowCoverDp,
                 onSetRowCoverSize = { dp ->
