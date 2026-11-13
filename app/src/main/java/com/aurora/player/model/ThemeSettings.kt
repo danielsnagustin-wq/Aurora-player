@@ -193,6 +193,11 @@ data class PlayerSettings(
     // internet: letras online (LRCLIB) y escuchar de YouTube. La
     // música local nunca usa la red. Apagado, nada sale a la red.
     val onlineMode: Boolean = false,
+    // Descargas (slice 4): solo con Wi-Fi. Cuando está encendido,
+    // una descarga pedida sin Wi-Fi queda pendiente en vez de
+    // gastar datos móviles. Apagado (por defecto), descarga con
+    // cualquier conexión.
+    val downloadWifiOnly: Boolean = false,
     // Calidad por conexión (copia BitChord, slice 3): una calidad
     // para Wi-Fi y otra para datos móviles. La única se migra en
     // SettingsStore/BackupData y se quita después (paso D).
