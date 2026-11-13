@@ -82,6 +82,7 @@ class MusicRepository(private val context: Context) {
             MediaStore.Audio.Media.MIME_TYPE,
             MediaStore.Audio.Media.SIZE,
             MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.DATE_MODIFIED,
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.YEAR,
         )
@@ -113,6 +114,7 @@ class MusicRepository(private val context: Context) {
                 val mimeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.MIME_TYPE)
                 val sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
                 val addedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                val modifiedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_MODIFIED)
                 val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
                 val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
                 val albumArtistCol = cursor.getColumnIndex(MediaStore.Audio.Media.ALBUM_ARTIST)
@@ -138,6 +140,7 @@ class MusicRepository(private val context: Context) {
                         mimeType = cursor.getString(mimeCol) ?: "",
                         sizeBytes = cursor.getLong(sizeCol),
                         dateAdded = cursor.getLong(addedCol) * 1_000L,
+                        dateModified = cursor.getLong(modifiedCol) * 1_000L,
                         trackNumber = trackNumber,
                         discNumber = discNumber,
                         year = cursor.getInt(yearCol).takeIf { it > 0 },
