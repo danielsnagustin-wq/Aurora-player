@@ -78,7 +78,10 @@ import kotlinx.coroutines.withContext
 class AlarmViewModel(application: Application) : AndroidViewModel(application) {
 
     private val store = AlarmStore(application)
-    private val db = AuroraDatabase.getInstance(application)
+    // La base de datos se abre perezosa: si fallara al abrir, el
+    // fallo cae dentro del try de load() en vez de cerrar la app al
+    // crear el ViewModel (auditoría alarma 2026-11-12).
+    private val db by lazy { AuroraDatabase.getInstance(application) }
     private val repository = MusicRepository(application)
     private val playerStore = PlayerSettingsStore(application)
 
@@ -113,44 +116,73 @@ class AlarmViewModel(application: Application) : AndroidViewModel(application) {
                 _songs.value = songs
                 _playlists.value = playlists
             }
-            _canSchedule.value = AlarmScheduler.canScheduleExactAlarms(getApplication())
+            // La comprobación del permiso también puede fallar: si
+            // falla, la alarma queda como no programable en vez de
+            // cerrar la app al abrir la pantalla.
+            _canSchedule.value = try {
+                AlarmScheduler.canScheduleExactAlarms(getApplication())
+            } catch (e: Exception) {
+                ErrorLog.log(getApplication(), "Permiso de alarmas", e)
+                false
+            }
             // Ronda 19: si la alarma quedó guardada como activa sin
             // programar (sin permiso al guardar), reprogramarla al
             // entrar con el permiso ya concedido. schedule() es
             // idempotente (mismo PendingIntent, FLAG_UPDATE_CURRENT).
             val loaded = _settings.value
             if (loaded != null && loaded.enabled && _canSchedule.value) {
-                AlarmScheduler.schedule(getApplication(), loaded)
+                try {
+                    AlarmScheduler.schedule(getApplication(), loaded)
+                } catch (e: Exception) {
+                    ErrorLog.log(getApplication(), "Reprogramar alarma", e)
+                }
             }
         }
     }
 
     fun refreshPermission() {
-        _canSchedule.value = AlarmScheduler.canScheduleExactAlarms(getApplication())
+        _canSchedule.value = try {
+            AlarmScheduler.canScheduleExactAlarms(getApplication())
+        } catch (e: Exception) {
+            ErrorLog.log(getApplication(), "Permiso de alarmas", e)
+            false
+        }
         // Ronda 19: lo mismo al pulsar "Actualizar" tras conceder
         // el permiso en los ajustes del sistema.
         if (_canSchedule.value) {
             viewModelScope.launch(Dispatchers.IO) {
-                val saved = store.settingsFlow.first()
-                if (saved.enabled) AlarmScheduler.schedule(getApplication(), saved)
+                try {
+                    val saved = store.settingsFlow.first()
+                    if (saved.enabled) AlarmScheduler.schedule(getApplication(), saved)
+                } catch (e: Exception) {
+                    ErrorLog.log(getApplication(), "Reprogramar alarma", e)
+                }
             }
         }
     }
 
     fun save(settings: AlarmSettings) {
         viewModelScope.launch(Dispatchers.IO) {
-            store.save(settings)
-            if (!settings.enabled) {
-                AlarmScheduler.cancel(getApplication())
-                _message.value = "Alarma apagada."
-                return@launch
+            // Todo el camino de guardar va protegido: antes un fallo
+            // de escritura, del permiso o de la programación escapaba
+            // de la corrutina y cerraba la app al activar la alarma.
+            try {
+                store.save(settings)
+                if (!settings.enabled) {
+                    AlarmScheduler.cancel(getApplication())
+                    _message.value = "Alarma apagada."
+                    return@launch
+                }
+                if (!AlarmScheduler.canScheduleExactAlarms(getApplication())) {
+                    _message.value = "Falta el permiso de alarmas exactas: concédelo y vuelve a guardar."
+                    return@launch
+                }
+                AlarmScheduler.schedule(getApplication(), settings)
+                _message.value = describeNextAlarm(settings.hour, settings.minute, System.currentTimeMillis())
+            } catch (e: Exception) {
+                ErrorLog.log(getApplication(), "Guardar alarma", e)
+                _message.value = "No se pudo guardar la alarma. Inténtalo de nuevo."
             }
-            if (!AlarmScheduler.canScheduleExactAlarms(getApplication())) {
-                _message.value = "Falta el permiso de alarmas exactas: concédelo y vuelve a guardar."
-                return@launch
-            }
-            AlarmScheduler.schedule(getApplication(), settings)
-            _message.value = describeNextAlarm(settings.hour, settings.minute, System.currentTimeMillis())
         }
     }
 }
