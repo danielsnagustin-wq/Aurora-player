@@ -13,8 +13,10 @@ import java.util.Locale
  * Aurora Player — detalles reales de una canción (ETAPA 5).
  * MediaStore da título/artista/álbum/duración/tamaño/fecha; el
  * extractor del archivo (MediaMetadataRetriever) añade género,
- * compositor, bitrate y sample rate. Si un campo no existe, es null
- * y la UI muestra "—": nunca se inventa un dato.
+ * compositor, letrista, bitrate y sample rate; la cabecera del
+ * archivo añade la profundidad de bits real (FLAC/WAV). Si un
+ * campo no existe, es null y la UI no muestra esa fila: nunca se
+ * inventa un dato.
  */
 data class SongDetails(
     val genre: String?,
@@ -24,6 +26,14 @@ data class SongDetails(
     val mimeType: String,
     /** Canales de audio (1 = mono, 2 = estéreo), null si no se pudo leer. */
     val channelCount: Int? = null,
+    /**
+     * Profundidad de bits real del archivo: FLAC desde el bloque
+     * STREAMINFO, WAV desde el chunk "fmt ". Null si no es FLAC/WAV
+     * o no se pudo leer; nunca se inventa.
+     */
+    val bitDepth: Int? = null,
+    /** Letrista (MediaMetadataRetriever METADATA_KEY_WRITER). Null = sin dato. */
+    val writer: String? = null,
 )
 
 /** Nombre legible del códec ("audio/flac" -> "FLAC"). Función pura, testeable. */
@@ -55,10 +65,62 @@ fun codecDisplayName(mimeType: String, filePath: String = ""): String = when (mi
     }
 }
 
+/**
+ * Profundidad de bits de un FLAC desde sus primeros bytes.
+ * Formato verificado contra la especificación FLAC: "fLaC" + cabecera
+ * de bloque (tipo 0 = STREAMINFO, longitud 34) y dentro de STREAMINFO
+ * el campo de 64 bits (20 bits frecuencia, 3 bits canales-1, 5 bits
+ * profundidad-1, 36 bits muestras). Null si no es FLAC o no se lee.
+ */
+fun flacBitDepth(bytes: ByteArray): Int? {
+    if (bytes.size < 42) return null
+    if (!(bytes[0] == 'f'.code.toByte() && bytes[1] == 'L'.code.toByte() &&
+        bytes[2] == 'a'.code.toByte() && bytes[3] == 'C'.code.toByte())
+    ) return null
+    if ((bytes[4].toInt() and 0x7F) != 0) return null // primer bloque = STREAMINFO
+    val length = ((bytes[5].toInt() and 0xFF) shl 16) or
+        ((bytes[6].toInt() and 0xFF) shl 8) or (bytes[7].toInt() and 0xFF)
+    if (length != 34) return null
+    // STREAMINFO empieza en el byte 8; el campo de 64 bits en data[10]:
+    // data[12] = byte 20, data[13] = byte 21.
+    val bpsMinusOne = ((bytes[20].toInt() and 0x01) shl 4) or
+        ((bytes[21].toInt() and 0xFF) ushr 4)
+    return (bpsMinusOne + 1).takeIf { it in 4..32 }
+}
+
+/**
+ * Profundidad de bits de un WAV desde sus primeros bytes (chunk "fmt ",
+ * bits por muestra en little-endian en el offset 14 del chunk). Los
+ * chunks van alineados a par. Null si no es WAV o no se encuentra.
+ */
+fun wavBitDepth(bytes: ByteArray): Int? {
+    if (bytes.size < 12) return null
+    if (!(bytes[0] == 'R'.code.toByte() && bytes[1] == 'I'.code.toByte() &&
+        bytes[2] == 'F'.code.toByte() && bytes[3] == 'F'.code.toByte())
+    ) return null
+    var offset = 12
+    while (offset + 8 <= bytes.size) {
+        val id = String(bytes, offset, 4, Charsets.US_ASCII)
+        val size = (bytes[offset + 4].toInt() and 0xFF) or
+            ((bytes[offset + 5].toInt() and 0xFF) shl 8) or
+            ((bytes[offset + 6].toInt() and 0xFF) shl 16) or
+            ((bytes[offset + 7].toInt() and 0xFF) shl 24)
+        if (size < 0) return null
+        if (id == "fmt " && size >= 16 && offset + 8 + 16 <= bytes.size) {
+            val bps = (bytes[offset + 8 + 14].toInt() and 0xFF) or
+                ((bytes[offset + 8 + 15].toInt() and 0xFF) shl 8)
+            return bps.takeIf { it in 1..32 }
+        }
+        offset += 8 + size + (size and 1)
+    }
+    return null
+}
+
 suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
     withContext(Dispatchers.IO) {
         var genre: String? = null
         var composer: String? = null
+        var writer: String? = null
         var bitrate: Int? = null
         var sampleRate: Int? = null
         try {
@@ -66,6 +128,7 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
                 retriever.setDataSource(context, song.uri)
                 genre = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_GENRE)
                 composer = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_COMPOSER)
+                writer = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_WRITER)
                 bitrate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_BITRATE)
                     ?.toIntOrNull()?.div(1000)
                 sampleRate = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_SAMPLERATE)
@@ -104,7 +167,37 @@ suspend fun loadSongDetails(context: Context, song: Song): SongDetails =
         } catch (_: Exception) {
             channels = null
         }
-        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType, channels)
+        // Profundidad de bits real: se leen los primeros bytes del
+        // archivo y se parsea la cabecera (FLAC STREAMINFO, WAV fmt).
+        // Apertura propia: el extractor de arriba ya soltó su descriptor.
+        var bitDepth: Int? = null
+        try {
+            context.contentResolver.openInputStream(song.uri)?.use { input ->
+                // InputStream.read puede devolver MENOS bytes de los
+                // pedidos: se lee en bucle hasta llenar la cabecera o EOF.
+                val header = ByteArray(512)
+                var read = 0
+                while (read < header.size) {
+                    val n = input.read(header, read, header.size - read)
+                    if (n <= 0) break
+                    read += n
+                }
+                if (read > 0) {
+                    val head = header.copyOf(read)
+                    val mime = song.mimeType.lowercase(Locale.ROOT)
+                    bitDepth = when {
+                        mime in setOf("audio/flac", "audio/x-flac") ||
+                            song.path.endsWith(".flac", ignoreCase = true) -> flacBitDepth(head)
+                        mime in setOf("audio/x-wav", "audio/wav") ||
+                            song.path.endsWith(".wav", ignoreCase = true) -> wavBitDepth(head)
+                        else -> null
+                    }
+                }
+            }
+        } catch (_: Exception) {
+            bitDepth = null
+        }
+        SongDetails(genre, composer, bitrate, sampleRate, song.mimeType, channels, bitDepth, writer)
     }
 
 /**
