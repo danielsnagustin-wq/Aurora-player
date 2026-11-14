@@ -23,8 +23,8 @@ import androidx.compose.ui.unit.dp
  * música. Cada chip muestra su estado real y hace algo real:
  * Local abre la pestaña Canciones; YouTube Music pone el foco en
  * la búsqueda; Spotify muestra u oculta tus listas (solo conectado);
- * SoundCloud no está disponible todavía (necesita un client_id que
- * SoundCloud solo da por correo) y por eso no se puede tocar.
+ * SoundCloud muestra u oculta sus lanzamientos (solo conectado:
+ * el inicio de sesión y el descubrimiento ya existen).
  */
 @Composable
 fun SourcesRow(
@@ -32,9 +32,12 @@ fun SourcesRow(
     ytMusicConnected: Boolean,
     spotifyConnected: Boolean,
     spotifySectionVisible: Boolean,
+    soundCloudConnected: Boolean,
+    soundCloudSectionVisible: Boolean,
     onShowLocal: () -> Unit,
     onFocusSearch: () -> Unit,
     onToggleSpotify: () -> Unit,
+    onToggleSoundCloud: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -60,8 +63,11 @@ fun SourcesRow(
             onClick = if (spotifyConnected) onToggleSpotify else null,
         )
         SourceChip(
-            label = "SoundCloud · Próximamente",
-            onClick = null,
+            label = if (soundCloudConnected) {
+                if (soundCloudSectionVisible) "SoundCloud · Lanzamientos visibles"
+                else "SoundCloud · Lanzamientos ocultos"
+            } else "SoundCloud · No conectado",
+            onClick = if (soundCloudConnected) onToggleSoundCloud else null,
         )
     }
 }
