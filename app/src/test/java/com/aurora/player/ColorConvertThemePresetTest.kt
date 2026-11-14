@@ -64,14 +64,18 @@ class ThemePresetTest {
     }
 
     @Test
-    fun `round-trip de tema guarda los 21 campos`() {
+    fun `round-trip de tema guarda los 23 campos`() {
+        // RONDA 2 (2026-11-13, P2): el test decía 21 campos y solo
+        // comprobaba 2 (acento y radio); un campo que se perdiera en
+        // la serialización pasaba desapercibido. ThemeSettings es
+        // data class: la igualdad cubre los 23 campos de una vez.
+        // (Verificado: themeSettingsToJsonValue escribe los 23.)
         val settings = ThemeSettings.DEFAULT.copy(accentHex = "#75D6CE", cornerRadiusDp = 20)
         val preset = ThemePreset("Turquesa", settings)
         val restored = themePresetsFromJsonString(themePresetsToJsonString(listOf(preset)))
         assertEquals(1, restored.size)
         assertEquals("Turquesa", restored[0].name)
-        assertEquals("#75D6CE", restored[0].settings.accentHex)
-        assertEquals(20, restored[0].settings.cornerRadiusDp)
+        assertEquals(settings, restored[0].settings)
     }
 
     @Test
