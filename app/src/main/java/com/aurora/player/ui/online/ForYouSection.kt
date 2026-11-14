@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -77,6 +78,13 @@ fun ForYouSection(
                 OutlinedButton(
                     onClick = onRetry,
                     modifier = Modifier.padding(bottom = 8.dp),
+                    // RONDA CAZA 2026-11-13 (P1): el texto iba en el
+                    // color del acento y los acentos oscuros no se
+                    // leían sobre negro. Texto claro siempre, como
+                    // los chips (n=828).
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) { Text("Reintentar") }
             }
         }
