@@ -88,9 +88,39 @@ suspend fun readActiveBtCodec(context: Context): BtCodecInfo? =
             }
             val adapter = BluetoothAdapter.getDefaultAdapter() ?: return@withContext null
             val a2dp = suspendCancellableCoroutine<BluetoothA2dp?> { cont ->
+                // RONDA 2 (2026-11-13, P2): si el llamador cancela
+                // mientras se espera al servicio, el proxy que llegue
+                // después no se queda abierto: se cierra en
+                // onServiceConnected (ya cancelado) o aquí. `resumed`
+                // evita cerrar dos veces el proxy del camino normal
+                // (ese lo cierra el finally de abajo).
+                var connectedProxy: BluetoothA2dp? = null
+                var resumed = false
+                cont.invokeOnCancellation {
+                    if (!resumed) {
+                        connectedProxy?.let { p ->
+                            try {
+                                adapter.closeProfileProxy(BluetoothProfile.A2DP, p)
+                            } catch (_: Exception) {
+                            }
+                        }
+                    }
+                }
                 val listener = object : BluetoothProfile.ServiceListener {
                     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile) {
-                        if (cont.isActive) cont.resume(proxy as? BluetoothA2dp)
+                        val a2dpProxy = proxy as? BluetoothA2dp
+                        connectedProxy = a2dpProxy
+                        if (cont.isActive) {
+                            resumed = true
+                            cont.resume(a2dpProxy)
+                        } else {
+                            if (a2dpProxy != null) {
+                                try {
+                                    adapter.closeProfileProxy(BluetoothProfile.A2DP, a2dpProxy)
+                                } catch (_: Exception) {
+                                }
+                            }
+                        }
                     }
 
                     override fun onServiceDisconnected(profile: Int) {}
