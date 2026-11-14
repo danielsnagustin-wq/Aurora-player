@@ -5,6 +5,7 @@ import com.aurora.player.lyrics.buildUnisonSearchUrl
 import com.aurora.player.lyrics.parseUnisonSearchResponse
 import com.aurora.player.lyrics.pickUnisonResult
 import com.aurora.player.lyrics.ttmlToOnlineLyrics
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -68,6 +69,24 @@ class UnisonLyricsProviderTest {
     }
 
     @Test
+    fun `pick coincide Istanbul con locale turco`() {
+        // RONDA 2 (2026-11-13, P2): pin de extremo a extremo de
+        // normalizeForMatch con Locale.ROOT (la I mayúscula turca
+        // es la que rompía la coincidencia). El test que realmente
+        // caza la regresión está en BiniLyricsProviderTest
+        // (normalizeForMatch directo bajo locale tr-TR).
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            val candidates = listOf(UnisonResult("ISTANBUL", "Sezen Aksu", ""))
+            val best = pickUnisonResult(candidates, "Istanbul", "Sezen Aksu")
+            assertEquals("ISTANBUL", best?.song)
+        } finally {
+            Locale.setDefault(previous)
+        }
+    }
+
+    @Test
     fun `pick descarta otra cancion`() {
         assertNull(
             pickUnisonResult(
@@ -88,6 +107,8 @@ class UnisonLyricsProviderTest {
         val lyrics = ttmlToOnlineLyrics(best.lyricsTtml)
         assertTrue(lyrics?.syncedLrc?.contains("Look at the stars") == true)
         assertTrue(lyrics?.syncedLrc?.contains("[00:33.58]") == true)
-        assertNull(lyrics?.plainText)
+        // RONDA 2 (2026-11-14, P2#15-fix): plainText ya no es null cuando hay LRC:
+        // es el respaldo con TODAS las líneas (por si el LRC no se pudiera leer).
+        assertTrue(lyrics?.plainText?.contains("Look at the stars") == true)
     }
 }
