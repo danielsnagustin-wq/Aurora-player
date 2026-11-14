@@ -157,9 +157,9 @@ class TrackDownloader(
         return if (collapsed.length > 200) collapsed.substring(0, 200) else collapsed
     }
 
-    /** Itag del nombre del archivo de caché ("<videoId>_<itag>.<ext>"); null si no se puede leer. El videoId puede llevar "_" así que se toma el último. */
+    /** Itag del nombre del archivo de caché ("<videoId>_<itag>.<ext>"); null si no se puede leer. El videoId puede llevar "_" así que se toma el último. El nombre puede no tener punto: substringBefore(".") sin segundo argumento devuelve el texto entero en ese caso (con "" devolvería "" y el itag se perdería). */
     internal fun itagFromCacheFileName(name: String): Int? {
-        val itag = name.substringAfterLast("_", "").substringBefore(".", "")
+        val itag = name.substringAfterLast("_", "").substringBefore(".")
         return itag.toIntOrNull()
     }
 
