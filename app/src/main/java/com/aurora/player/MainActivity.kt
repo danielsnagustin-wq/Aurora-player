@@ -2266,9 +2266,14 @@ private fun AuroraApp(
                     playerSettings.mobileStreamQuality,
                 )
                 val cache = StreamCacheStore(context)
-                val radio = innerTubeClient().getWatchPlaylist(videoId)
-                    .filter { it.videoId != videoId }
-                    .take(10)
+                // RONDA 2 (2026-11-13, P1, n=919, 1/2): getWatchPlaylist
+                // devuelve null si YouTube no respondió (antes lista
+                // vacía, indistinguible de "sin radio"): se guarda el
+                // null en `watch` para que el aviso de n=920 distinga
+                // fallo de transporte de radio vacía; `radio` sigue
+                // siendo lista (vacía en ambos casos, como antes).
+                val watch = innerTubeClient().getWatchPlaylist(videoId)
+                val radio = watch?.filter { it.videoId != videoId }?.take(10) ?: emptyList()
                 val pairs = mutableListOf<Pair<OnlineTrack, String>>()
                 for (track in radio) {
                     val url = cache.cachedFile(track.videoId, quality)?.toURI()?.toString()
@@ -2904,8 +2909,21 @@ private fun AuroraApp(
                         // callbacks a null a propósito: un 401 suyo no
                         // debe borrar la sesión guardada.
                         val probe = InnerTubeClient(cookies)
+                        // RONDA 2 (2026-11-13, P1, n=917): la sonda
+                        // vieja (search "música") era VACUA: la
+                        // búsqueda funciona ANÓNIMA, así que una
+                        // cookie muerta pasaba la prueba igual que una
+                        // viva (el arreglo n=864 no distinguía). La
+                        // sonda ahora es getNewReleases: el estante
+                        // "New releases" solo aparece CON sesión (ver
+                        // InnerTube.kt): lista no vacía = sesión viva;
+                        // null = YouTube no respondió. El
+                        // comportamiento exacto con un SAPISID muerto
+                        // (401 o inicio anónimo) solo se puede probar
+                        // en el teléfono (youtubei está bloqueado en
+                        // esta VM).
                         val ok = try {
-                            probe.search("música") != null
+                            probe.getNewReleases()?.isNotEmpty() == true
                         } catch (_: Exception) {
                             false
                         }
