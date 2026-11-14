@@ -43,15 +43,22 @@ fun buildBetterLyricsUrl(
 }
 
 /**
- * TTML -> OnlineLyrics. Si TODAS las líneas tienen tiempo, LRC
- * sincronizado (con palabras); si alguna no lo tiene, texto plano
- * con todas las líneas en orden (sin inventar tiempos).
+ * TTML -> OnlineLyrics. Las líneas CON tiempo van a LRC
+ * sincronizado (con palabras); las sin tiempo no degradan el resto:
+ * antes UNA línea sin tiempo convertía TODA la canción en texto
+ * plano y se perdía la sincronización de las demás (RONDA 2,
+ * 2026-11-13, P2). El texto plano lleva todas las líneas en orden
+ * (respaldo si el LRC no se pudiera leer; nunca se inventan tiempos).
  */
 fun ttmlToOnlineLyrics(ttml: String): OnlineLyrics? {
     val lines = TtmlParser.parse(ttml)
     if (lines.isEmpty()) return null
-    return if (lines.all { it.timeMs != Long.MAX_VALUE }) {
-        OnlineLyrics(syncedLrc = lrcLinesToText(lines), plainText = null)
+    val timed = lines.filter { it.timeMs != Long.MAX_VALUE }
+    return if (timed.isNotEmpty()) {
+        OnlineLyrics(
+            syncedLrc = lrcLinesToText(timed),
+            plainText = lines.joinToString("\n") { it.text },
+        )
     } else {
         OnlineLyrics(
             syncedLrc = null,
