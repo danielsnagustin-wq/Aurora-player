@@ -113,41 +113,43 @@ class TrackDownloaderTest {
     }
 
     @Test
-    fun downloadTrack_nombreDelArchivoUsaElItagDeLaCache() = runBlocking {
-        // RONDA 2 (2026-11-13, P2): pin del cableado del arreglo P1
-        // (itagDelArchivoDeCache): la extensión del archivo sale del
-        // itag del archivo de caché (251 → webm), NO del itag recién
-        // resuelto (140 → m4a). cachedFile devuelve el primero de
-        // preferredItags que exista, que puede ser otro itag.
-        //
-        // En la JVM, Build.VERSION.SDK_INT es 0: se toma la rama
-        // pre-Q (archivo en disco) y Uri.fromFile tira "Stub!" → el
-        // Result es failure. Pero el archivo YA se escribió antes, con
-        // el nombre correcto: eso es lo que este test comprueba.
-        val dir = Files.createTempDirectory("aurora-dl-").toFile()
-        val cacheDir = Files.createTempDirectory("aurora-cache-").toFile()
-        val cacheFile = File(cacheDir, "vid_251.webm").apply {
-            writeBytes("audio".toByteArray())
+    fun downloadTrack_nombreDelArchivoUsaElItagDeLaCache() {
+        runBlocking {
+            // RONDA 2 (2026-11-13, P2): pin del cableado del arreglo P1
+            // (itagDelArchivoDeCache): la extensión del archivo sale del
+            // itag del archivo de caché (251 → webm), NO del itag recién
+            // resuelto (140 → m4a). cachedFile devuelve el primero de
+            // preferredItags que exista, que puede ser otro itag.
+            //
+            // En la JVM, Build.VERSION.SDK_INT es 0: se toma la rama
+            // pre-Q (archivo en disco) y Uri.fromFile tira "Stub!" → el
+            // Result es failure. Pero el archivo YA se escribió antes, con
+            // el nombre correcto: eso es lo que este test comprueba.
+            val dir = Files.createTempDirectory("aurora-dl-").toFile()
+            val cacheDir = Files.createTempDirectory("aurora-cache-").toFile()
+            val cacheFile = File(cacheDir, "vid_251.webm").apply {
+                writeBytes("audio".toByteArray())
+            }
+            val context = mock(Context::class.java)
+            Mockito.`when`(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS))
+                .thenReturn(dir)
+            val cache = mock(StreamCacheStore::class.java)
+            Mockito.`when`(cache.cachedFile("vid", StreamQuality.HIGH)).thenReturn(cacheFile)
+            val d = TrackDownloader(context, cache)
+            val result = d.downloadTrack(
+                videoId = "vid",
+                title = "Runaway",
+                artist = "AURORA",
+                quality = StreamQuality.HIGH,
+            ) { _, _ -> ResolvedStream("https://ejemplo.invalid/audio", 140) }
+            assertTrue(result.isFailure)
+            val outDir = File(dir, "AuroraPlayer")
+            val written = outDir.listFiles().orEmpty()
+            assertEquals(1, written.size)
+            assertEquals("AURORA - Runaway.webm", written[0].name)
+            assertEquals("audio", written[0].readText())
+            dir.deleteRecursively()
+            cacheDir.deleteRecursively()
         }
-        val context = mock(Context::class.java)
-        Mockito.`when`(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS))
-            .thenReturn(dir)
-        val cache = mock(StreamCacheStore::class.java)
-        Mockito.`when`(cache.cachedFile("vid", StreamQuality.HIGH)).thenReturn(cacheFile)
-        val d = TrackDownloader(context, cache)
-        val result = d.downloadTrack(
-            videoId = "vid",
-            title = "Runaway",
-            artist = "AURORA",
-            quality = StreamQuality.HIGH,
-        ) { _, _ -> ResolvedStream("https://ejemplo.invalid/audio", 140) }
-        assertTrue(result.isFailure)
-        val outDir = File(dir, "AuroraPlayer")
-        val written = outDir.listFiles().orEmpty()
-        assertEquals(1, written.size)
-        assertEquals("AURORA - Runaway.webm", written[0].name)
-        assertEquals("audio", written[0].readText())
-        dir.deleteRecursively()
-        cacheDir.deleteRecursively()
     }
 }
