@@ -65,6 +65,12 @@ suspend fun fetchCaptions(baseUrl: String): List<LrcLine> = withContext(Dispatch
                 "User-Agent",
                 "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36",
             )
+            // RONDA CAZA 2026-11-13 (P2): sin comprobar el código, una
+            // respuesta de error (404/500) se leía como si fueran
+            // subtítulos y se parseaba basura.
+            if (conn.responseCode != java.net.HttpURLConnection.HTTP_OK) {
+                return@withContext emptyList()
+            }
             val text = conn.inputStream.bufferedReader().use { it.readText() }
             parseTimedText(text)
         } finally {
