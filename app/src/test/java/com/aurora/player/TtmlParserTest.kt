@@ -60,6 +60,12 @@ class TtmlParserTest {
     fun `entidades xml se desescapan`() {
         val ttml = "<tt><body><div><p begin=\"1.0\">Rock &amp; roll &lt;3</p></div></body></tt>"
         val lines = TtmlParser.parse(ttml)
+        // RONDA 2 (2026-11-13, P2): el test solo comprobaba el
+        // texto; ahora también que el begin se parseó (1000 ms).
+        // (Verificado por od: el fixture ya trae comillas normales,
+        // sin barras literales — el aviso del auditor era un
+        // artefacto del escape JSON del informe.)
+        assertEquals(1_000L, lines[0].timeMs)
         assertEquals("Rock & roll <3", lines[0].text)
     }
 
