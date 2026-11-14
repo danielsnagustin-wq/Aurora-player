@@ -37,6 +37,11 @@ object JsonParser {
     }
 
     private class Parser(private val text: String) {
+        // RONDA CAZA 2026-11-13 (P2): gramática JSON de número
+        // (sin ceros a la izquierda, sin puntos ni exponentes
+        // sueltos). El escáner tragaba cualquier combinación de
+        // dígitos y ".eE+-" ("1.2.3") y el fallo mataba todo el parse.
+        private val numberRegex = Regex("^-?(0|[1-9][0-9]*)(\\.[0-9]+)?([eE][+-]?[0-9]+)?$")
         private var pos = 0
 
         fun atEnd(): Boolean = pos >= text.length
@@ -172,7 +177,15 @@ object JsonParser {
             if (pos < text.length && text[pos] == '-') pos++
             while (pos < text.length && (text[pos].isDigit() || text[pos] in ".eE+-")) pos++
             val raw = text.substring(start, pos)
-            return JsonValue.Num(raw.toDoubleOrNull() ?: throw JsonParseException("Número inválido '$raw'"))
+            // RONDA CAZA 2026-11-13 (P2): el token debe ser un número
+            // JSON válido y finito; "1.2.3", "1e+" o "1e999" (que
+            // toDoubleOrNull convierte en Infinity) ya no cuelan como
+            // número y el error es claro en el acto.
+            val value = raw.toDoubleOrNull()
+            if (value == null || !value.isFinite() || !numberRegex.matches(raw)) {
+                throw JsonParseException("Número inválido '$raw'")
+            }
+            return JsonValue.Num(value)
         }
     }
 }
