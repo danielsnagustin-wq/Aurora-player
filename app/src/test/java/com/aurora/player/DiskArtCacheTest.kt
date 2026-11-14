@@ -3,6 +3,7 @@ package com.aurora.player
 import com.aurora.player.util.DiskArtCache
 import com.aurora.player.util.DiskArtCache.DiskFile
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -17,6 +18,21 @@ class DiskArtCacheTest {
         assertEquals("123_144.jpg", DiskArtCache.fileName(123, 144))
         assertEquals("123_1024.jpg", DiskArtCache.fileName(123, 1024))
         assertEquals("7_144.jpg", DiskArtCache.fileName(7, 144))
+    }
+
+    @Test
+    fun nombreTemporalUnicoPorEscritura() {
+        // RONDA 2 (2026-11-13, P2): el temporal lleva el nanoTime
+        // para que dos escrituras del mismo álbum no compartan .tmp.
+        assertEquals("123_144.1000.tmp", DiskArtCache.tmpFileName(123, 144, 1000L))
+        assertEquals("7_1024.42.tmp", DiskArtCache.tmpFileName(7, 1024, 42L))
+        assertFalse(
+            DiskArtCache.tmpFileName(123, 144, 1L) ==
+                DiskArtCache.tmpFileName(123, 144, 2L),
+        )
+        val live = DiskArtCache.tmpFileName(123, 144)
+        assertTrue(live.startsWith("123_144."))
+        assertTrue(live.endsWith(".tmp"))
     }
 
     @Test
