@@ -1,5 +1,6 @@
 package com.aurora.player.util
 
+import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -200,9 +201,31 @@ object BackupManager {
         )
     }
 
+    /**
+     * RONDA 2 (2026-11-13, P1, n=894): borra el archivo a medias de
+     * una exportación fallida o cancelada (MediaStore/SAF por
+     * content://, archivo directo por file://). Nunca lanza.
+     */
+    private fun deleteCreatedBackupUri(context: Context, uri: Uri?) {
+        if (uri == null) return
+        runCatching {
+            if (uri.scheme == ContentResolver.SCHEME_FILE) {
+                uri.path?.let { File(it).delete() }
+            } else {
+                context.contentResolver.delete(uri, null, null)
+            }
+        }
+    }
+
     /** Escribe el respaldo en Descargas. Devuelve dónde quedó. */
     suspend fun exportBackup(context: Context, data: BackupData): Result<ExportResult> =
         withContext(Dispatchers.IO) {
+            // RONDA 2 (2026-11-13, P1, n=894): el Uri creado se
+            // borra si la escritura falla (nada de huérfanos vacíos
+            // en Descargas); a null en cuanto la escritura termina,
+            // para no borrar un respaldo completo si falla solo el
+            // registro del nombre.
+            var createdUri: Uri? = null
             try {
                 val fileName = backupFileName(data.createdAtMs)
                 val text = data.toJsonString()
@@ -215,9 +238,11 @@ object BackupManager {
                     val uri = context.contentResolver.insert(
                         MediaStore.Downloads.EXTERNAL_CONTENT_URI, values,
                     ) ?: throw IllegalStateException("No se pudo crear el archivo")
+                    createdUri = uri
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(text.toByteArray(Charsets.UTF_8))
                     } ?: throw IllegalStateException("No se pudo escribir el archivo")
+                    createdUri = null
                     ExportResult(uri, fileName, "Descargas/AuroraPlayer/$fileName")
                 } else {
                     val dir = File(
@@ -225,7 +250,9 @@ object BackupManager {
                         "AuroraPlayer",
                     ).apply { mkdirs() }
                     val file = File(dir, fileName)
+                    createdUri = Uri.fromFile(file)
                     file.writeText(text, Charsets.UTF_8)
+                    createdUri = null
                     ExportResult(Uri.fromFile(file), fileName, "AuroraPlayer/$fileName")
                 }
                 context.backupDataStore.edit { prefs ->
@@ -236,8 +263,10 @@ object BackupManager {
                 // A5-1 (auditoría 2026-11-12): el .edit de arriba es
                 // suspend; el runCatching anterior tragaba la
                 // cancelación y la dejaba como fallo de exportación.
+                deleteCreatedBackupUri(context, createdUri)
                 throw e
             } catch (e: Exception) {
+                deleteCreatedBackupUri(context, createdUri)
                 ErrorLog.log(context, "Exportar respaldo", e)
                 Result.failure(e)
             }
@@ -256,15 +285,20 @@ object BackupManager {
         folderUri: Uri,
     ): Result<ExportResult> =
         withContext(Dispatchers.IO) {
+            // RONDA 2 (2026-11-13, P1, n=894): como en exportBackup:
+            // el documento creado se borra si la escritura falla.
+            var createdUri: Uri? = null
             try {
                 val fileName = backupFileName(data.createdAtMs)
                 val text = data.toJsonString()
                 val docUri = android.provider.DocumentsContract.createDocument(
                     context.contentResolver, folderUri, "application/json", fileName,
                 ) ?: throw IllegalStateException("No se pudo crear el archivo en la carpeta")
+                createdUri = docUri
                 context.contentResolver.openOutputStream(docUri)?.use { out ->
                     out.write(text.toByteArray(Charsets.UTF_8))
                 } ?: throw IllegalStateException("No se pudo escribir el archivo")
+                createdUri = null
                 context.backupDataStore.edit { prefs ->
                     prefs[Keys.LAST_NAME] = fileName
                 }
@@ -275,8 +309,10 @@ object BackupManager {
                 // A5-2 (auditoría 2026-11-12): el .edit de arriba es
                 // suspend; el runCatching anterior tragaba la
                 // cancelación y la dejaba como fallo de exportación.
+                deleteCreatedBackupUri(context, createdUri)
                 throw e
             } catch (e: Exception) {
+                deleteCreatedBackupUri(context, createdUri)
                 ErrorLog.log(context, "Exportar respaldo a carpeta", e)
                 Result.failure(e)
             }
