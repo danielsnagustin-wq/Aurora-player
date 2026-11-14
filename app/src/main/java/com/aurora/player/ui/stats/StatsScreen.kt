@@ -242,7 +242,7 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
     // RONDA 7 P3: Tu año.
     var showYear by rememberSaveable { mutableStateOf(false) }
     // Fase 1b: exportar estadísticas a CSV.
-    var exportMessage by remember { mutableStateOf<String?>(null) }
+    var exportMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val data = stats
     // RONDA CAZA 2026-11-13 (P0): "Tu año" iba como item dentro de la
