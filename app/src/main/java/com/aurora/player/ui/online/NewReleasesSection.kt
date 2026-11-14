@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
@@ -95,10 +96,15 @@ fun NewReleasesSection(
             return@Column
         }
         LazyRow(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            items(
+            // RONDA CAZA 2026-11-13 (P1): la clave era
+            // "Spotify:<título>" cuando browseId y trackId son nulos:
+            // dos álbumes con el mismo título tumbaban la pestaña
+            // Online (key already used). El índice la hace única
+            // siempre; la lista se recrea entera en cada refresco.
+            itemsIndexed(
                 items,
-                key = { "${it.source}:${it.browseId ?: it.trackId?.toString() ?: it.title}" },
-            ) { item ->
+                key = { index, it -> "$index:${it.source}:${it.browseId ?: it.trackId?.toString() ?: it.title}" },
+            ) { _, item ->
                 ReleaseCard(item = item, onClick = { onOpenRelease(item) })
             }
         }
