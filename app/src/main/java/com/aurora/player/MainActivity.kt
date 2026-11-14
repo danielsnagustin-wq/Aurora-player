@@ -1270,6 +1270,10 @@ private fun AuroraApp(
             artist = meta.artist?.toString() ?: "",
             durationMs = c.duration.takeIf { it > 0 } ?: 0L,
             coverUrl = meta.artworkUri?.toString(),
+            // RONDA 2 (2026-11-13, P2): si el receptor rechaza la
+            // carga, el audio local vuelve a sonar en vez de
+            // quedarse en silencio (el teléfono ya se pausó).
+            onLoadFailed = { c.play() },
         )
         if (sent) c.pause()
     }
@@ -2126,6 +2130,9 @@ private fun AuroraApp(
                     artist = track.artist,
                     durationMs = (track.durationSec ?: 0L) * 1000L,
                     coverUrl = track.thumbnailUrl,
+                    // RONDA 2 (2026-11-13, P2): si el receptor
+                    // rechaza la carga, suena en el teléfono.
+                    onLoadFailed = { c.play() },
                 )
             } else {
                 c.play()
