@@ -48,13 +48,18 @@ object BugReport {
     fun sanitize(text: String): String {
         var out = text
         // Rutas absolutas Unix/Android y Windows -> <ruta>
-        out = out.replace(Regex("/[A-Za-z0-9_\\-.]+(/[A-Za-z0-9_\\-. ]+)+"), "<ruta>")
+        // RONDA 2 (2026-11-13, P2): las clases eran solo ASCII —
+        // una ruta con acentos (/Música/José Pérez - Canción.mp3)
+        // se cortaba en la primera letra no ASCII y dejaba
+        // fragmentos ("úsica/José Pérez - Canció") en el reporte.
+        // \p{L} cubre cualquier letra Unicode.
+        out = out.replace(Regex("/[A-Za-z0-9_\\p{L}\\-.]+(/[A-Za-z0-9_\\p{L}\\-. ]+)+"), "<ruta>")
         out = out.replace(Regex("[A-Za-z]:\\\\[^\\s\"']+"), "<ruta>")
         out = out.replace(Regex("content://[^\\s\"']+"), "<ruta>")
         out = out.replace(Regex("file://[^\\s\"']+"), "<ruta>")
         // Nombres de archivo de audio / letra / lista -> <archivo>
         out = out.replace(
-            Regex("[A-Za-z0-9_\\- .()\\[\\]]+\\.(mp3|flac|wav|m4a|aac|ogg|opus|mka|alac|lrc|ttml|srt|m3u|xspf|wpl|pls|jpg|jpeg|png)", RegexOption.IGNORE_CASE),
+            Regex("[A-Za-z0-9_\\p{L}\\- .()\\[\\]]+\\.(mp3|flac|wav|m4a|aac|ogg|opus|mka|alac|lrc|ttml|srt|m3u|xspf|wpl|pls|jpg|jpeg|png)", RegexOption.IGNORE_CASE),
             "<archivo>",
         )
         // Tokens y credenciales -> <token> (valor incluido, no solo la clave)
