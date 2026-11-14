@@ -249,25 +249,25 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                 }
             }
             when (sort) {
-                LibrarySort.TITLE -> songs.sortedBy { it.title.lowercase() }
+                LibrarySort.TITLE -> songs.sortedBy { it.title.lowercase(Locale.ROOT) }
                 LibrarySort.ARTIST -> songs.sortedWith(
-                    compareBy({ it.artist.lowercase() }, { it.title.lowercase() }),
+                    compareBy({ it.artist.lowercase(Locale.ROOT) }, { it.title.lowercase(Locale.ROOT) }),
                 )
                 LibrarySort.ALBUM -> songs.sortedWith(
-                    compareBy({ it.album.lowercase() }, { it.title.lowercase() }),
+                    compareBy({ it.album.lowercase(Locale.ROOT) }, { it.title.lowercase(Locale.ROOT) }),
                 )
                 LibrarySort.DATE_ADDED -> songs.sortedByDescending { it.dateAdded }
                 LibrarySort.DURATION -> songs.sortedByDescending { it.durationMs }
                 // Idea open source (Auxio/Gramophone): ordenar por ruta
                 // o nombre de archivo, útil con carpetas organizadas.
-                LibrarySort.PATH -> songs.sortedBy { it.path.lowercase() }
+                LibrarySort.PATH -> songs.sortedBy { it.path.lowercase(Locale.ROOT) }
             }
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val favoriteSongs: StateFlow<List<Song>> =
         combine(_uiState, _favoriteIds) { state, favs ->
             val songs = (state as? LibraryUiState.Loaded)?.songs ?: emptyList()
-            songs.filter { it.id in favs }.sortedBy { it.title.lowercase() }
+            songs.filter { it.id in favs }.sortedBy { it.title.lowercase(Locale.ROOT) }
         }.flowOn(Dispatchers.Default).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private var hasPermission = false
@@ -320,7 +320,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
                         .groupingBy { it }.eachCount()
                         .map { (path, count) ->
                             FolderEntry(path, path.substringAfterLast('/'), count)
-                        }.sortedBy { it.name.lowercase() }
+                        }.sortedBy { it.name.lowercase(Locale.ROOT) }
                     _scanFolders.value = folders
                     _scanStats.value = ScanStats(
                         totalScanned = rawSongs.size,
