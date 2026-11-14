@@ -26,6 +26,34 @@ class LyricsTranslatorTest {
     }
 
     @Test
+    fun chunkLines_cortaPorTamanoSinPartirLineas() {
+        // RONDA 2 (2026-11-13, P2): pin de P2#17 — translateLines
+        // traduce en trozos de <= 2000 caracteres unidos; chunkLines
+        // es pura y nunca parte una línea por la mitad.
+        assertEquals(
+            listOf(listOf("a", "b"), listOf("c")),
+            LyricsTranslator.chunkLines(listOf("a", "b", "c"), maxChars = 3),
+        )
+        // Cabe justo (2 + 1 + 2 = 5): no se corta.
+        assertEquals(
+            listOf(listOf("ab", "cd")),
+            LyricsTranslator.chunkLines(listOf("ab", "cd"), maxChars = 5),
+        )
+        // Un carácter más y se corta.
+        assertEquals(
+            listOf(listOf("ab"), listOf("cde")),
+            LyricsTranslator.chunkLines(listOf("ab", "cde"), maxChars = 5),
+        )
+        // Una línea sola más larga que el tope va sola, sin partirse.
+        val larga = "x".repeat(10)
+        assertEquals(
+            listOf(listOf(larga), listOf("y")),
+            LyricsTranslator.chunkLines(listOf(larga, "y"), maxChars = 5),
+        )
+        assertEquals(emptyList<List<String>>(), LyricsTranslator.chunkLines(emptyList()))
+    }
+
+    @Test
     fun respuestaRotaEsNull() {
         assertNull(LyricsTranslator.parseGtxResponse("esto no es json"))
         assertNull(LyricsTranslator.parseGtxResponse("[]"))
