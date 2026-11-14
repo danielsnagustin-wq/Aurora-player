@@ -12,7 +12,11 @@ sealed interface JsonValue {
     data class Obj(val map: Map<String, JsonValue>) : JsonValue
     data class Arr(val items: List<JsonValue>) : JsonValue
     data class Str(val value: String) : JsonValue
-    data class Num(val value: Double) : JsonValue
+    // RONDA 2 (2026-11-13, P2): un Double solo guarda enteros
+    // exactos hasta 2^53; el texto original del número se conserva
+    // para que .long() lea los enteros grandes (ids de 64 bits)
+    // exactos. El valor por defecto mantiene Num(123.0) compilando.
+    data class Num(val value: Double, val raw: String? = null) : JsonValue
     data class Bool(val value: Boolean) : JsonValue
     data object Null : JsonValue
 }
@@ -23,7 +27,11 @@ class JsonParseException(message: String) : Exception(message)
 fun JsonValue?.obj(key: String): JsonValue? = (this as? JsonValue.Obj)?.map?.get(key)
 fun JsonValue?.arr(): List<JsonValue>? = (this as? JsonValue.Arr)?.items
 fun JsonValue?.str(): String? = (this as? JsonValue.Str)?.value
-fun JsonValue?.long(): Long? = (this as? JsonValue.Num)?.value?.toLong()
+fun JsonValue?.long(): Long? {
+    val num = this as? JsonValue.Num ?: return null
+    num.raw?.toLongOrNull()?.let { return it }
+    return num.value.toLong()
+}
 fun JsonValue?.double(): Double? = (this as? JsonValue.Num)?.value
 fun JsonValue?.bool(): Boolean? = (this as? JsonValue.Bool)?.value
 
@@ -185,7 +193,7 @@ object JsonParser {
             if (value == null || !value.isFinite() || !numberRegex.matches(raw)) {
                 throw JsonParseException("Número inválido '$raw'")
             }
-            return JsonValue.Num(value)
+            return JsonValue.Num(value, raw)
         }
     }
 }
