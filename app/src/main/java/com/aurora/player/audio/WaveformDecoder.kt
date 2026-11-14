@@ -5,7 +5,9 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -59,12 +61,22 @@ suspend fun measureWaveform(
 
         val mono = ArrayList<Float>(300_000)
         // Un sample de cada `stride`: ~1 kHz efectiva.
-        val stride = (sampleRate / 1000).coerceAtLeast(1)
+        // RONDA 2 (2026-11-13, P1, n=903): la tasa y la codificación
+        // PCM son las del formato de SALIDA y pueden cambiar: se
+        // actualizan en INFO_OUTPUT_FORMAT_CHANGED (como el LUFS,
+        // ronda 9). Antes todo se leía como 16-bit y con un
+        // decodificador que entrega float la onda salía basura.
+        var stride = (sampleRate / 1000).coerceAtLeast(1)
+        var outEncoding = 2 // ENCODING_PCM_16BIT
         var sampleCounter = 0
         val bufferInfo = MediaCodec.BufferInfo()
         var inputEos = false
         var outputEos = false
         while (!outputEos) {
+            // RONDA 2 (n=903): como el LUFS (n=902), el bucle no
+            // tiene puntos de suspensión: sin esto, cancelar la
+            // medida no la paraba nunca.
+            ensureActive()
             if (!inputEos) {
                 val inIndex = codec.dequeueInputBuffer(10_000)
                 if (inIndex >= 0) {
@@ -92,28 +104,88 @@ suspend fun measureWaveform(
                     val bytes = ByteArray(bufferInfo.size)
                     outBuffer.position(bufferInfo.offset)
                     outBuffer.get(bytes)
-                    val shorts = ByteBuffer.wrap(bytes)
-                        .order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
-                    val frameCount = bytes.size / 2 / channelCount
-                    for (f in 0 until frameCount) {
-                        var sum = 0f
-                        for (ch in 0 until channelCount) {
-                            sum += shorts[f * channelCount + ch] / 32768f
+                    // Codificaciones (literales de AudioFormat, igual
+                    // que el LUFS): 2 = PCM 16-bit, 4 = PCM float,
+                    // 21 = PCM 24-bit empaquetado. Cualquier otra se
+                    // salta: mejor un hueco en la onda que basura.
+                    when (outEncoding) {
+                        2 -> {
+                            val shorts = ByteBuffer.wrap(bytes)
+                                .order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+                            val frameCount = bytes.size / 2 / channelCount
+                            for (f in 0 until frameCount) {
+                                var sum = 0f
+                                for (ch in 0 until channelCount) {
+                                    sum += shorts[f * channelCount + ch] / 32768f
+                                }
+                                if (sampleCounter % stride == 0) {
+                                    mono.add(sum / channelCount)
+                                }
+                                sampleCounter++
+                            }
                         }
-                        if (sampleCounter % stride == 0) {
-                            mono.add(sum / channelCount)
+                        4 -> {
+                            val floats = ByteBuffer.wrap(bytes)
+                                .order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+                            val frameCount = bytes.size / 4 / channelCount
+                            for (f in 0 until frameCount) {
+                                var sum = 0f
+                                for (ch in 0 until channelCount) {
+                                    sum += floats[f * channelCount + ch]
+                                }
+                                if (sampleCounter % stride == 0) {
+                                    mono.add(sum / channelCount)
+                                }
+                                sampleCounter++
+                            }
                         }
-                        sampleCounter++
+                        21 -> {
+                            val frameCount = bytes.size / 3 / channelCount
+                            for (f in 0 until frameCount) {
+                                var sum = 0f
+                                for (ch in 0 until channelCount) {
+                                    val o = (f * channelCount + ch) * 3
+                                    // El byte alto ya viene con signo
+                                    // (toInt() lo extiende): el OR deja
+                                    // el valor de 24 bits con su signo
+                                    // en 32 bits, sin arreglo manual.
+                                    val v = (bytes[o].toInt() and 0xFF) or
+                                        ((bytes[o + 1].toInt() and 0xFF) shl 8) or
+                                        (bytes[o + 2].toInt() shl 16)
+                                    sum += v / 8388608f
+                                }
+                                if (sampleCounter % stride == 0) {
+                                    mono.add(sum / channelCount)
+                                }
+                                sampleCounter++
+                            }
+                        }
                     }
                 }
                 codec.releaseOutputBuffer(outIndex, false)
                 if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
                     outputEos = true
                 }
+            } else if (outIndex == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                try {
+                    val outFormat = codec.outputFormat
+                    if (outFormat.containsKey(MediaFormat.KEY_SAMPLE_RATE)) {
+                        val rate = outFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                        if (rate > 0) stride = (rate / 1000).coerceAtLeast(1)
+                    }
+                    if (outFormat.containsKey(MediaFormat.KEY_PCM_ENCODING)) {
+                        outEncoding = outFormat.getInteger(MediaFormat.KEY_PCM_ENCODING)
+                    }
+                } catch (_: Exception) {
+                }
             }
         }
         if (mono.isEmpty()) return@withContext null
         waveformPeaks(mono.toFloatArray(), columns)
+    } catch (e: CancellationException) {
+        // RONDA 2 (2026-11-13, P1, n=903): como el LUFS (n=902), la
+        // cancelación se relanza, no se traga como "sin onda".
+        throw e
     } catch (_: Exception) {
         null
     } finally {
