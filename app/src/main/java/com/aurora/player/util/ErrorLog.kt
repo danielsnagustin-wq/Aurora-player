@@ -27,6 +27,10 @@ object ErrorLog {
     // (recortar mientras el otro añade) y perder entradas o dejar el
     // archivo por encima del tope. Todo el ciclo recortar→añadir→
     // recortar va bajo un solo candado.
+    // RONDA 2 (2026-11-13, P2): leer (readAll/hasEntries) y borrar
+    // (clear) también van bajo el mismo candado: sin él, una lectura
+    // a medias de una escritura, o un borrado mientras se añade,
+    // dejaban el archivo a medias o resucitaban un registro borrado.
     private val lock = Any()
 
     fun file(context: Context): File = File(context.cacheDir, FILE_NAME)
@@ -36,8 +40,17 @@ object ErrorLog {
         var guard = 0
         while (f.exists() && f.length() > MAX_BYTES && guard < 10) {
             val lines = f.readLines()
-            if (lines.size <= 1) break
-            f.writeText(lines.drop(lines.size / 2).joinToString("\n"))
+            if (lines.size <= 1) {
+                // RONDA 2 (2026-11-13, P2): una sola línea gigante
+                // (un mensaje enorme sin saltos) nunca se recortaba:
+                // el archivo crecía sin tope. Se queda la segunda
+                // mitad del texto.
+                val text = f.readText()
+                if (text.length <= 1) break
+                f.writeText(text.drop(text.length / 2))
+            } else {
+                f.writeText(lines.drop(lines.size / 2).joinToString("\n"))
+            }
             guard++
         }
     }
@@ -82,8 +95,10 @@ object ErrorLog {
 
     fun hasEntries(context: Context): Boolean {
         return try {
-            val f = file(context)
-            f.exists() && f.length() > 0
+            synchronized(lock) {
+                val f = file(context)
+                f.exists() && f.length() > 0
+            }
         } catch (_: Exception) {
             false
         }
@@ -91,8 +106,10 @@ object ErrorLog {
 
     fun readAll(context: Context): String {
         return try {
-            val f = file(context)
-            if (f.exists()) f.readText() else ""
+            synchronized(lock) {
+                val f = file(context)
+                if (f.exists()) f.readText() else ""
+            }
         } catch (_: Exception) {
             ""
         }
@@ -100,7 +117,9 @@ object ErrorLog {
 
     fun clear(context: Context) {
         try {
-            file(context).delete()
+            synchronized(lock) {
+                file(context).delete()
+            }
         } catch (_: Exception) {
             // Nada que borrar.
         }
