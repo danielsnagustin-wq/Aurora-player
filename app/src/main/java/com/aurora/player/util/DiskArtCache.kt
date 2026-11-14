@@ -58,6 +58,17 @@ object DiskArtCache {
     /** Nombre de archivo puro y testeable. */
     fun fileName(albumId: Long, sizePx: Int): String = "${albumId}_$sizePx.jpg"
 
+    /**
+     * RONDA 2 (2026-11-13, P2): nombre del temporal de escritura,
+     * extraído como función pura y testeable. Es único por escritura
+     * (nanoTime): dos escrituras concurrentes del mismo álbum no
+     * comparten .tmp (el JPEG roto envenenaba la caché, RONDA CAZA
+     * 2026-11-13 P1). El parámetro con defecto mantiene la llamada
+     * de write() sin cambios.
+     */
+    internal fun tmpFileName(albumId: Long, sizePx: Int, nanoTime: Long = System.nanoTime()): String =
+        fileName(albumId, sizePx) + "." + nanoTime + ".tmp"
+
     /** Caché de la app (cacheDir): el sistema estándar de los reproductores. */
     fun dir(context: Context): File = File(context.cacheDir, DIR_NAME)
 
@@ -103,7 +114,7 @@ object DiskArtCache {
                 // a destino y quedaba envenenado hasta borrar la
                 // caché. Nombre único por escritura; el renameTo final
                 // es atómico y el contenido es el mismo en ambos.
-                val tmp = File(directory, fileName(albumId, sizePx) + "." + System.nanoTime() + ".tmp")
+                val tmp = File(directory, tmpFileName(albumId, sizePx))
                 FileOutputStream(tmp).use { out ->
                     if (!soft.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)) {
                         tmp.delete()
