@@ -2286,6 +2286,16 @@ private fun AuroraApp(
                     if (url != null) pairs += track to url
                 }
                 if (pairs.isEmpty()) {
+                    // RONDA 2 (2026-11-13, P1, n=920): la caída a
+                    // refillRadio era SILENCIOSA: con la radio online
+                    // muerta el usuario veía cambiar la cola sin saber
+                    // por qué. Si YouTube no respondió (watch == null,
+                    // n=919), se avisa; si respondió pero no trae
+                    // radio, la caída sigue silenciosa (es el
+                    // comportamiento de siempre).
+                    if (watch == null) {
+                        Toast.makeText(context, "Sin conexión o YouTube no respondió", Toast.LENGTH_SHORT).show()
+                    }
                     radioBusy = false
                     handedOff = true
                     refillRadio()
