@@ -48,36 +48,36 @@ object BugReport {
     fun sanitize(text: String): String {
         var out = text
         // Rutas absolutas Unix/Android y Windows -> <ruta>
-        out = out.replace(Regex("/[A-Za-z0-9_\-.]+(/[A-Za-z0-9_\-. ]+)+"), "<ruta>")
-        out = out.replace(Regex("[A-Za-z]:\\[^\s\"']+"), "<ruta>")
-        out = out.replace(Regex("content://[^\s\"']+"), "<ruta>")
-        out = out.replace(Regex("file://[^\s\"']+"), "<ruta>")
+        out = out.replace(Regex("/[A-Za-z0-9_\\-.]+(/[A-Za-z0-9_\\-. ]+)+"), "<ruta>")
+        out = out.replace(Regex("[A-Za-z]:\\\\[^\\s\"']+"), "<ruta>")
+        out = out.replace(Regex("content://[^\\s\"']+"), "<ruta>")
+        out = out.replace(Regex("file://[^\\s\"']+"), "<ruta>")
         // Nombres de archivo de audio / letra / lista -> <archivo>
         out = out.replace(
-            Regex("[A-Za-z0-9_\- .()\[\]]+\.(mp3|flac|wav|m4a|aac|ogg|opus|mka|alac|lrc|ttml|srt|m3u|xspf|wpl|pls|jpg|jpeg|png)", RegexOption.IGNORE_CASE),
+            Regex("[A-Za-z0-9_\\- .()\\[\\]]+\\.(mp3|flac|wav|m4a|aac|ogg|opus|mka|alac|lrc|ttml|srt|m3u|xspf|wpl|pls|jpg|jpeg|png)", RegexOption.IGNORE_CASE),
             "<archivo>",
         )
         // Tokens y credenciales -> <token> (valor incluido, no solo la clave)
-        out = out.replace(Regex("(?i)(bearer\s+)[A-Za-z0-9_\-.~+/=]+"), "$1<token>")
+        out = out.replace(Regex("(?i)(bearer\\s+)[A-Za-z0-9_\\-.~+/=]+"), "$1<token>")
         // RONDA 2 (2026-11-13, P1): en JSON la clave va entrecomillada
         // ("sp_dc": "abc") y la comilla bloqueaba el match: el token
         // salía intacto en el reporte. La comilla es opcional a ambos
         // lados de la clave y antes/después del valor.
-        out = out.replace(Regex("(?i)\"?(access_token|refresh_token|id_token|api_key|apikey|client_secret|client_id)\"?\s*[:=]\s*\"?[^\s\"',;]+\"?"), "$1=<token>")
-        out = out.replace(Regex("ya29\.[A-Za-z0-9_\-]+"), "<token>")
+        out = out.replace(Regex("(?i)\"?(access_token|refresh_token|id_token|api_key|apikey|client_secret|client_id)\"?\\s*[:=]\\s*\"?[^\\s\"',;]+\"?"), "$1=<token>")
+        out = out.replace(Regex("ya29\\.[A-Za-z0-9_\\-]+"), "<token>")
         // Sesiones propias de la app (YouTube Music / Spotify /
         // SoundCloud): SAPISID, sp_dc, oauth_token y cabeceras Cookie:
         // completas. Antes un reporte de error podía llevar la sesión
         // entera dentro del mensaje de una excepción.
-        out = out.replace(Regex("(?i)\"?(SAPISIDHASH|SAPISID|sp_dc|oauth_token|__Secure-[A-Za-z0-9_-]+)\"?\s*[:=]\s*\"?[^\s\"',;]+\"?"), "$1=<token>")
-        out = out.replace(Regex("(?i)\"?Cookie\"?\s*:\s*\"?[^\n\"]+\"?"), "Cookie: <token>")
+        out = out.replace(Regex("(?i)\"?(SAPISIDHASH|SAPISID|sp_dc|oauth_token|__Secure-[A-Za-z0-9_-]+)\"?\\s*[:=]\\s*\"?[^\\s\"',;]+\"?"), "$1=<token>")
+        out = out.replace(Regex("(?i)\"?Cookie\"?\\s*:\\s*\"?[^\\n\"]+\"?"), "Cookie: <token>")
         // Emails -> <email>
-        out = out.replace(Regex("[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "<email>")
+        out = out.replace(Regex("[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}"), "<email>")
         // Nombre personal del desarrollador original del launcher (nunca
         // debe aparecer: el package neutro es com.aurora.player).
         out = out.replace("danielsnagustin", "<usuario>", ignoreCase = true)
         // Identificadores de dispositivo habituales -> <id>
-        out = out.replace(Regex("(?i)\"?(android_id|serial|imei|device_id)\"?\s*[:=]\s*\"?[^\s\"',;]+\"?"), "$1=<id>")
+        out = out.replace(Regex("(?i)\"?(android_id|serial|imei|device_id)\"?\\s*[:=]\\s*\"?[^\\s\"',;]+\"?"), "$1=<id>")
         return out
     }
 }
