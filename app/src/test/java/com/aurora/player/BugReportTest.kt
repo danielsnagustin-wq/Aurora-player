@@ -23,6 +23,7 @@ class BugReportTest {
             at com.aurora.player.playback.PlaybackService.play(PlaybackService.kt:42)
             at /storage/emulated/0/Music/Mi Canción Favorita.mp3
             at /storage/emulated/0/Mi Carpeta Secreta/tema.flac
+            at canción suelta.mp3
             at content://media/external/audio/media/123
             Caused by: token ya29.AHES6ZRnXyZ9kQwerty1234567890
             Authorization: Bearer abcdef1234567890
@@ -31,6 +32,11 @@ class BugReportTest {
             android_id=abcdef1234567890
     """.trimIndent()
 
+    // RONDA 2 (2026-11-14, P2#27-fix): la línea "canción suelta.mp3"
+    // del fixture es un nombre SUELTO, sin ruta. Con \p{L} la regex
+    // de rutas se traga TAMBIÉN el nombre dentro de una ruta (todo
+    // -> <ruta>), así que sin esta línea el assert de <archivo> no
+    // tendría nada que probar: el run 43598929079 falló justo ahí.
     @Test
     fun `el reporte no contiene rutas ni nombres de archivos`() {
         val report = BugReport.buildReport("0.1.0", "14", "RuntimeException", dirtyStackTrace)
@@ -62,6 +68,48 @@ class BugReportTest {
         assertTrue(report.contains("Android: 14"))
         assertTrue(report.contains("RuntimeException"))
         assertTrue(report.contains("PlaybackService"))
+    }
+
+    @Test
+    fun `rutas con acentos no dejan fragmentos`() {
+        // RONDA 2 (2026-11-13, P2): las regex eran solo ASCII y el
+        // reporte dejaba trozos ("úsica/José Pérez - Canció",
+        // "canció"). Ahora no queda ni una letra de la ruta.
+        val report = BugReport.buildReport(
+            "0.1.0", "14", "RuntimeException",
+            "fallo en /storage/emulated/0/Música/José Pérez - Canción.mp3",
+        )
+        assertFalse(report.contains("Música"))
+        assertFalse(report.contains("José"))
+        assertFalse(report.contains("Canción"))
+        assertFalse(report.contains("Pérez"))
+        assertFalse(report.contains("canción"))
+        assertFalse(report.contains("Canció"))
+        assertTrue(report.contains("<ruta>"))
+        val out = BugReport.sanitize("fallo al leer Álbum de Björk.flac y canción.mp3")
+        assertFalse(out.contains("Björk"))
+        assertFalse(out.contains("canción"))
+        assertFalse(out.contains("Álbum"))
+        assertTrue(out.contains("<archivo>"))
+    }
+
+    @Test
+    fun `sesiones de YouTube y Spotify no salen en el reporte`() {
+        // RONDA 2 (2026-11-13, P2): pin de n=847 — las sesiones
+        // (SAPISIDHASH, sp_dc, oauth_token, Cookie) salían intactas
+        // en el reporte cuando venían entrecomilladas en JSON.
+        // El valor no debe aparecer ni en claro ni entre comillas.
+        val out = BugReport.sanitize(
+            "fallo con \"SAPISIDHASH\": \"abc123XYZ\" y " +
+                "\"sp_dc\": \"def456\" y oauth_token=\"ghi789\" " +
+                "y Cookie: SAPISID=zzz111; sp_dc=yyy222",
+        )
+        assertFalse(out.contains("abc123XYZ"))
+        assertFalse(out.contains("def456"))
+        assertFalse(out.contains("ghi789"))
+        assertFalse(out.contains("zzz111"))
+        assertFalse(out.contains("yyy222"))
+        assertTrue(out.contains("<token>"))
     }
 
     @Test
