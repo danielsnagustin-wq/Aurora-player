@@ -14,7 +14,7 @@ const val MAX_THEMES = 20
 
 /**
  * Aurora Player — un tema guardado (SPEC 007, 2026-11-09): nombre +
- * los mismos 21 campos de ThemeSettings. La serialización REUSA la
+ * los mismos 23 campos de ThemeSettings. La serialización REUSA la
  * de BackupData (themeSettingsToJsonValue / FromJsonValue): no hay
  * una segunda copia de la conversión.
  */
