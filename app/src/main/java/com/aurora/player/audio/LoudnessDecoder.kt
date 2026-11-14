@@ -5,7 +5,9 @@ import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.net.Uri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -138,6 +140,11 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
             var inputEos = false
             var outputEos = false
             while (!outputEos) {
+                // RONDA 2 (2026-11-13, P1, n=902): el bucle no tiene
+                // puntos de suspensión (dequeue bloquea hasta 10 s):
+                // sin esto, cancelar la medida no la paraba nunca y
+                // seguía decodificando el archivo entero.
+                ensureActive()
                 if (!inputEos) {
                     val inIndex = codec.dequeueInputBuffer(10_000)
                     if (inIndex >= 0) {
@@ -191,6 +198,13 @@ suspend fun measureFileLufs(context: Context, uri: Uri): Double? =
                 }
             }
             accumulator.finish()
+        } catch (e: CancellationException) {
+            // RONDA 2 (2026-11-13, P1, n=902): la cancelación NO es
+            // un fallo de medida: se relanza para que el trabajo que
+            // la pidió se cancele de verdad (tragarla la convertía
+            // en un "sin LUFS" silencioso y rompía la concurrencia
+            // estructurada).
+            throw e
         } catch (_: Exception) {
             null
         } finally {
