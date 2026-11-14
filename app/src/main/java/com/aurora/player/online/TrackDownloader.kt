@@ -67,19 +67,26 @@ class TrackDownloader(
             val fileName = buildDownloadFileName(artist, title, ext)
             val mime = mimeTypeForItag(actualItag)
 
-            val values = ContentValues().apply {
-                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-                put(MediaStore.Downloads.MIME_TYPE, mime)
-                put(MediaStore.Downloads.RELATIVE_PATH, "Download/AuroraPlayer")
-                // RONDA CAZA 2026-11-13 (P2): sin IS_PENDING, un
-                // fallo a mitad de copia dejaba un archivo parcial
-                // visible en Descargas. IS_PENDING lo esconde hasta
-                // que la copia termina; si algo falla, la entrada se
-                // borra (ver el finally de abajo).
-                put(MediaStore.Downloads.IS_PENDING, 1)
-            }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // RONDA 2 (2026-11-14, P2#46-fix): los ContentValues
+                // SOLO se construyen en la rama Q+, que es la única
+                // que los usa. Antes se construían arriba, antes del
+                // if: en los tests JVM el constructor tira "Stub!" y
+                // la copia pre-Q nunca ocurría (el test del itag de
+                // caché fallaba con 0 archivos escritos). En un
+                // teléfono real no cambia nada; en pre-Q ya no se
+                // crea un objeto que nadie usa.
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, mime)
+                    put(MediaStore.Downloads.RELATIVE_PATH, "Download/AuroraPlayer")
+                    // RONDA CAZA 2026-11-13 (P2): sin IS_PENDING, un
+                    // fallo a mitad de copia dejaba un archivo parcial
+                    // visible en Descargas. IS_PENDING lo esconde hasta
+                    // que la copia termina; si algo falla, la entrada se
+                    // borra (ver el finally de abajo).
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
                 val uri = context.contentResolver.insert(
                     MediaStore.Downloads.EXTERNAL_CONTENT_URI,
                     values,
