@@ -41,7 +41,7 @@ fun classifyOutputRoute(deviceTypes: List<Int>): OutputRoute {
  * modelo comparten EQ, que es lo que se quiere.
  */
 fun routeKey(route: OutputRoute, deviceName: String?): String {
-    if (route != OutputRoute.BLUETOOTH) return route.name.lowercase()
+    if (route != OutputRoute.BLUETOOTH) return route.name.lowercase(Locale.ROOT)
     val clean = (deviceName ?: "")
         // RONDA 170: la clave de EQ por aparato se guarda: con
         // lowercase() sin locale, en turco "IEM" daba
