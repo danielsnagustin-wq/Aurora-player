@@ -49,7 +49,6 @@ import com.aurora.player.online.ChartsResult
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.QuickPick
 import com.aurora.player.online.SpotifyClient
-import com.aurora.player.online.SpotifyUnauthorizedException
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.fetchSoundCloudStream
 import com.aurora.player.online.fetchSoundCloudWebClientId
@@ -60,6 +59,7 @@ import com.aurora.player.util.effectiveStreamQuality
 import com.aurora.player.util.isWifiConnected
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.ResolvedVideo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
@@ -307,19 +307,28 @@ fun OnlineScreen(
                     // devuelve null si YouTube no respondió (antes
                     // lista vacía, indistinguible de "sin estante"):
                     // un null NO tumba los demás lanzamientos.
-                    client.getNewReleases()?.let { yt ->
-                        all += yt.map {
-                            NewReleaseItem(
-                                source = "YouTube",
-                                title = it.title,
-                                artist = it.artist,
-                                dateText = it.year?.toString(),
-                                kind = it.kind,
-                                imageUrl = it.thumbnailUrl,
-                                browseId = it.browseId,
-                                trackId = null,
-                            )
+                    // RONDA 2 (2026-11-13, P2): y si además LANZA
+                    // (red, JSON roto), solo caen los suyos: Spotify
+                    // y SoundCloud cargan igual (antes el catch
+                    // exterior tumbaba todo y no se guardaba nada).
+                    try {
+                        client.getNewReleases()?.let { yt ->
+                            all += yt.map {
+                                NewReleaseItem(
+                                    source = "YouTube",
+                                    title = it.title,
+                                    artist = it.artist,
+                                    dateText = it.year?.toString(),
+                                    kind = it.kind,
+                                    imageUrl = it.thumbnailUrl,
+                                    browseId = it.browseId,
+                                    trackId = null,
+                                )
+                            }
                         }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        // YouTube no respondió: solo caen los suyos.
                     }
                 }
                 if (spotifyConnected && spCookie.isNotBlank()) {
@@ -353,27 +362,38 @@ fun OnlineScreen(
                                 )
                             }
                         }
-                    } catch (_: SpotifyUnauthorizedException) {
-                        // Sesión caducada: la pantalla de Cuenta ya
-                        // avisa; aquí solo se pierden los de Spotify.
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        // Sesión caducada o red: la pantalla de Cuenta
+                        // ya avisa del 401; aquí solo se pierden los
+                        // de Spotify.
                     }
                 }
                 if (scConnected && scToken.isNotBlank()) {
-                    val clientId = fetchSoundCloudWebClientId()
-                    if (clientId != null) {
-                        val stream = fetchSoundCloudStream(clientId, scToken) ?: emptyList()
-                        all += stream.take(10).map {
-                            NewReleaseItem(
-                                source = "SoundCloud",
-                                title = it.title,
-                                artist = it.artist,
-                                dateText = null,
-                                kind = null,
-                                imageUrl = soundCloudArtwork500(it.artworkUrl),
-                                browseId = null,
-                                trackId = it.id,
-                            )
+                    // RONDA 2 (2026-11-13, P2): igual que YouTube:
+                    // si SoundCloud lanza, solo caen los suyos (antes
+                    // el catch exterior perdía también lo ya recogido
+                    // de YouTube y Spotify, que nunca se guardaba).
+                    try {
+                        val clientId = fetchSoundCloudWebClientId()
+                        if (clientId != null) {
+                            val stream = fetchSoundCloudStream(clientId, scToken) ?: emptyList()
+                            all += stream.take(10).map {
+                                NewReleaseItem(
+                                    source = "SoundCloud",
+                                    title = it.title,
+                                    artist = it.artist,
+                                    dateText = null,
+                                    kind = null,
+                                    imageUrl = soundCloudArtwork500(it.artworkUrl),
+                                    browseId = null,
+                                    trackId = it.id,
+                                )
+                            }
                         }
+                    } catch (e: Exception) {
+                        if (e is CancellationException) throw e
+                        // SoundCloud no respondió: solo caen los suyos.
                     }
                 }
                 if (all.isNotEmpty()) {
