@@ -6,6 +6,7 @@ import android.os.Build
 import android.provider.MediaStore
 import com.aurora.player.model.Song
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -23,7 +24,7 @@ fun formatLrcTime(timeMs: Long): String {
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
     val centis = (timeMs.coerceAtLeast(0L) % 1000) / 10
-    return "%02d:%02d.%02d".format(minutes, seconds, centis)
+    return "%02d:%02d.%02d".format(Locale.ROOT, minutes, seconds, centis)
 }
 
 fun lrcLineToText(line: LrcLine): String {
