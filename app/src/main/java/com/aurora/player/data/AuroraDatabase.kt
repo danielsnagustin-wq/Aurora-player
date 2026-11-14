@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Embedded
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
@@ -41,7 +42,15 @@ data class PlaylistSongEntity(
 @Entity(tableName = "favorites", primaryKeys = ["songId"])
 data class FavoriteEntity(val songId: Long, val addedAt: Long = System.currentTimeMillis())
 
-@Entity(tableName = "play_history", primaryKeys = ["songId", "playedAt"])
+@Entity(
+    tableName = "play_history",
+    primaryKeys = ["songId", "playedAt"],
+    // RONDA CAZA 2026-11-13 (P2): la PK (songId, playedAt) ya cubre
+    // las búsquedas por canción, pero las consultas por rango de
+    // tiempo (estadísticas, "Tu año") y la poda ordenan por playedAt
+    // sin índice: escaneo completo de una tabla que crecía sin tope.
+    indices = [Index(value = ["playedAt"])],
+)
 data class PlayHistoryEntity(
     val songId: Long,
     val playedAt: Long,
@@ -226,6 +235,17 @@ interface LibraryDao {
     @Query("UPDATE play_history SET durationListenedMs = :ms WHERE songId = :songId AND playedAt = :playedAt")
     suspend fun updateHistoryDuration(songId: Long, playedAt: Long, ms: Long): Int
 
+    /**
+     * RONDA CAZA 2026-11-13 (P2): el historial crecía sin tope (una
+     * fila por escucha, para siempre). Se conservan las 20.000
+     * escuchas más recientes (más de 2 años escuchando a diario) y
+     * se borra el resto. Se llama tras cada inserción en vivo, nunca
+     * durante la restauración de un respaldo (ahí los datos son del
+     * usuario y no se recortan).
+     */
+    @Query("DELETE FROM play_history WHERE rowid NOT IN (SELECT rowid FROM play_history ORDER BY playedAt DESC LIMIT :keep)")
+    suspend fun pruneHistory(keep: Int = 20_000)
+
     @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")
     suspend fun mostPlayed(): List<PlayCount>
 
@@ -299,12 +319,26 @@ val MIGRATION_1_2: Migration = object : Migration(1, 2) {
     }
 }
 
+/**
+ * RONDA CAZA 2026-11-13 (P2): índice de play_history por playedAt
+ * (lo declara la entidad; la migración lo crea con el nombre exacto
+ * que Room espera, si no la app no abre la base).
+ */
+val MIGRATION_2_3: Migration = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_play_history_playedAt` " +
+                "ON `play_history` (`playedAt`)",
+        )
+    }
+}
+
 @Database(
     entities = [
         PlaylistEntity::class, PlaylistSongEntity::class, FavoriteEntity::class,
         PlayHistoryEntity::class, NamedQueueEntity::class, NamedQueueSongEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AuroraDatabase : RoomDatabase() {
@@ -330,7 +364,7 @@ abstract class AuroraDatabase : RoomDatabase() {
                     context.applicationContext,
                     AuroraDatabase::class.java,
                     "aurora-player.db",
-                ).addMigrations(MIGRATION_1_2).build().also { INSTANCE = it }
+                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build().also { INSTANCE = it }
             }
     }
 }
