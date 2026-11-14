@@ -45,7 +45,9 @@ class BetterLyricsProviderTest {
             """<span begin="00:00:05.120">Hola</span> <span begin="00:00:06.000">mundo</span></p></div></body></tt>"""
         val lyrics = ttmlToOnlineLyrics(ttml)
         assertEquals("[00:05.12]Hola <00:06.00>mundo\n", lyrics?.syncedLrc)
-        assertNull(lyrics?.plainText)
+        // RONDA 2 (2026-11-14, P2#15-fix): plainText ya no es null cuando hay LRC:
+        // es el respaldo con TODAS las líneas (por si el LRC no se pudiera leer).
+        assertEquals("Hola mundo", lyrics?.plainText)
     }
 
     @Test
