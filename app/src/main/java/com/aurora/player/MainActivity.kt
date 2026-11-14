@@ -124,6 +124,7 @@ import com.aurora.player.model.GestureAction
 import com.aurora.player.model.isInExcludedFolder
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.parseGestureAction
+import com.aurora.player.model.performGestureAction
 import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.Song
 import com.aurora.player.model.StreamQuality
@@ -1432,19 +1433,24 @@ private fun AuroraApp(
         if (playerSettings.shakeToNext && c != null && sensorManager != null && accelerometer != null) {
             val shakeAction = parseGestureAction(playerSettings.shakeAction, GestureAction.NEXT)
             val detector = ShakeDetector {
-                when (shakeAction) {
-                    GestureAction.NEXT -> c.seekToNext()
-                    GestureAction.PREVIOUS -> c.seekToPrevious()
-                    GestureAction.PLAY_PAUSE -> if (c.isPlaying) c.pause() else c.play()
-                    GestureAction.FAVORITE -> toggleFavorite()
-                    // Ronda 4: ±10 s; con duración desconocida no se
-                    // recorta (recortar contra 0 llevaría al inicio).
-                    GestureAction.FAST_FORWARD -> {
+                // RONDA 2 (2026-11-13, P2): la acción vive en
+                // performGestureAction (GestureAction.kt): un valor
+                // nuevo del enum sin rama no compila.
+                performGestureAction(
+                    action = shakeAction,
+                    onNext = { c.seekToNext() },
+                    onPrevious = { c.seekToPrevious() },
+                    onPlayPause = { if (c.isPlaying) c.pause() else c.play() },
+                    onToggleFavorite = { toggleFavorite() },
+                    onFastForward = {
+                        // Ronda 4: ±10 s; con duración desconocida no
+                        // se recorta (recortar contra 0 llevaría al
+                        // inicio).
                         val target = c.currentPosition + 10_000L
                         c.seekTo(if (c.duration > 0) target.coerceAtMost(c.duration) else target)
-                    }
-                    GestureAction.REWIND -> c.seekTo((c.currentPosition - 10_000L).coerceAtLeast(0L))
-                    GestureAction.TOGGLE_MUTE -> {
+                    },
+                    onRewind = { c.seekTo((c.currentPosition - 10_000L).coerceAtLeast(0L)) },
+                    onToggleMute = {
                         val am = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                         if (am != null) {
                             val action = if (am.isStreamMute(AudioManager.STREAM_MUSIC)) {
@@ -1454,8 +1460,8 @@ private fun AuroraApp(
                             }
                             am.adjustStreamVolume(AudioManager.STREAM_MUSIC, action, AudioManager.FLAG_SHOW_UI)
                         }
-                    }
-                }
+                    },
+                )
             }
             listener = object : SensorEventListener {
                 override fun onSensorChanged(event: SensorEvent) {
