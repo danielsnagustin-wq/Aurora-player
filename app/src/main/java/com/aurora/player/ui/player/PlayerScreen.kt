@@ -12,6 +12,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -358,6 +359,19 @@ fun PlayerScreen(
         }
     }
     val lyricsListState = rememberLazyListState()
+    // RONDA 2 (2026-11-13, P2): el desplazamiento automático seguía
+    // la línea que suena aunque el usuario hubiera bajado a leer otra
+    // parte; un arrastre manual pausa el seguimiento y el botón
+    // "Seguir la letra" lo reanuda. Solo el arrastre del usuario
+    // pausa: collectIsDraggedAsState no se dispara con el scroll
+    // programado del propio efecto. Al cambiar de canción se vuelve
+    // a seguir desde el principio.
+    var lyricsFollow by remember { mutableStateOf(true) }
+    val lyricsUserDragging by lyricsListState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(lyricsUserDragging) {
+        if (lyricsUserDragging) lyricsFollow = false
+    }
+    LaunchedEffect(songUri) { lyricsFollow = true }
     val screenScrollState = rememberScrollState()
     var showLyricsEditor by remember { mutableStateOf(false) }
     // CANVAS (Fase 2, 2026-11-10, como BitChord): con el video
@@ -382,8 +396,8 @@ fun PlayerScreen(
     // RENDIMIENTO (spec 004): sin animaciones, la letra salta de línea
     // al instante en vez de desplazarse animada.
     val animationsEnabled = LocalAnimationsEnabled.current
-    LaunchedEffect(showLyrics, currentLine, songUri) {
-        if (showLyrics) {
+    LaunchedEffect(showLyrics, currentLine, songUri, lyricsFollow) {
+        if (showLyrics && lyricsFollow) {
             // RONDA 47: antes de la primera línea currentLine es -1 y
             // no se desplazaba nada, así que la letra podía abrirse en
             // la posición de la canción anterior; ahora se va al inicio.
@@ -1154,6 +1168,8 @@ fun PlayerScreen(
             accent = accent,
             onAccent = onAccent,
             listState = lyricsListState,
+            followLyrics = lyricsFollow,
+            onResumeFollowLyrics = { lyricsFollow = true },
         )
     }
     // Fase 1b: editor de letras (.lrc).
@@ -1551,6 +1567,8 @@ private fun LyricsFullScreen(
     accent: Color,
     onAccent: Color,
     listState: LazyListState,
+    followLyrics: Boolean = true,
+    onResumeFollowLyrics: () -> Unit = {},
 ) {
     // FORMA DE ONDA (Fase 2 app): picos de la canción local actual,
     // de caché o medidos en segundo plano al cambiar de pista. Las
@@ -1720,6 +1738,12 @@ private fun LyricsFullScreen(
                             else "Traducir al español",
                         )
                     }
+                }
+                if (!followLyrics) {
+                    TextButton(
+                        onClick = onResumeFollowLyrics,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Seguir la letra") }
                 }
                 LyricsLines(
                     lyrics = lyrics,
