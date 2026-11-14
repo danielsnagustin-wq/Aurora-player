@@ -30,6 +30,7 @@ class AlarmStore(context: Context) {
         private val MINUTE_KEY = intPreferencesKey("alarm_minute")
         private val DAILY_KEY = booleanPreferencesKey("alarm_daily")
         private val SOURCE_KEY = stringPreferencesKey("alarm_source")
+        private val ACTIVE_KEY = booleanPreferencesKey("alarm_active")
     }
 
     val settingsFlow: Flow<AlarmSettings> =
@@ -44,6 +45,25 @@ class AlarmStore(context: Context) {
                     source = decodeAlarmSource(prefs[SOURCE_KEY]),
                 )
             }
+
+    /**
+     * RONDA 2 (2026-11-13, P1, n=897): la alarma suena por el mismo
+     * reproductor y mientras suena la cola guardada es la de la
+     * alarma. La actividad lee esta bandera para no persistirla como
+     * si fuera la cola del usuario (n=899) y el temporizador de
+     * apagado no la para (n=895). Estado transitorio: no va al
+     * respaldo ni a AlarmSettings. La escribe el servicio al sonar y
+     * al parar (n=898); si el proceso muere con la alarma sonando,
+     * el servicio la limpia al arrancar.
+     */
+    val activeFlow: Flow<Boolean> =
+        dataStore.data
+            .catch { emit(emptyPreferences()) }
+            .map { prefs -> prefs[ACTIVE_KEY] ?: false }
+
+    suspend fun setActive(active: Boolean) {
+        dataStore.edit { it[ACTIVE_KEY] = active }
+    }
 
     suspend fun save(settings: AlarmSettings) {
         dataStore.edit {
