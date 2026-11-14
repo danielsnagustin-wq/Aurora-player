@@ -14,6 +14,19 @@ class GestureActionTest {
     }
 
     @Test
+    fun minusculasYMixtas_tambienParsean() {
+        // RONDA 2 (2026-11-13, P2): pin de n=881 — parseGestureAction
+        // es ignoreCase: los valores viejos guardados en minúscula
+        // ("next", "favorite") casan con su enum en vez de caer al
+        // defecto en silencio.
+        assertEquals(GestureAction.NEXT, parseGestureAction("next", GestureAction.FAVORITE))
+        assertEquals(GestureAction.FAVORITE, parseGestureAction("favorite", GestureAction.NEXT))
+        assertEquals(GestureAction.PLAY_PAUSE, parseGestureAction("play_pause", GestureAction.NEXT))
+        assertEquals(GestureAction.FAST_FORWARD, parseGestureAction("Fast_Forward", GestureAction.NEXT))
+        assertEquals(GestureAction.TOGGLE_MUTE, parseGestureAction("toggle_mute", GestureAction.NEXT))
+    }
+
+    @Test
     fun desconocidoONulo_usaDefecto() {
         assertEquals(GestureAction.FAVORITE, parseGestureAction("VOLUMEN", GestureAction.FAVORITE))
         assertEquals(GestureAction.NEXT, parseGestureAction(null, GestureAction.NEXT))
