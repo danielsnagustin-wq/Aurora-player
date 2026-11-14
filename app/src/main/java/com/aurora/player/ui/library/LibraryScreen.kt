@@ -76,6 +76,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -256,9 +257,16 @@ fun LibraryScreen(
     LaunchedEffect(visibleTabs) {
         if (tab !in visibleTabs) tab = visibleTabs.firstOrNull() ?: 0
     }
-    var showDuplicates by remember { mutableStateOf(false) }
+    var showDuplicates by rememberSaveable { mutableStateOf(false) }
     // ETAPA 5: mantener pulsado una canción abre sus Detalles.
-    var detailsSong by remember { mutableStateOf<Song?>(null) }
+    // RONDA 2 (2026-11-13, P2): Song no es Parcelable, así que se
+    // guarda su id y se resuelve contra la biblioteca al volver (si
+    // la canción ya no está, el diálogo no se abre).
+    var detailsSongId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val detailsSong = remember(detailsSongId, uiState) {
+        val id = detailsSongId ?: return@remember null
+        (uiState as? LibraryUiState.Loaded)?.songs?.firstOrNull { it.id == id }
+    }
 
     LaunchedEffect(hasAudioPermission) {
         viewModel.load(hasAudioPermission)
@@ -419,7 +427,7 @@ fun LibraryScreen(
                         albums = state.albums,
                         onSongClick = onSongClick,
                         onShowDuplicates = { showDuplicates = true },
-                        onDetails = { detailsSong = it },
+                        onDetails = { detailsSongId = it.id },
                         onShuffleAll = onShuffleAll,
                         coverSizeDp = rowCoverDp,
                         imageCacheEnabled = imageCacheEnabled,
@@ -442,7 +450,7 @@ fun LibraryScreen(
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { viewModel.toggleFavorite(it) },
                         onSongClick = onSongClick,
-                        onDetails = { detailsSong = it },
+                        onDetails = { detailsSongId = it.id },
                         coverSizeDp = rowCoverDp,
                         imageCacheEnabled = imageCacheEnabled,
                     )
@@ -458,7 +466,7 @@ fun LibraryScreen(
                         favoriteIds = favoriteIds,
                         onToggleFavorite = { viewModel.toggleFavorite(it) },
                         onSongClick = onSongClick,
-                        onDetails = { detailsSong = it },
+                        onDetails = { detailsSongId = it.id },
                         onExcludeFolder = { viewModel.excludeFolder(it) },
                         coverSizeDp = rowCoverDp,
                         imageCacheEnabled = imageCacheEnabled,
@@ -508,7 +516,7 @@ fun LibraryScreen(
         SongDetailsDialog(
             song = song,
             viewModel = viewModel,
-            onDismiss = { detailsSong = null },
+            onDismiss = { detailsSongId = null },
             onLibraryChanged = { viewModel.refresh() },
             onPlayNext = onPlayNext,
             onAddToQueue = onAddToQueue,
@@ -536,7 +544,7 @@ private fun SongsTab(
     coverSizeDp: Int = LibraryPrefsStore.DEFAULT_ROW_COVER_DP,
     imageCacheEnabled: Boolean = true,
 ) {
-    var sortMenuOpen by remember { mutableStateOf(false) }
+    var sortMenuOpen by rememberSaveable { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -840,7 +848,13 @@ private fun FoldersTab(
         commonFolderPrefix(songs.map { it.path }).ifEmpty { "/" }
     }
     var current by remember(songs) { mutableStateOf(root) }
-    var excludeTarget by remember { mutableStateOf<FolderEntry?>(null) }
+    // RONDA 2 (2026-11-13, P2): FolderEntry no es Parcelable,
+    // así que se guarda su ruta y se resuelve contra las carpetas
+    // visibles al volver.
+    var excludeTargetPath by rememberSaveable { mutableStateOf<String?>(null) }
+    val excludeTarget = remember(excludeTargetPath, folders) {
+        folders.firstOrNull { it.path == excludeTargetPath }
+    }
     val folders = remember(songs, current) {
         childFolders(songs.map { it.path }, current)
     }
@@ -892,7 +906,7 @@ private fun FoldersTab(
                     },
                     modifier = Modifier.combinedClickable(
                         onClick = { current = folder.path },
-                        onLongClick = { excludeTarget = folder },
+                        onLongClick = { excludeTargetPath = folder.path },
                     ),
                 )
                 Divider()
@@ -911,10 +925,9 @@ private fun FoldersTab(
             }
         }
     }
-    if (excludeTarget != null) {
-        val folder = excludeTarget!!
+    excludeTarget?.let { folder ->
         AlertDialog(
-            onDismissRequest = { excludeTarget = null },
+            onDismissRequest = { excludeTargetPath = null },
             title = { Text("Excluir carpeta") },
             text = {
                 Text(
@@ -924,12 +937,12 @@ private fun FoldersTab(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    excludeTarget = null
+                    excludeTargetPath = null
                     onExcludeFolder(folder.path)
                 }) { Text("Excluir") }
             },
             dismissButton = {
-                TextButton(onClick = { excludeTarget = null }) { Text("Cancelar") }
+                TextButton(onClick = { excludeTargetPath = null }) { Text("Cancelar") }
             },
         )
     }
@@ -1170,7 +1183,7 @@ private fun SongDetailsDialog(
         // RONDA 4 (2026-11-09): con disco 0 el campo mostraba "0".
         mutableStateOf(if (song.discNumber > 0) song.discNumber.toString() else "")
     }
-    var saveError by remember { mutableStateOf<String?>(null) }
+    var saveError by rememberSaveable { mutableStateOf<String?>(null) }
     // El sistema pide permiso para editar metadatos (Android 10+):
     // se guarda la petición y se lanza desde un efecto, para no
     // crear una referencia circular entre save() y el launcher.
