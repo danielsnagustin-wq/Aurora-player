@@ -8,6 +8,7 @@ import com.aurora.player.model.Album
 import com.aurora.player.model.Artist
 import com.aurora.player.model.Song
 import com.aurora.player.util.ErrorLog
+import java.util.Locale
 
 /**
  * Aurora Player — biblioteca local con MediaStore (Etapa 1).
@@ -170,7 +171,7 @@ class MusicRepository(private val context: Context) {
                 songCount = list.size,
                 year = list.mapNotNull { it.year }.minOrNull(),
             )
-        }.sortedBy { it.name.lowercase() }
+        }.sortedBy { it.name.lowercase(Locale.ROOT) }
 
     fun loadArtists(songs: List<Song>): List<Artist> =
         songs.groupBy { it.artist }.map { (name, list) ->
@@ -180,7 +181,7 @@ class MusicRepository(private val context: Context) {
                 songCount = list.size,
                 albumCount = list.distinctBy { it.albumId }.size,
             )
-        }.sortedBy { it.name.lowercase() }
+        }.sortedBy { it.name.lowercase(Locale.ROOT) }
 
     // La portada vive como función de nivel superior albumArtUri
     // (línea 22, pura, sin repositorio). NO añadir aquí un método
