@@ -38,6 +38,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -1094,12 +1095,17 @@ private fun DuplicatesDialog(
                     modifier = Modifier.padding(bottom = 8.dp),
                 )
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
-                    // Ronda 5 (fluidez): clave estable por grupo
-                    // (título + artista + duración lo identifican).
-                    items(
+                    // RONDA 2 (2026-11-13, P2): la clave era
+                    // "título|artista|duración": un título o artista
+                    // con "|" chocaba con otro grupo distinto (misma
+                    // clave = Compose los trataba como el mismo ítem).
+                    // Los grupos no tienen id estable: la clave es el
+                    // índice (la lista se reconstruye por carga, en
+                    // orden de tamaño).
+                    itemsIndexed(
                         groups,
-                        key = { "${it.title}|${it.artist}|${it.durationMs}" },
-                    ) { group ->
+                        key = { index, _ -> index },
+                    ) { _, group ->
                         ListItem(
                             headlineContent = {
                                 Text(
