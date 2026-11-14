@@ -23,7 +23,11 @@ import java.net.URL
 object RemoteImageCache {
     private const val MAX_KB = 8 * 1024
     private val cache = object : LruCache<String, Bitmap>(MAX_KB) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
+        // RONDA CAZA 2026-11-13 (P2): un bitmap de menos de 1 KB
+        // contaba 0 y la caché podía crecer sin límite con miniaturas
+        // pequeñas. Mínimo 1 KB por entrada.
+        override fun sizeOf(key: String, value: Bitmap): Int =
+            maxOf(1, value.byteCount / 1024)
     }
 
     fun get(url: String): Bitmap? = cache.get(url)
@@ -43,8 +47,9 @@ private const val MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024
  * El catch no caza OutOfMemoryError, así que el tope va ANTES del
  * decode, no después. */
 suspend fun loadRemoteBitmap(url: String): Bitmap? = withContext(Dispatchers.IO) {
+    var connection: HttpURLConnection? = null
     try {
-        val connection = URL(url).openConnection() as HttpURLConnection
+        connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 10_000
         connection.readTimeout = 10_000
         connection.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
@@ -72,6 +77,11 @@ suspend fun loadRemoteBitmap(url: String): Bitmap? = withContext(Dispatchers.IO)
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
     } catch (_: Exception) {
         null
+    } finally {
+        // RONDA CAZA 2026-11-13 (P2): la conexión nunca se
+        // desconectaba (tampoco en el camino de error): quedaba
+        // retenida tras cada portada remota.
+        connection?.disconnect()
     }
 }
 
