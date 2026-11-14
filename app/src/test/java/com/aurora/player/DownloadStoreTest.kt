@@ -56,6 +56,26 @@ class DownloadStoreTest {
     }
 
     @Test
+    fun tituloConSaltosYSeparador_noSePierde() {
+        // RONDA 2 (2026-11-13, P2): pin de P2#6 — un título con
+        // salto de línea o con el separador U+001F partía el registro
+        // en dos y la descarga se perdía al leerlo. Ahora se limpian
+        // en la escritura y la descarga vuelve (con espacios).
+        val sucio = record.copy(
+            title = "Run\naway\u001F(live)",
+            artist = "AURORA\r",
+            uri = "content://media/external/downloads/42",
+        )
+        val decoded = decodeDownloadRecord(encodeDownloadRecord(sucio))!!
+        assertEquals("Run away (live)", decoded.title)
+        assertEquals("AURORA ", decoded.artist)
+        assertEquals(
+            sucio.copy(title = "Run away (live)", artist = "AURORA "),
+            decoded,
+        )
+    }
+
+    @Test
     fun decodeAceptaTituloConBarraVertical() {
         val conBarra = record.copy(title = "A | B")
         assertEquals(conBarra, decodeDownloadRecord(encodeDownloadRecord(conBarra))!!)
