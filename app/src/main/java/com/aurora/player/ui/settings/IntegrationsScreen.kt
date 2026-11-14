@@ -32,6 +32,7 @@ import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SoundCloudUser
 import com.aurora.player.online.SpotifyClient
 import com.aurora.player.online.SpotifyProfile
+import com.aurora.player.online.SpotifyUnauthorizedException
 import com.aurora.player.online.fetchSoundCloudMe
 import com.aurora.player.online.fetchSoundCloudWebClientId
 import com.aurora.player.ui.design.AuroraSectionHeader
@@ -95,8 +96,16 @@ fun IntegrationsScreen(
             return@LaunchedEffect
         }
         spotifySessionChecked = false
-        val token = spotify.fetchAccessToken(cookie)
-        profile = token?.let { spotify.fetchProfile(it) }
+        // RONDA CAZA 2026-11-13 (P1): fetchProfile ahora lanza ante
+        // un 401 (token caducado a mitad de sesión); sin este try, el
+        // LaunchedEffect se rompía. Un 401 deja el perfil en null y
+        // la fila muestra "Sesión caducada", como antes.
+        profile = try {
+            val token = spotify.fetchAccessToken(cookie)
+            token?.let { spotify.fetchProfile(it) }
+        } catch (_: SpotifyUnauthorizedException) {
+            null
+        }
         spotifySessionChecked = true
     }
 
