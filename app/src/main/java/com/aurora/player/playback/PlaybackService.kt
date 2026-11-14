@@ -204,6 +204,10 @@ class PlaybackService : MediaLibraryService() {
     // reproductor en pausa: sin esta bandera, el temporizador
     // podría vencer en ese hueco y parar la alarma antes de sonar.
     private var alarmActive = false
+    // RONDA 2 (2026-11-13, P1, n=898): foto de la cola del usuario
+    // antes de que la alarma la sustituya por la suya; al apagar la
+    // alarma se restaura en stopAlarm().
+    private var alarmQueueSnapshot: AlarmQueueSnapshot? = null
     private var headphoneReceiver: BroadcastReceiver? = null
     private var fadeJob: Job? = null
     private var fadingIn = false
@@ -335,6 +339,15 @@ class PlaybackService : MediaLibraryService() {
         serviceScope.launch {
             SleepTimerStore(this@PlaybackService).timerFlow.collect { saved ->
                 restartSleepTimerJob(saved)
+            }
+        }
+        // RONDA 2 (n=898): un proceso muerto con la alarma sonando
+        // dejaría la bandera activa en DataStore para siempre; al
+        // arrancar, ninguna alarma suena, así que se limpia.
+        serviceScope.launch {
+            try {
+                AlarmStore(this@PlaybackService).setActive(false)
+            } catch (_: Exception) {
             }
         }
         // Ronda USB Serie A: si ya hay un DAC conectado, el
@@ -1405,6 +1418,32 @@ class PlaybackService : MediaLibraryService() {
         return super.onStartCommand(intent, flags, startId)
     }
 
+    /**
+     * Activa/desactiva la alarma en memoria y en DataStore (RONDA 2,
+     * n=897/898): la actividad lee la bandera para no persistir la
+     * cola de la alarma como si fuera la del usuario (n=899). Si la
+     * escritura en DataStore falla, la bandera en memoria sigue
+     * mandando en el servicio; el arranque del servicio limpia la
+     * bandera por si el proceso murió con la alarma sonando.
+     */
+    private fun setAlarmActive(active: Boolean) {
+        alarmActive = active
+        updateAutoCloseTimer()
+        serviceScope.launch {
+            try {
+                AlarmStore(this@PlaybackService).setActive(active)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    /** Foto de la cola del usuario antes de la alarma (n=898). */
+    private data class AlarmQueueSnapshot(
+        val items: List<MediaItem>,
+        val index: Int,
+        val positionMs: Long,
+    )
+
     /** Suena la alarma: resuelve qué música, la pone por el canal de
      * alarma (se oye aunque el teléfono esté en silencio) y publica
      * la notificación con el botón "Apagar". */
@@ -1413,8 +1452,7 @@ class PlaybackService : MediaLibraryService() {
         // (la resolución tarda y el reproductor sigue en pausa):
         // si el temporizador venciera en ese hueco, pararía la
         // alarma antes de sonar. Se quita en stopAlarm().
-        alarmActive = true
-        updateAutoCloseTimer()
+        setAlarmActive(true)
         try {
             playAlarmInner()
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -1429,8 +1467,7 @@ class PlaybackService : MediaLibraryService() {
             // música o preparar el reproductor escapaba de la
             // corrutina y cerraba la app al sonar la alarma.
             ErrorLog.log(this, "Sonar alarma", e)
-            alarmActive = false
-            updateAutoCloseTimer()
+            setAlarmActive(false)
         }
     }
 
@@ -1439,21 +1476,18 @@ class PlaybackService : MediaLibraryService() {
             AlarmStore(this@PlaybackService).settingsFlow.first()
         }
         if (!settings.enabled) {
-            alarmActive = false
-            updateAutoCloseTimer()
+            setAlarmActive(false)
             return
         }
         val items = withContext(Dispatchers.IO) { resolveAlarmItems(settings) }
         if (items.isEmpty()) {
             ErrorLog.log(this, "Alarma sin música", null)
-            alarmActive = false
-            updateAutoCloseTimer()
+            setAlarmActive(false)
             return
         }
         val p = player
         if (p == null) {
-            alarmActive = false
-            updateAutoCloseTimer()
+            setAlarmActive(false)
             return
         }
         p.setAudioAttributes(
@@ -1463,6 +1497,20 @@ class PlaybackService : MediaLibraryService() {
                 .build(),
             true,
         )
+        // RONDA 2 (2026-11-13, P1, n=898): foto de la cola del
+        // usuario ANTES de sustituirla por la de la alarma; al
+        // apagarla se restaura en stopAlarm(). Sin esto la cola se
+        // perdía (el reproductor quedaba con las pistas de la alarma
+        // y la cola guardada también se sobrescribía, n=899).
+        alarmQueueSnapshot = if (p.mediaItemCount > 0) {
+            AlarmQueueSnapshot(
+                items = (0 until p.mediaItemCount).map { p.getMediaItemAt(it) },
+                index = p.currentMediaItemIndex.coerceIn(0, p.mediaItemCount - 1),
+                positionMs = p.currentPosition.coerceAtLeast(0L),
+            )
+        } else {
+            null
+        }
         p.setMediaItems(items)
         p.prepare()
         p.play()
@@ -1498,8 +1546,7 @@ class PlaybackService : MediaLibraryService() {
     private fun stopAlarm() {
         // RONDA 179: la alarma terminó: el auto-cierre vuelve a
         // aplicar (si la app sigue oculta, se cierra a los minutos).
-        alarmActive = false
-        updateAutoCloseTimer()
+        setAlarmActive(false)
         val p = player
         p?.pause()
         p?.setAudioAttributes(
@@ -1509,6 +1556,16 @@ class PlaybackService : MediaLibraryService() {
                 .build(),
             true,
         )
+        // RONDA 2 (2026-11-13, P1, n=898): se devuelve la cola del
+        // usuario (pistas + pista + posición). Queda en pausa: el
+        // usuario apagó la alarma y reanudar es un toque. Si el
+        // servicio se detiene después, la cola guardada (QueueStore)
+        // sigue siendo la del usuario gracias a n=899.
+        alarmQueueSnapshot?.let { snap ->
+            alarmQueueSnapshot = null
+            p?.setMediaItems(snap.items, snap.index, snap.positionMs)
+            p?.prepare()
+        }
         getSystemService(NotificationManager::class.java)?.cancel(ALARM_NOTIFICATION_ID)
         if (p == null || !p.playWhenReady) stopSelf()
     }
