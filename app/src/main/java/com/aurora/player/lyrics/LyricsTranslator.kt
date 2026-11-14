@@ -60,7 +60,32 @@ object LyricsTranslator {
             val cachedLines = cached.split("\n")
             if (cachedLines.size == lines.size) return@withContext cachedLines
         }
-        val joined = lines.joinToString("\n")
+        // RONDA 2 (2026-11-13, P2): el endpoint gtx recibe el texto
+        // en la URL; una canción larga (todas las líneas en una sola
+        // petición) superaba el límite de longitud y fallaba. Las
+        // líneas se traducen en lotes de como mucho 2000 caracteres,
+        // en orden; un lote que falla tumba la traducción entera,
+        // como antes (nunca se guarda una traducción a medias).
+        val translatedAll = mutableListOf<String>()
+        for ((index, chunk) in chunkLines(lines).withIndex()) {
+            val (segments, detected) = translateChunk(chunk.joinToString("\n"))
+                ?: return@withContext null
+            // El idioma se detecta en el primer lote: si la canción
+            // ya está en español no hay nada que traducir.
+            if (index == 0 && detected == "es") return@withContext null
+            val translated = segments.joinToString("").split("\n")
+            // Si Google partió o unió líneas, se alinean las que se
+            // pueda; las que falten se quedan sin traducción (se
+            // muestra solo la original). Nunca se inventa una.
+            translatedAll += chunk.indices.map { i -> translated.getOrNull(i) ?: "" }
+        }
+        if (translatedAll.all { it.isBlank() }) return@withContext null
+        LyricsCache.write(context, "$cacheKey:es", translatedAll.joinToString("\n"))
+        translatedAll
+    }
+
+    /** Una petición gtx con el texto ya unido; null si falla. */
+    private fun translateChunk(joined: String): Pair<List<String>, String?>? {
         val url = "$ENDPOINT?client=gtx&sl=auto&tl=es&dt=t&q=" +
             URLEncoder.encode(joined, "UTF-8")
         val body = try {
@@ -71,23 +96,38 @@ object LyricsTranslator {
                 connection.connectTimeout = TIMEOUT_MS
                 connection.readTimeout = TIMEOUT_MS
                 connection.setRequestProperty("User-Agent", "AuroraPlayer/0.1")
-                if (connection.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+                if (connection.responseCode != HttpURLConnection.HTTP_OK) return null
                 connection.inputStream.bufferedReader().use { it.readText() }
             } finally {
                 connection.disconnect()
             }
         } catch (_: Exception) {
-            return@withContext null
+            return null
         }
-        val (segments, detected) = parseGtxResponse(body) ?: return@withContext null
-        if (detected == "es") return@withContext null
-        val translated = segments.joinToString("").split("\n")
-        // Si Google partió o unió líneas, se alinean las que se pueda;
-        // las que falten se quedan sin traducción (se muestra solo la
-        // original). Nunca se inventa una traducción.
-        val aligned = lines.indices.map { i -> translated.getOrNull(i) ?: "" }
-        if (aligned.all { it.isBlank() }) return@withContext null
-        LyricsCache.write(context, "$cacheKey:es", aligned.joinToString("\n"))
-        aligned
+        return parseGtxResponse(body)
+    }
+
+    /**
+     * Puro (internal para poder probarlo): corta las líneas en lotes
+     * cuyo texto unido mide como mucho [maxChars] caracteres, sin
+     * partir nunca una línea por la mitad. Una línea sola más larga
+     * que el límite va sola en su lote.
+     */
+    internal fun chunkLines(lines: List<String>, maxChars: Int = 2000): List<List<String>> {
+        val chunks = mutableListOf<List<String>>()
+        var current = mutableListOf<String>()
+        var currentLen = 0
+        for (line in lines) {
+            val nextLen = if (current.isEmpty()) line.length else currentLen + 1 + line.length
+            if (current.isNotEmpty() && nextLen > maxChars) {
+                chunks += current
+                current = mutableListOf()
+                currentLen = 0
+            }
+            current += line
+            currentLen = if (current.size == 1) line.length else nextLen
+        }
+        if (current.isNotEmpty()) chunks += current
+        return chunks
     }
 }
