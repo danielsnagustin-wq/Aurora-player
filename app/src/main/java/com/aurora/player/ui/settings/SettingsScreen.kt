@@ -149,7 +149,7 @@ fun SettingsScreen(
     val atmosSupported = remember(context) {
         detectAtmosSupport(context) == AtmosSupport.ATMOS
     }
-    var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
+    var hexText by rememberSaveable(applied.accentHex) { mutableStateOf(applied.accentHex) }
     // RONDA 7 P4: alarma musical.
     // RONDA CAZA 2026-11-13 (P1): con remember se perdía al girar.
     var showAlarm by rememberSaveable { mutableStateOf(false) }
@@ -176,8 +176,8 @@ fun SettingsScreen(
     // SPEC 007 (2026-11-09): editor de color + Mis temas.
     val presetStore = remember { ThemePresetStore(context) }
     val recentColors by presetStore.recentColorsFlow.collectAsState(initial = emptyList())
-    var editingColor by remember { mutableStateOf<String?>(null) }
-    var previewMode by remember { mutableStateOf(0) } // 0 biblioteca, 1 reproductor
+    var editingColor by rememberSaveable { mutableStateOf<String?>(null) }
+    var previewMode by rememberSaveable { mutableStateOf(0) } // 0 biblioteca, 1 reproductor
     // RONDA 2: inicio personalizable (pestañas visibles + portada en fila).
     val libraryPrefs = remember { LibraryPrefsStore(context) }
     val visibleTabs by libraryPrefs.visibleTabsFlow.collectAsState(
