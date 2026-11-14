@@ -290,18 +290,23 @@ fun OnlineScreen(
             try {
                 val all = mutableListOf<NewReleaseItem>()
                 if (!ytMusicCookies.isNullOrBlank()) {
-                    val yt = client.getNewReleases()
-                    all += yt.map {
-                        NewReleaseItem(
-                            source = "YouTube",
-                            title = it.title,
-                            artist = it.artist,
-                            dateText = it.year?.toString(),
-                            kind = it.kind,
-                            imageUrl = it.thumbnailUrl,
-                            browseId = it.browseId,
-                            trackId = null,
-                        )
+                    // RONDA 2 (2026-11-13, P1, n=916, 1/2): getNewReleases
+                    // devuelve null si YouTube no respondió (antes
+                    // lista vacía, indistinguible de "sin estante"):
+                    // un null NO tumba los demás lanzamientos.
+                    client.getNewReleases()?.let { yt ->
+                        all += yt.map {
+                            NewReleaseItem(
+                                source = "YouTube",
+                                title = it.title,
+                                artist = it.artist,
+                                dateText = it.year?.toString(),
+                                kind = it.kind,
+                                imageUrl = it.thumbnailUrl,
+                                browseId = it.browseId,
+                                trackId = null,
+                            )
+                        }
                     }
                 }
                 if (spotifyConnected && spCookie.isNotBlank()) {
