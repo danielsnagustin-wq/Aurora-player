@@ -56,6 +56,8 @@ import com.aurora.player.data.AuroraDatabase
 import com.aurora.player.data.EqStateStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.PlayerSettingsStore
+import com.aurora.player.data.SavedSleepTimer
+import com.aurora.player.data.SleepTimerStore
 import com.aurora.player.util.ErrorLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -192,6 +194,9 @@ class PlaybackService : MediaLibraryService() {
     private var appVisible = true
     private var autoCloseMinutes = 0
     private var autoCloseJob: Job? = null
+    // RONDA 2 (2026-11-13, P1): el temporizador de apagado también se
+    // cumple en el servicio (ver restartSleepTimerJob).
+    private var sleepTimerJob: Job? = null
     private var visibilityReceiver: BroadcastReceiver? = null
     // RONDA 179: la alarma suena por el mismo reproductor, pero
     // antes de sonar tarda en resolver (dos lecturas IO) con el
@@ -319,6 +324,18 @@ class PlaybackService : MediaLibraryService() {
             .setHandleAudioBecomingNoisy(true) // auto-pausa al quitar auriculares
             .build()
         player = exoPlayer
+        // RONDA 2 (2026-11-13, P1): el temporizador de apagado también
+        // se cumple en el servicio. El bucle de MainActivity que lo
+        // vigilaba muere con la actividad: con la app cerrada o en
+        // segundo plano la música no se apagaba nunca. El servicio
+        // observa el mismo SleepTimerStore; si la actividad vive, su
+        // bucle sigue mandando (pausar y borrar son idempotentes, así
+        // que si disparan los dos a la vez no pasa nada).
+        serviceScope.launch {
+            SleepTimerStore(this@PlaybackService).timerFlow.collect { saved ->
+                restartSleepTimerJob(saved)
+            }
+        }
         // Ronda USB Serie A: si ya hay un DAC conectado, el
         // AudioTrack va directo a él desde la primera pista.
         applyUsbRouting()
@@ -783,6 +800,91 @@ class PlaybackService : MediaLibraryService() {
      * sonar, se cancela. La cola guardada NO se borra: al volver a
      * abrir, reanuda donde iba.
      */
+    /**
+     * Temporizador de apagado en el servicio (RONDA 2, 2026-11-13, P1).
+     * Cada vez que el SleepTimerStore cambia se rearma el trabajo con
+     * el plazo guardado: el plazo es monótono (elapsedRealtime) y el
+     * conteo solo corre mientras suena (en pausa no se descuenta,
+     * igual que el bucle de la actividad, que desplaza el plazo). El
+     * fin de canción se detecta por cambio de pista, igual que en la
+     * actividad (incluye pasar de pista a mano con el temporizador
+     * armado: pidió parar al final de la canción y la canción
+     * terminó). Con la alarma activa no se descuenta ni se dispara:
+     * la alarma usa este mismo reproductor y su cambio de pista no
+     * es el final de la canción (RONDA 179).
+     */
+    private fun restartSleepTimerJob(saved: SavedSleepTimer?) {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        if (saved == null) return
+        val untilMs = saved.untilMs
+        val atSongEnd = saved.atSongEnd
+        // Un temporizador sin plazo ni fin de canción no se dispara
+        // nunca (RONDA 164: una opción por minutos sin plazo es un
+        // guardado roto).
+        if (untilMs == null && !atSongEnd) return
+        sleepTimerJob = serviceScope.launch {
+            var remainingMs = if (untilMs != null) {
+                untilMs - SystemClock.elapsedRealtime()
+            } else {
+                Long.MAX_VALUE
+            }
+            var lastMediaId = player?.currentMediaItem?.mediaId
+            var lastTickMs = SystemClock.elapsedRealtime()
+            while (isActive) {
+                val p = player ?: break
+                val now = SystemClock.elapsedRealtime()
+                val tickDelta = (now - lastTickMs).coerceAtLeast(0L)
+                // El reloj corre siempre, también con la alarma: si
+                // no, al terminar la alarma el primer tick restaría
+                // de golpe toda su duración del plazo.
+                lastTickMs = now
+                // Con la alarma activa el temporizador queda en pausa:
+                // ni se descuenta ni se mira el cambio de pista (las
+                // pistas de la alarma no son la canción que sonaba).
+                if (!alarmActive) {
+                    if (atSongEnd) {
+                        val currentId = p.currentMediaItem?.mediaId
+                        if (lastMediaId != null && currentId != null && currentId != lastMediaId) {
+                            fireSleepTimer()
+                            break
+                        }
+                        lastMediaId = currentId
+                    }
+                    if (untilMs != null) {
+                        if (p.isPlaying) remainingMs -= tickDelta
+                        if (remainingMs <= 0L) {
+                            fireSleepTimer()
+                            break
+                        }
+                    }
+                }
+                // En pausa (o con alarma) se duerme más: el conteo usa
+                // tiempo real entre iteraciones, así que no pierde
+                // exactitud por dormir 5 s en vez de 500 ms.
+                delay(if (p.isPlaying && !alarmActive) 500L else 5000L)
+            }
+        }
+    }
+
+    private fun fireSleepTimer() {
+        try {
+            player?.pause()
+        } catch (e: Exception) {
+            ErrorLog.log(this, "Temporizador de apagado", e)
+        }
+        // El temporizador se disparó: se borra para que no vuelva a
+        // disparar y la actividad lo vea apagado al volver.
+        serviceScope.launch {
+            try {
+                SleepTimerStore(this@PlaybackService).clear()
+            } catch (_: Exception) {
+                // Si no se puede borrar, el plazo ya venció: el
+                // trabajo terminó y no se rearma.
+            }
+        }
+    }
+
     private fun updateAutoCloseTimer() {
         autoCloseJob?.cancel()
         autoCloseJob = null
