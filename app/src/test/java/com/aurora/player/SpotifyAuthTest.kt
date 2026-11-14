@@ -27,6 +27,25 @@ class SpotifyAuthTest {
     }
 
     @Test
+    fun `token anonimo se rechaza`() {
+        // RONDA CAZA 2026-11-13 (P0): con sp_dc inválida Spotify
+        // devuelve 200 con accessToken Y "isAnonymous": true. Ese
+        // token no sirve para /v1/me: guardarlo como "Conectado"
+        // dejaba el perfil en null ("Sesión caducada") en bucle.
+        assertNull(
+            parseSpotifyAccessToken(
+                """{"accessToken":"BQAbc123","accessTokenExpirationTimestampMs":1799999999999,"isAnonymous":true}""",
+            ),
+        )
+        assertEquals(
+            "BQAbc123",
+            parseSpotifyAccessToken(
+                """{"accessToken":"BQAbc123","accessTokenExpirationTimestampMs":1799999999999,"isAnonymous":false}""",
+            ),
+        )
+    }
+
+    @Test
     fun `tus listas`() {
         val json = """{"items":[
             {"id":"37i9dQZF1DXcBWIGoYBM5M","name":"Top 50 Global","tracks":{"total":50},"images":[{"url":"https://i.scdn.co/image/abc"}]},
