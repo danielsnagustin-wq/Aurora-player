@@ -1029,14 +1029,17 @@ class InnerTubeClient(
      * Radio online de YouTube Music (Descubrimiento): canciones parecidas
      * a [videoId] (endpoint `next`, lista RDAMVM). La primera suele ser
      * la propia canción (la semilla); quien la usa la filtra. Lista vacía
-     * si YouTube no respondió o no trae la estructura; nunca lanza.
+     * si YouTube respondió sin la estructura. Null si YouTube no
+     * respondió (RONDA 2, 2026-11-13, P1, n=919, 2/2): antes lista
+     * vacía, indistinguible de "sin radio", igual que search y
+     * getNewReleases antes de sus arreglos. Nunca lanza.
      */
-    suspend fun getWatchPlaylist(videoId: String): List<OnlineTrack> =
+    suspend fun getWatchPlaylist(videoId: String): List<OnlineTrack>? =
         withContext(Dispatchers.IO) {
             val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/next" +
                 "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
             val body = postJson(url, buildWatchBody(videoId), SEARCH_CLIENT)
-                ?: return@withContext emptyList()
+                ?: return@withContext null
             parseWatchPlaylist(body)
         }
 
