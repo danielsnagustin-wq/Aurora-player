@@ -219,11 +219,16 @@ data class PlayerSettings(
     // Fase 2 — gestos configurables (GoneMAD): qué hace agitar el
     // teléfono. NEXT por defecto, como hasta ahora. Guardado como
     // texto, validado al leer (un valor desconocido usa NEXT).
-    val shakeAction: String = "next",
+    // RONDA CAZA 2026-11-13 (P2): el nombre del enum, no "next" en
+    // minúscula: el desplegable compara contra it.name y con el
+    // valor viejo no marcaba ninguna opción en una instalación nueva.
+    val shakeAction: String = GestureAction.NEXT.name,
     val doubleTapToFavorite: Boolean = true,
     // Fase 2 — gestos configurables: qué hace el doble toque en la
     // portada. FAVORITE por defecto, como hasta ahora.
-    val doubleTapAction: String = "favorite",
+    // RONDA CAZA 2026-11-13 (P2): el nombre del enum, no "favorite"
+    // en minúscula (mismo motivo que shakeAction).
+    val doubleTapAction: String = GestureAction.FAVORITE.name,
     // Fase 2 — modos de karaoke: cuándo se colorean las palabras.
     // FULLSCREEN_ONLY por defecto: como se ve hoy (solo a pantalla
     // completa); "Siempre" lo lleva también a la vista previa del
