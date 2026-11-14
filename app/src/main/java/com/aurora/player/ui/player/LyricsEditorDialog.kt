@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aurora.player.util.LrcLine
 import com.aurora.player.util.formatLrcTime
+import java.util.UUID
 
 /**
  * Fase 1b — editor de letras (.lrc).
@@ -44,11 +45,23 @@ fun LyricsEditorDialog(
     onDismiss: () -> Unit,
     onSave: (List<LrcLine>) -> Unit,
 ) {
-    var lines by remember { mutableStateOf(lyrics.map { it.copy() }) }
+    // RONDA 2 (2026-11-13, P1): cada línea lleva un id estable y la
+    // lista es remember(lyrics). Antes la clave del LazyColumn era el
+    // ÍNDICE y borrar/añadir una línea desplazaba el foco y el cursor
+    // a la línea equivocada (el texto visible viene de la lista, pero
+    // el foco/IME van pegados a la clave). Tampoco valen timeMs (dos
+    // líneas pueden compartirlo) ni el texto (cambia a cada tecla).
+    // Y si la canción cambia con el diálogo abierto, el editor se
+    // reinicia con la letra nueva: antes guardaba la letra VIEJA
+    // sobre la canción NUEVA (onSaveLyrics construye el Song desde el
+    // MediaItem actual).
+    var lines by remember(lyrics) {
+        mutableStateOf(lyrics.map { UUID.randomUUID().toString() to it.copy() })
+    }
     // Ronda 19: salir sin guardar (tocar fuera, atrás o Cancelar)
     // tiraba la edición en silencio. Si hay cambios, se pregunta.
     var showDiscardConfirm by remember { mutableStateOf(false) }
-    val isDirty = lines != lyrics
+    val isDirty = lines.map { it.second } != lyrics
     fun requestDismiss() {
         if (isDirty) showDiscardConfirm = true else onDismiss()
     }
@@ -71,7 +84,7 @@ fun LyricsEditorDialog(
         text = {
             Column {
                 LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
-                    itemsIndexed(lines) { index, line ->
+                    itemsIndexed(lines, key = { _, (id, _) -> id }) { index, (_, line) ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -86,7 +99,8 @@ fun LyricsEditorDialog(
                                 value = line.text,
                                 onValueChange = { newText ->
                                     lines = lines.toMutableList().also {
-                                        it[index] = line.copy(text = newText, words = emptyList())
+                                        it[index] = it[index].first to
+                                            line.copy(text = newText, words = emptyList())
                                     }
                                 },
                                 singleLine = true,
@@ -106,7 +120,10 @@ fun LyricsEditorDialog(
                     // RONDA 91: la línea nueva se mete en su sitio
                     // por tiempo, no al final: si no, el editor la
                     // mostraba abajo aunque fuera de mitad de canción.
-                    onClick = { lines = (lines + LrcLine(positionMs, "")).sortedBy { it.timeMs } },
+                    onClick = {
+                        lines = (lines + (UUID.randomUUID().toString() to LrcLine(positionMs, "")))
+                            .sortedBy { it.second.timeMs }
+                    },
                     modifier = Modifier.padding(top = 8.dp),
                 ) {
                     Text("Añadir línea en ${formatLrcTime(positionMs)}")
@@ -115,7 +132,7 @@ fun LyricsEditorDialog(
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(lines.filter { it.text.isNotBlank() }) },
+                onClick = { onSave(lines.map { it.second }.filter { it.text.isNotBlank() }) },
             ) { Text("Guardar") }
         },
         dismissButton = {
