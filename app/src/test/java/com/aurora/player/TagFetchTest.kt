@@ -3,7 +3,6 @@ package com.aurora.player
 import com.aurora.player.online.*
 import org.junit.Assert.*
 import org.junit.Test
-import java.net.URLEncoder
 
 class TagFetchTest {
 
@@ -130,11 +129,14 @@ class TagFetchTest {
 
     @Test
     fun `buildDzUrl encodes query parameters`() {
-        val title = "My Song"
-        val artist = "Artist Name"
-        val url = buildDzUrl(title, artist)
-        val expectedQuery = URLEncoder.encode(buildDzQuery(title, artist), "UTF-8")
-        val expected = "https://api.deezer.com/search/track?q=$expectedQuery"
-        assertEquals(expected, url)
+        // RONDA 2 (2026-11-13, P2): el test calculaba lo esperado
+        // con las mismas funciones que probaba (buildDzQuery +
+        // URLEncoder) — tautológico: solo fallaba si buildDzUrl
+        // dejaba de llamarlas. Ahora el literal está congelado.
+        val url = buildDzUrl("My Song", "Artist Name")
+        assertEquals(
+            "https://api.deezer.com/search/track?q=artist%3A%22Artist+Name%22+track%3A%22My+Song%22",
+            url,
+        )
     }
 }
