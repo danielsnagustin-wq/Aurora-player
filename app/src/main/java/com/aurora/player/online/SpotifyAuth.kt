@@ -242,21 +242,21 @@ class SpotifyClient {
 
     /** Tus listas (necesita el token de fetchAccessToken). Null si Spotify no respondió. */
     suspend fun fetchPlaylists(token: String): List<SpotifyPlaylist>? = withContext(Dispatchers.IO) {
-        val body = httpGet(
+        fetchPaged(
             "https://api.spotify.com/v1/me/playlists?limit=50",
-            mapOf("Authorization" to "Bearer $token"),
-        ) ?: return@withContext null
-        parseSpotifyPlaylists(body)
+            token,
+            ::parseSpotifyPlaylists,
+        )
     }
 
     /** Canciones de una lista (para importarlas por YouTube Music). Null si Spotify no respondió. */
     suspend fun fetchPlaylistTracks(token: String, playlistId: String): List<SpotifyTrack>? =
         withContext(Dispatchers.IO) {
-            val body = httpGet(
+            fetchPaged(
                 "https://api.spotify.com/v1/playlists/$playlistId/tracks?limit=100&fields=items(track(name,artists(name),album(name)))",
-                mapOf("Authorization" to "Bearer $token"),
-            ) ?: return@withContext null
-            parseSpotifyPlaylistTracks(body)
+                token,
+                ::parseSpotifyPlaylistTracks,
+            )
         }
 
     /** Lanzamientos nuevos (para el panel de Nuevos lanzamientos). Null si Spotify no respondió. */
@@ -272,12 +272,47 @@ class SpotifyClient {
     /** Artistas que sigues (para filtrar los lanzamientos). Null si Spotify no respondió. */
     suspend fun fetchFollowedArtists(token: String): List<SpotifyFollowedArtist>? =
         withContext(Dispatchers.IO) {
-            val body = httpGet(
+            fetchPaged(
                 "https://api.spotify.com/v1/me/following?type=artist&limit=50",
-                mapOf("Authorization" to "Bearer $token"),
-            ) ?: return@withContext null
-            parseSpotifyFollowedArtists(body)
+                token,
+                ::parseSpotifyFollowedArtists,
+            )
         }
+
+    /**
+     * RONDA 2 (2026-11-13, P2): las listas de Spotify vienen
+     * paginadas (limit=50/100) y antes solo se traía la primera
+     * página: un usuario con más de 50 listas, o una lista con más
+     * de 100 canciones, veía solo el principio. Ahora se sigue el
+     * `next` de cada respuesta hasta agotarlas, con tope de 500
+     * elementos para no bajar sin fin. Null solo si ni la primera
+     * página respondió; si una página posterior falla, se devuelve
+     * lo que ya se trajo. El 401 sigue subiendo como
+     * SpotifyUnauthorizedException (lo necesita withFreshToken).
+     * Los lanzamientos nuevos no se paginan: son un estante de 20,
+     * no una lista completa.
+     */
+    private fun <T> fetchPaged(
+        firstUrl: String,
+        token: String,
+        parse: (String) -> List<T>,
+    ): List<T>? {
+        val all = mutableListOf<T>()
+        var url: String? = firstUrl
+        while (url != null && all.size < 500) {
+            val body = httpGet(url, mapOf("Authorization" to "Bearer $token"))
+                ?: return if (all.isEmpty()) null else all
+            val items = parse(body)
+            if (items.isEmpty()) break
+            all += items
+            url = try {
+                JsonParser.parse(body).obj("next")?.str()
+            } catch (_: Exception) {
+                null
+            }
+        }
+        return all.take(500)
+    }
 
     private fun httpGet(url: String, headers: Map<String, String>): String? {
         return try {
