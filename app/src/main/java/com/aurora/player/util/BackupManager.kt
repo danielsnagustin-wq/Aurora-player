@@ -25,6 +25,7 @@ import com.aurora.player.data.BackupValidation
 import com.aurora.player.data.CustomPresetStore
 import com.aurora.player.data.FavoriteEntity
 import com.aurora.player.data.MusicRepository
+import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
 import com.aurora.player.data.PlaylistEntity
 import com.aurora.player.data.PlaylistSongEntity
@@ -67,6 +68,9 @@ data class ExportResult(val uri: Uri, val fileName: String, val location: String
 
 data class RestoreReport(
     val playlistsRestored: Int,
+    // RONDA CAZA 2026-11-13 (P1): las colas guardadas con nombre ya
+    // se respaldan y se restauran; su cuenta va aparte.
+    val namedQueuesRestored: Int = 0,
     val favoritesRestored: Int,
     val historyRestored: Int,
     val queueSongs: Int,
@@ -125,6 +129,12 @@ object BackupManager {
             val songs = db.playlistDao().songsOf(pl.id).map { ref(it.songId) }
             BackupPlaylist(pl.name, pl.createdAt, pl.updatedAt, songs)
         }
+        // RONDA CAZA 2026-11-13 (P1): las colas guardadas con nombre
+        // no estaban en el respaldo y se perdían al reinstalar.
+        val namedQueues = db.namedQueueDao().allQueues().map { q ->
+            val songs = db.namedQueueDao().songIdsOf(q.id).map { ref(it) }
+            BackupPlaylist(q.name, q.createdAt, q.updatedAt, songs)
+        }
         val favorites = db.libraryDao().favoriteIds().map { ref(it) }
         val history = db.libraryDao().allHistory().map { h ->
             BackupHistoryEntry(ref(h.songId), h.playedAt, h.durationListenedMs)
@@ -141,6 +151,7 @@ object BackupManager {
         BackupData(
             createdAtMs = System.currentTimeMillis(),
             playlists = playlists,
+            namedQueues = namedQueues,
             favorites = favorites,
             history = history,
             theme = themeSettings,
@@ -286,6 +297,7 @@ object BackupManager {
             // Emparejar antes de la transacción: la biblioteca no
             // cambia mientras se restaura.
             val playlistIds = data.playlists.map { matchedIds(it.songs) }
+            val namedQueueIds = data.namedQueues.map { matchedIds(it.songs) }
             val favIds = matchedIds(data.favorites)
             val historyMatched = data.history.mapNotNull { entry ->
                 val (found, notFound) = matchSongs(listOf(entry.song), libraryPairs)
@@ -348,6 +360,19 @@ object BackupManager {
                     for (songId in favIds) {
                         libraryDao.addFavorite(FavoriteEntity(songId))
                     }
+                    // RONDA CAZA 2026-11-13 (P1): las colas guardadas
+                    // con nombre se restauran igual que las listas
+                    // (reemplazo total, dentro de la transacción).
+                    val namedQueueDao = db.namedQueueDao()
+                    for (q in namedQueueDao.allQueues()) {
+                        namedQueueDao.deleteQueueWithSongs(q.id)
+                    }
+                    for ((index, q) in data.namedQueues.withIndex()) {
+                        val newId = namedQueueDao.insertQueue(
+                            NamedQueueEntity(name = q.name, createdAt = q.createdAt, updatedAt = q.updatedAt),
+                        )
+                        namedQueueDao.setSongs(newId, namedQueueIds[index])
+                    }
                     libraryDao.clearHistory()
                     for ((songId, entry) in historyMatched) {
                         libraryDao.addHistory(
@@ -374,6 +399,7 @@ object BackupManager {
             }
             RestoreReport(
                 playlistsRestored = data.playlists.size,
+                namedQueuesRestored = data.namedQueues.size,
                 favoritesRestored = favIds.size,
                 historyRestored = historyMatched.size,
                 queueSongs = queueIds.size,
