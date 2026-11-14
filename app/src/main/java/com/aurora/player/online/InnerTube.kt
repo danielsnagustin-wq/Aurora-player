@@ -1043,13 +1043,16 @@ class InnerTubeClient(
     /**
      * Nuevos lanzamientos de YouTube Music (Descubrimiento): el estante
      * "New releases" del inicio CON login. Sin login el estante no
-     * aparece y la lista sale vacía. Nunca lanza.
+     * aparece y la lista sale vacía. Null si falló el transporte
+     * (RONDA 2, 2026-11-13, P1, n=916, 2/2): antes lista vacía,
+     * indistinguible de "sin estante", igual que search antes de su
+     * arreglo. Nunca lanza.
      */
-    suspend fun getNewReleases(): List<YtNewRelease> = withContext(Dispatchers.IO) {
+    suspend fun getNewReleases(): List<YtNewRelease>? = withContext(Dispatchers.IO) {
         val url = "https://${SEARCH_CLIENT.host}/youtubei/v1/browse" +
             "?key=${SEARCH_CLIENT.apiKey}&prettyPrint=false"
         val body = "{\"context\":{${clientContextJson(SEARCH_CLIENT)}},\"browseId\":\"FEmusic_home\"}"
-        val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext emptyList()
+        val response = postJson(url, body, SEARCH_CLIENT) ?: return@withContext null
         parseNewReleasesFromHome(response)
     }
 
