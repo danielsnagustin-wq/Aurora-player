@@ -59,7 +59,11 @@ enum class KaraokeMode(val label: String) {
 
 /** Lee un modo guardado como texto; un valor desconocido o vacío usa el defecto. */
 fun parseKaraokeMode(value: String?, default: KaraokeMode): KaraokeMode =
-    KaraokeMode.entries.find { it.name == value } ?: default
+    // RONDA 2 (2026-11-13, P2): sin distinción de mayúsculas,
+    // igual que parseGestureAction: un valor guardado en minúscula
+    // ("fullscreen_only", de una versión vieja o un backup editado
+    // a mano) caía al defecto en silencio con == estricto.
+    KaraokeMode.entries.find { it.name.equals(value, ignoreCase = true) } ?: default
 
 /** ¿Se colorean las palabras en esta vista? Puro, con tabla de verdad en los tests. */
 fun karaokeWordsActive(mode: KaraokeMode, fullscreen: Boolean): Boolean = when (mode) {
