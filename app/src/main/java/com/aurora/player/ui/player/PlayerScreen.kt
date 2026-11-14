@@ -132,6 +132,7 @@ import com.aurora.player.model.karaokeWordsActive
 import com.aurora.player.model.MAX_NAMED_QUEUES
 import com.aurora.player.model.PlayerBackground
 import com.aurora.player.model.normalizeQueueName
+import com.aurora.player.model.performGestureAction
 import com.aurora.player.ui.library.ArtworkImage
 import com.aurora.player.ui.library.TagEditorDialog
 import com.aurora.player.ui.library.rememberArtworkBitmap
@@ -714,27 +715,31 @@ fun PlayerScreen(
                         onDoubleTap = {
                             if (!doubleTapEnabled) return@detectTapGestures
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            when (doubleTapAction) {
-                                GestureAction.FAVORITE -> onToggleFavorite()
-                                GestureAction.PLAY_PAUSE -> onPlayPause()
-                                GestureAction.NEXT -> onNext()
-                                GestureAction.PREVIOUS -> onPrevious()
-                                // Ronda 4: ±10 s; con duración
-                                // desconocida no se recorta.
-                                GestureAction.FAST_FORWARD -> {
+                            // RONDA 2 (2026-11-13, P2): la acción vive
+                            // en performGestureAction (GestureAction.kt):
+                            // un valor nuevo del enum sin rama no compila.
+                            performGestureAction(
+                                action = doubleTapAction,
+                                onNext = onNext,
+                                onPrevious = onPrevious,
+                                onPlayPause = onPlayPause,
+                                onToggleFavorite = onToggleFavorite,
+                                onFastForward = {
+                                    // Ronda 4: ±10 s; con duración
+                                    // desconocida no se recorta.
                                     val target = latestPositionMs + 10_000L
                                     latestOnSeek(if (latestDurationMs > 0) target.coerceAtMost(latestDurationMs) else target)
-                                }
-                                GestureAction.REWIND -> latestOnSeek((latestPositionMs - 10_000L).coerceAtLeast(0L))
-                                GestureAction.TOGGLE_MUTE -> {
+                                },
+                                onRewind = { latestOnSeek((latestPositionMs - 10_000L).coerceAtLeast(0L)) },
+                                onToggleMute = {
                                     val action = if (audioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
                                         AudioManager.ADJUST_UNMUTE
                                     } else {
                                         AudioManager.ADJUST_MUTE
                                     }
                                     audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, action, AudioManager.FLAG_SHOW_UI)
-                                }
-                            }
+                                },
+                            )
                         },
                         onTap = { canvasControlsVisible = true; canvasHideKey++ },
                     )
