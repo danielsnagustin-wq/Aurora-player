@@ -31,6 +31,10 @@ class LyricsOffsetStore(private val context: Context) {
             context.lyricsOffsetDataStore.data
                 .catch { emit(emptyPreferences()) }
                 .map { it[key] ?: "" }.first()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // RONDA 2 (2026-11-13, P2): .first() es suspend y la
+            // cancelación no es "sin ajuste": se relanza.
+            throw e
         } catch (_: Exception) {
             ""
         }
