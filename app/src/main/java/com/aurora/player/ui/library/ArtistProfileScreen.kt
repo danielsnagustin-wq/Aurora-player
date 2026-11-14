@@ -65,6 +65,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -139,6 +140,14 @@ fun ArtistProfileScreen(
     // Listas completas tras "Ver todo" (null = solo lo de la página).
     var expandedSingles by remember { mutableStateOf<List<ArtistRelease>?>(null) }
     var expandedAlbums by remember { mutableStateOf<List<ArtistRelease>?>(null) }
+    // RONDA 2 (2026-11-13, P2): al girar, la página se recarga sola
+    // (LaunchedEffect), pero el álbum abierto y las listas expandidas
+    // se perdían: ningún efecto las volvía a cargar. Las listas no
+    // son Parcelable, así que se guardan sus claves y se recargan
+    // cuando la página vuelve (efecto LaunchedEffect(artistPage)).
+    var openAlbumBrowseId by rememberSaveable { mutableStateOf<String?>(null) }
+    var expandedSinglesShown by rememberSaveable { mutableStateOf(false) }
+    var expandedAlbumsShown by rememberSaveable { mutableStateOf(false) }
     var moreError by remember { mutableStateOf<String?>(null) }
     // La carga se deriva del estado, no de un flag: un flag puesto en
     // `finally` lo podía apagar la búsqueda anterior cancelada mientras
@@ -266,6 +275,9 @@ fun ArtistProfileScreen(
         albumTracksError = null
         expandedSingles = null
         expandedAlbums = null
+        openAlbumBrowseId = null
+        expandedSinglesShown = false
+        expandedAlbumsShown = false
         moreError = null
         pageJob = scope.launch {
             try {
@@ -290,6 +302,7 @@ fun ArtistProfileScreen(
 
     fun loadAlbumTracks(release: ArtistRelease) {
         val browseId = release.browseId ?: return
+        openAlbumBrowseId = browseId
         albumTracksJob?.cancel()
         albumTracksError = null
         albumTracks = null
@@ -316,6 +329,7 @@ fun ArtistProfileScreen(
         val browseId = if (isSingles) page.singlesBrowseId else page.albumsBrowseId
         val params = if (isSingles) page.singlesParams else page.albumsParams
         if (browseId == null) return
+        if (isSingles) expandedSinglesShown = true else expandedAlbumsShown = true
         moreError = null
         pageJob = scope.launch {
             try {
@@ -390,6 +404,19 @@ fun ArtistProfileScreen(
             searchOnline()
             loadArtistPage()
         }
+    }
+
+    // RONDA 2 (2026-11-13, P2): recarga del álbum abierto y de
+    // las listas expandidas cuando la página vuelve tras un giro.
+    // En la primera carga las claves son null/false y no hace nada.
+    LaunchedEffect(artistPage) {
+        val page = artistPage ?: return@LaunchedEffect
+        if (openAlbumBrowseId != null && albumTracks == null) {
+            val all = page.albums + page.singles
+            all.firstOrNull { it.browseId == openAlbumBrowseId }?.let { loadAlbumTracks(it) }
+        }
+        if (expandedSinglesShown && expandedSingles == null) loadMoreReleases(true)
+        if (expandedAlbumsShown && expandedAlbums == null) loadMoreReleases(false)
     }
 
     LaunchedEffect(artistName, onlineMode, bannerCoverUrl) {
