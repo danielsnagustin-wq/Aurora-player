@@ -4,6 +4,7 @@ import com.aurora.player.model.StreamQuality
 
 import android.content.Context
 import java.io.File
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
@@ -200,28 +201,33 @@ class StreamCacheStore(context: Context) {
     }
 }
 
+/**
+ * RONDA 2 (2026-11-13, P1, n=925): lee exactamente 12 bytes de un
+ * flujo, en bucle (un solo read() puede devolver menos aunque queden
+ * más — RONDA CAZA 2026-11-13 P1). Null si el flujo termina antes de
+ * 12 bytes. Extraído de streamCachePartHasMagic para poder probarlo
+ * con flujos que entregan 1 byte por lectura o se cortan (n=926).
+ */
+internal fun readHeader12(input: InputStream): ByteArray? {
+    val header = ByteArray(12)
+    var read = 0
+    while (read < 12) {
+        val n = input.read(header, read, 12 - read)
+        if (n < 0) break
+        read += n
+    }
+    return if (read < 12) null else header
+}
+
 /** Magia del contenedor de un .part (ronda 175): WebM empieza con EBML, M4A lleva 'ftyp' en los bytes 4-7. */
 private fun streamCachePartHasMagic(part: File, itag: Int): Boolean {
     val ext = streamExtensionForItag(itag)
     if (ext == "bin") return true
-    val header = ByteArray(12)
-    // RONDA CAZA 2026-11-13 (P1): un solo read() puede devolver menos
-    // de 12 bytes aunque queden más (el contrato no garantiza llenar
-    // el búfer): el .part válido se borraba como corrupto y la caché
-    // nunca se llenaba. Leer en bucle hasta 12 bytes o EOF.
-    var read = 0
-    try {
-        part.inputStream().use { input ->
-            while (read < 12) {
-                val n = input.read(header, read, 12 - read)
-                if (n < 0) break
-                read += n
-            }
-        }
+    val header = try {
+        part.inputStream().use { input -> readHeader12(input) }
     } catch (_: Exception) {
         return false
-    }
-    if (read < 12) return false
+    } ?: return false
     return when (ext) {
         "webm" -> header[0] == 0x1A.toByte() && header[1] == 0x45.toByte() &&
             header[2] == 0xDF.toByte() && header[3] == 0xA3.toByte()
