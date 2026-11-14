@@ -1,6 +1,7 @@
 package com.aurora.player.online
 
 import java.security.MessageDigest
+import java.util.Locale
 
 /**
  * Inicio de sesión de YouTube Music (2026-11-10, como BitChord: la
@@ -52,7 +53,11 @@ object YouTubeMusicAuth {
         return try {
             val digest = MessageDigest.getInstance("SHA-1")
             val bytes = digest.digest(text.toByteArray(Charsets.UTF_8))
-            bytes.joinToString("") { "%02x".format(it) }
+            // RONDA 2 (2026-11-13, P1, n=921): "%02x" con el locale
+            // por defecto escribe dígitos NO latinos en locales como
+            // ar-EG (dígitos arábigos): el SAPISIDHASH salía inválido
+            // y YouTube devolvía 401 en bucle. Locale.ROOT siempre.
+            bytes.joinToString("") { "%02x".format(Locale.ROOT, it) }
         } catch (_: Exception) {
             null
         }
