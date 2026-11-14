@@ -57,6 +57,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -149,11 +151,20 @@ fun SettingsScreen(
     }
     var hexText by remember(applied.accentHex) { mutableStateOf(applied.accentHex) }
     // RONDA 7 P4: alarma musical.
-    var showAlarm by remember { mutableStateOf(false) }
+    // RONDA CAZA 2026-11-13 (P1): con remember se perdía al girar.
+    var showAlarm by rememberSaveable { mutableStateOf(false) }
     // RONDA PULIDO (2026-11-09): Ajustes por categorías estilo
     // AIMP/Musicolet: null muestra la lista de categorías; al tocar
-    // una se abre solo esa sección.
-    var section by remember { mutableStateOf<SettingsSection?>(null) }
+    // una se abre solo esa sección. RONDA CAZA 2026-11-13 (P1): con
+    // remember se perdía al girar; el enum va por su nombre.
+    var section by rememberSaveable(
+        saver = Saver<androidx.compose.runtime.MutableState<SettingsSection?>, String>(
+            save = { it.value?.name },
+            restore = {
+                mutableStateOf(runCatching { SettingsSection.valueOf(it) }.getOrNull())
+            },
+        ),
+    ) { mutableStateOf<SettingsSection?>(null) }
     // Ronda 7 (Gemini): si quien abre Ajustes pidió una sección,
     // se entra directo en ella y se consume el pedido.
     LaunchedEffect(initialSection) {
