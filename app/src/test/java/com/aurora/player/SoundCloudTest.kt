@@ -52,9 +52,19 @@ class SoundCloudTest {
               },
               "duration": 1000,
               "streamable": true
+            },
+            {
+              "id": 333,
+              "title": "bloqueado por policy",
+              "user": {
+                "username": "otro"
+              },
+              "duration": 1000,
+              "streamable": true,
+              "policy": "BLOCK"
             }
           ],
-          "total_results": 3
+          "total_results": 4
         }
     """.trimIndent()
 
@@ -130,8 +140,11 @@ class SoundCloudTest {
 
     @Test
     fun parseSearchExtraeLaPistaYDescarta() {
+        // RONDA 2 (2026-11-13, P2): la entrada 333 es
+        // streamable:true pero policy:BLOCK — también se descarta.
         val tracks = parseSoundCloudSearch(searchFixture)
         assertEquals(1, tracks.size)
+        assertTrue(tracks.none { it.id == 333L })
         val t = tracks[0]
         assertEquals(2427716250L, t.id)
         assertEquals("daft punk feb 97 dj mix", t.title)
