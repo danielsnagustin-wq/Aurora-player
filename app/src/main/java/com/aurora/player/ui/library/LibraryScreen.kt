@@ -49,6 +49,7 @@ import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
@@ -395,6 +396,9 @@ fun LibraryScreen(
                     OutlinedButton(
                         onClick = { viewModel.refresh() },
                         modifier = Modifier.padding(top = 16.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
                     ) { Text("Volver a escanear") }
                 }
             }
@@ -600,7 +604,10 @@ private fun SongsTab(
                 filterLabel,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                color = MaterialTheme.colorScheme.primary,
+                // RONDA CAZA 2026-11-13 (P1): la etiqueta iba en el
+                // color del acento y los acentos oscuros no se leían
+                // sobre negro. Texto claro, como los botones.
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { viewModel.clearFilters() }) {
@@ -847,7 +854,12 @@ private fun FoldersTab(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (current != root) {
-                OutlinedButton(onClick = { current = parentPath(current) }) {
+                OutlinedButton(
+                    onClick = { current = parentPath(current) },
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
+                ) {
                     Text("↑ Atrás")
                 }
             }
