@@ -259,6 +259,88 @@ class WatchPlaylistTest {
 }
     """.trimIndent()
 
+    // RONDA 2 (2026-11-13, P1, n=924): YouTube envuelve a veces cada
+    // ítem en playlistPanelVideoWrapperRenderer (con primaryRenderer
+    // dentro); este fixture fija que el parser lo desenvuelve (n=849).
+    private val wrappedFixture = """
+{
+  "contents": {
+    "singleColumnMusicWatchNextResultsRenderer": {
+      "tabbedRenderer": {
+        "watchNextTabbedResultsRenderer": {
+          "tabs": [
+            {
+              "tabRenderer": {
+                "content": {
+                  "musicQueueRenderer": {
+                    "content": {
+                      "playlistPanelRenderer": {
+                        "contents": [
+                          {
+                            "playlistPanelVideoWrapperRenderer": {
+                              "primaryRenderer": {
+                                "playlistPanelVideoRenderer": {
+                                  "videoId": "wrap999",
+                                  "title": {
+                                    "runs": [
+                                      {
+                                        "text": "Envuelta"
+                                      }
+                                    ]
+                                  },
+                                  "longBylineText": {
+                                    "runs": [
+                                      {
+                                        "text": "Artista Envuelto"
+                                      },
+                                      {
+                                        "text": " • "
+                                      },
+                                      {
+                                        "text": "Álbum Envuelto"
+                                      }
+                                    ]
+                                  },
+                                  "lengthText": {
+                                    "runs": [
+                                      {
+                                        "text": "2:00"
+                                      }
+                                    ]
+                                  },
+                                  "thumbnail": {
+                                    "thumbnails": [
+                                      {
+                                        "url": "https://i.ytimg.com/vi/wrap999/hqdefault.jpg?sqp=small",
+                                        "width": 60,
+                                        "height": 60
+                                      },
+                                      {
+                                        "url": "https://i.ytimg.com/vi/wrap999/hqdefault.jpg",
+                                        "width": 544,
+                                        "height": 544
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}
+    """.trimIndent()
+
     @Test
     fun parseaRadioTabbed() {
         val tracks = parseWatchPlaylist(tabbedFixture)
@@ -298,6 +380,22 @@ class WatchPlaylistTest {
         assertEquals("Vieja forma", tracks[0].title)
         assertEquals("Artista Viejo", tracks[0].artist)
         assertEquals(150L, tracks[0].durationSec)
+    }
+
+    @Test
+    fun parseaRadioEnvuelta() {
+        val tracks = parseWatchPlaylist(wrappedFixture)
+        assertEquals(1, tracks.size)
+        val only = tracks[0]
+        assertEquals("wrap999", only.videoId)
+        assertEquals("Envuelta", only.title)
+        assertEquals("Artista Envuelto", only.artist)
+        assertEquals("Álbum Envuelto", only.album)
+        assertEquals(120L, only.durationSec)
+        assertEquals(
+            "https://i.ytimg.com/vi/wrap999/hqdefault.jpg",
+            only.thumbnailUrl,
+        )
     }
 
     @Test
