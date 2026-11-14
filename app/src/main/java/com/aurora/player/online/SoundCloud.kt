@@ -5,6 +5,7 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /**
@@ -245,27 +246,47 @@ private suspend fun soundCloudHttpGet(
     oauthToken: String? = null,
 ): String? {
     return withContext(Dispatchers.IO) {
-        var conn: HttpURLConnection? = null
-        try {
-            conn = URL(url).openConnection() as HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("User-Agent", userAgent)
-            if (!oauthToken.isNullOrBlank()) {
-                conn.setRequestProperty("Authorization", "OAuth $oauthToken")
-            }
-            conn.connectTimeout = 10_000
-            conn.readTimeout = 10_000
+        // RONDA CAZA 2026-11-13 (P1): un 429 (rate limit) mataba toda
+        // la búsqueda y el feed de SoundCloud sin mensaje, y el cuerpo
+        // se leía con readText() sin tope (un bundle JS grande se
+        // cargaba entero en memoria). Ahora el 429 reintenta 2 veces
+        // con espera (Retry-After si viene, si no 1 s y 2 s) y el
+        // cuerpo lleva el tope de 2 MB de readCappedText, como
+        // InnerTube y Spotify.
+        var result: String? = null
+        for (attempt in 0..2) {
+            var conn: HttpURLConnection? = null
+            try {
+                conn = URL(url).openConnection() as HttpURLConnection
+                conn.requestMethod = "GET"
+                conn.setRequestProperty("User-Agent", userAgent)
+                if (!oauthToken.isNullOrBlank()) {
+                    conn.setRequestProperty("Authorization", "OAuth $oauthToken")
+                }
+                conn.connectTimeout = 10_000
+                conn.readTimeout = 10_000
 
-            if (conn.responseCode != HttpURLConnection.HTTP_OK) {
-                return@withContext null
+                val code = conn.responseCode
+                if (code == 429 && attempt < 2) {
+                    val waitMs = conn.getHeaderField("Retry-After")?.toLongOrNull()
+                        ?.coerceIn(1, 10)?.times(1000)
+                        ?: (1000L shl attempt)
+                    runCatching { conn.errorStream?.close() }
+                    delay(waitMs)
+                    continue
+                }
+                if (code != HttpURLConnection.HTTP_OK) {
+                    return@withContext null
+                }
+                result = readCappedText(conn.inputStream)
+                break
+            } catch (e: CancellationException) {
+                throw e
+            } finally {
+                conn?.disconnect()
             }
-
-            conn.inputStream.bufferedReader().use { it.readText() }
-        } catch (e: CancellationException) {
-            throw e
-        } finally {
-            conn?.disconnect()
         }
+        result
     }
 }
 
