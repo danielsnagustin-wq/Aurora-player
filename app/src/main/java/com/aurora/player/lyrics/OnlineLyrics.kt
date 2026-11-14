@@ -168,6 +168,14 @@ fun resolveLyrics(localLrcText: String?, online: OnlineLyrics?): List<LrcLine> {
  * contestar). No es "sin letra": quien llama lo distingue. */
 class LyricsSearchFailedException : Exception()
 
+/**
+ * RONDA 2 (2026-11-13, P1, n=905): un proveedor contestó con un
+ * error TRANSITORIO (429 límite de peticiones, 5xx servidor caído).
+ * No es "sin letra": se propaga para que el contador de fallos de
+ * la RONDA 153 lo cuente. Un 404 sí es "sin letra" (null).
+ */
+class LyricsProviderHttpException(val statusCode: Int) : Exception("HTTP $statusCode")
+
 suspend fun fetchLyricsFirst(
     providers: List<LyricsProvider>,
     track: String,
@@ -248,9 +256,11 @@ class LrclibProvider : LyricsProvider {
     }
 
     // RONDA 153: un error de red NO es "sin letra": se propaga (el
-    // que busca cuenta los fallos) y solo un código distinto de 200
-    // devuelve null. Antes el catch tragaba timeouts y conexiones
-    // caídas como si el proveedor hubiera contestado "no hay letra".
+    // que busca cuenta los fallos) y solo un 404 devuelve null.
+    // RONDA 2 (2026-11-13, P1, n=905): un 429 (límite) o un 5xx
+    // (servidor caído) TAMPOCO es "sin letra": antes devolvían null
+    // como un 404 y el contador de fallos de la RONDA 153 nunca se
+    // enteraba (la búsqueda decía "sin letra" con el servidor caído).
     private fun httpGet(url: String): String? {
         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "GET"
@@ -259,8 +269,12 @@ class LrclibProvider : LyricsProvider {
         conn.connectTimeout = 6000
         conn.readTimeout = 6000
         try {
-            if (conn.responseCode != 200) return null
-            return conn.inputStream.bufferedReader().use { it.readText() }
+            return when (val code = conn.responseCode) {
+                200 -> conn.inputStream.bufferedReader().use { it.readText() }
+                404 -> null
+                429, in 500..599 -> throw LyricsProviderHttpException(code)
+                else -> null
+            }
         } finally {
             conn.disconnect()
         }
