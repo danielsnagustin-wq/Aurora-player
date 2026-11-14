@@ -5,7 +5,9 @@ import java.net.URL
 import java.net.URLEncoder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /**
@@ -107,6 +109,13 @@ fun soundCloudArtwork500(url: String?): String? {
  */
 fun parseSoundCloudTrack(item: JsonValue?): SoundCloudTrack? {
     if (item?.obj("streamable")?.bool() == false) return null
+    // RONDA 2 (2026-11-13, P2): policy "BLOCK" = la pista está
+    // bloqueada (derechos/región) aunque streamable sea true:
+    // api-v2 la devuelve en la búsqueda pero su stream da 403.
+    // Mejor no mostrarla que ofrecer algo que no suena. (Juicio
+    // del auditor: la política es por región del que pide, así
+    // que BLOCK aquí significa bloqueada para nosotros.)
+    if (item?.obj("policy")?.str() == "BLOCK") return null
     val id = item?.obj("id")?.long() ?: return null
     val title = item.obj("title")?.str() ?: return null
     val artist = item.obj("user")?.obj("username")?.str() ?: return null
@@ -298,13 +307,55 @@ private suspend fun soundCloudHttpGet(
 suspend fun fetchSoundCloudWebClientId(forceRefresh: Boolean = false): String? {
     if (!forceRefresh) cachedWebClientId?.let { return it }
     val home = soundCloudHttpGet(SOUNDCLOUD_WEB_URL, SOUNDCLOUD_WEB_UA) ?: return null
-    for (bundleUrl in extractJsBundleUrls(home).take(12)) {
-        val js = soundCloudHttpGet(bundleUrl, SOUNDCLOUD_WEB_UA) ?: continue
-        val id = extractWebClientId(js) ?: continue
+    // RONDA 2 (2026-11-13, P2): antes se bajaban enteros hasta 12
+    // bundles (~1 MB cada uno) buscando la llave; ahora se prueban
+    // como mucho 3 y cada uno se lee por trozos hasta que aparece.
+    for (bundleUrl in extractJsBundleUrls(home).take(3)) {
+        val id = soundCloudFetchClientIdFromBundle(bundleUrl) ?: continue
         cachedWebClientId = id
         return id
     }
     return null
+}
+
+/**
+ * RONDA 2 (2026-11-13, P2): busca el client_id en un bundle JS
+ * sin bajarlo entero — se lee por trozos de 8 KB y se para en
+ * cuanto aparece la llave (suele estar al principio del bundle).
+ * Null si no viene, si la respuesta falla o si pasa de 2 MB sin
+ * la llave. Un intento, sin reintento de 429: hay más bundles
+ * que probar. El texto se acumula para que la llave no se pierda
+ * si cae justo en el corte entre dos trozos.
+ */
+private suspend fun soundCloudFetchClientIdFromBundle(bundleUrl: String): String? {
+    return withContext(Dispatchers.IO) {
+        var conn: HttpURLConnection? = null
+        try {
+            conn = URL(bundleUrl).openConnection() as HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("User-Agent", SOUNDCLOUD_WEB_UA)
+            conn.connectTimeout = 10_000
+            conn.readTimeout = 10_000
+            if (conn.responseCode != HttpURLConnection.HTTP_OK) return@withContext null
+            val out = StringBuilder()
+            val buf = ByteArray(8192)
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val n = conn.inputStream.read(buf)
+                if (n <= 0) break
+                out.append(String(buf, 0, n, Charsets.UTF_8))
+                extractWebClientId(out.toString())?.let { return@withContext it }
+                if (out.length > 2 * 1024 * 1024) return@withContext null
+            }
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        } finally {
+            conn?.disconnect()
+        }
+    }
 }
 
 /**
