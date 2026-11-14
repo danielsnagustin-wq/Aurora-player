@@ -338,6 +338,12 @@ fun SpotifyLoginDialog(
                             loadUrl("https://open.spotify.com/")
                         }
                     },
+                    // RONDA 2 (2026-11-13, P1, n=914): el WebView
+                    // principal se FILTRABA: solo el popup tenía
+                    // onRelease (n=850–852). Sin onRelease, cada
+                    // login deja un WebView vivo (hilo de render)
+                    // hasta que el proceso muere.
+                    onRelease = { it.stopLoading(); it.destroy(); webView = null },
                     modifier = Modifier.fillMaxSize(),
                 )
                 if (loading) {
