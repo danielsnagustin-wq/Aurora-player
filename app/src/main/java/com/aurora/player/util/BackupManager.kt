@@ -296,11 +296,19 @@ object BackupManager {
     /** Lee el texto de un respaldo elegido por el usuario (SAF). */
     suspend fun readBackupText(context: Context, uri: Uri): Result<String> =
         withContext(Dispatchers.IO) {
-            runCatching {
-                context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+            try {
+                val text = context.contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
                     ?: throw IllegalStateException("No se pudo leer el archivo")
-            }.onFailure { e ->
+                Result.success(text)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // RONDA 2 (2026-11-13, P1, n=893): el runCatching
+                // tragaba la cancelación (readText es suspend) y la
+                // dejaba como fallo de lectura; la cancelación se
+                // relanza, como en exportBackup (A5-1/A5-2).
+                throw e
+            } catch (e: Exception) {
                 ErrorLog.log(context, "Leer respaldo", e)
+                Result.failure(e)
             }
         }
 
