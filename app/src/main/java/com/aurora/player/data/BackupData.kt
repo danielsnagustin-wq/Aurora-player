@@ -65,6 +65,11 @@ data class BackupEqPreset(val name: String, val levelsDb: List<Float>)
 data class BackupData(
     val createdAtMs: Long,
     val playlists: List<BackupPlaylist>,
+    // RONDA CAZA 2026-11-13 (P1): las colas guardadas con nombre no
+    // estaban en el respaldo y se perdían al reinstalar. Misma forma
+    // que una lista (nombre + canciones). Con valor por defecto para
+    // que los constructores viejos sigan compilando.
+    val namedQueues: List<BackupPlaylist> = emptyList(),
     val favorites: List<BackupSongRef>,
     val history: List<BackupHistoryEntry>,
     val theme: ThemeSettings,
@@ -159,6 +164,16 @@ fun BackupData.toJsonValue(): JsonValue.Obj = JsonValue.Obj(
                     "createdAt" to JsonValue.Num(pl.createdAt.toDouble()),
                     "updatedAt" to JsonValue.Num(pl.updatedAt.toDouble()),
                     "songs" to JsonValue.Arr(pl.songs.map(::refToJson)),
+                ),
+            )
+        }),
+        "namedQueues" to JsonValue.Arr(namedQueues.map { q ->
+            JsonValue.Obj(
+                linkedMapOf(
+                    "name" to JsonValue.Str(q.name),
+                    "createdAt" to JsonValue.Num(q.createdAt.toDouble()),
+                    "updatedAt" to JsonValue.Num(q.updatedAt.toDouble()),
+                    "songs" to JsonValue.Arr(q.songs.map(::refToJson)),
                 ),
             )
         }),
@@ -289,6 +304,11 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
     val history = root.obj("history").arr() ?: return null
     val queueObj = root.obj("queue") ?: return null
     val presets = root.obj("eqPresets").arr() ?: return null
+    // RONDA CAZA 2026-11-13 (P1): la clave "namedQueues" es NUEVA.
+    // Los respaldos viejos no la traen y deben seguir valiendo
+    // (vacía); si viene, cada entrada es estricta como las listas
+    // (ronda 36): una entrada dañada invalida el archivo entero.
+    val namedQueuesArr = root.obj("namedQueues")?.arr()
     // RONDA 131: los objetos theme y player TAMBIÉN son obligatorios.
     // Antes, si faltaban, los parsers rellenaban TODO con valores por
     // defecto y el archivo pasaba la validación: al restaurarlo, los
@@ -316,6 +336,16 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
                 songs = songs,
             )
         },
+        namedQueues = namedQueuesArr?.map { q ->
+            val name = q.obj("name").str() ?: return null
+            val songs = q.obj("songs").arr()?.map { refFromJson(it) ?: return null } ?: return null
+            BackupPlaylist(
+                name = name,
+                createdAt = q.obj("createdAt").long() ?: return null,
+                updatedAt = q.obj("updatedAt").long() ?: return null,
+                songs = songs,
+            )
+        } ?: emptyList(),
         favorites = favorites.map { refFromJson(it) ?: return null },
         history = history.map { h ->
             val song = refFromJson(h.obj("song")) ?: return null
@@ -335,6 +365,12 @@ fun backupFromJsonValue(root: JsonValue?): BackupData? {
         eqPresets = presets.map { p ->
             val name = p.obj("name").str() ?: return null
             val levels = p.obj("levelsDb").arr()?.map { it.double()?.toFloat() ?: return null } ?: return null
+            // RONDA CAZA 2026-11-13 (P2): el EQ tiene 10 bandas y
+            // CustomPresetStore.save descarta en silencio cualquier
+            // preset con otro tamaño; un respaldo con 9 u 11 bandas
+            // es inválido (antes se restauraba "bien" y el preset
+            // desaparecía sin aviso).
+            if (levels.size != 10) return null
             BackupEqPreset(name, levels)
         },
     )
@@ -391,10 +427,12 @@ fun matchSongs(
         // la referencia trae ruta, el id solo vale cuando la ruta
         // coincide; si no, se intenta por ruta y, si tampoco está,
         // la canción va a ausentes en vez de restaurar los favoritos,
-        // el historial o la lista en la canción equivocada. Sin ruta
-        // no se puede comprobar y el id vale como antes.
+        // el historial o la lista en la canción equivocada.
+        // RONDA CAZA 2026-11-13 (P2): sin ruta NO se puede comprobar
+        // nada, así que una referencia sin ruta va a ausentes (antes
+        // el id valía solo y podía restaurar en la canción equivocada).
         val byIdHit = byId[ref.id]
-        val hit = if (byIdHit != null && (ref.path.isBlank() || byIdHit.second == ref.path)) {
+        val hit = if (byIdHit != null && ref.path.isNotBlank() && byIdHit.second == ref.path) {
             byIdHit
         } else {
             byPath[ref.path]
