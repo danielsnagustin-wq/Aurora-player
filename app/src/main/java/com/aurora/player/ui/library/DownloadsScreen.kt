@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -37,7 +38,13 @@ fun DownloadsScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var records by remember { mutableStateOf<List<DownloadRecord>?>(null) }
-    var toDelete by remember { mutableStateOf<DownloadRecord?>(null) }
+    // RONDA 2 (2026-11-13, P2): DownloadRecord no es Parcelable,
+    // así que se guarda su videoId y se resuelve contra la lista al
+    // volver (si la descarga ya no está, el diálogo no se abre).
+    var toDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
+    val toDelete = remember(toDeleteId, records) {
+        records?.firstOrNull { it.videoId == toDeleteId }
+    }
 
     LaunchedEffect(Unit) {
         DownloadStore(context).recordsFlow.collect { records = it }
@@ -85,7 +92,7 @@ fun DownloadsScreen(
                             record = record,
                             onOpen = onOpen,
                             onShare = onShare,
-                            onDelete = { toDelete = record }
+                            onDelete = { toDeleteId = record.videoId }
                         )
                     }
                 }
@@ -95,20 +102,20 @@ fun DownloadsScreen(
 
     toDelete?.let { record ->
         AlertDialog(
-            onDismissRequest = { toDelete = null },
+            onDismissRequest = { toDeleteId = null },
             title = { Text(text = "Eliminar descarga") },
             text = { Text(text = "Se eliminará el archivo descargado.") },
             confirmButton = {
                 TextButton(onClick = {
                     val r = record
-                    toDelete = null
+                    toDeleteId = null
                     onDelete(r)
                 }) {
                     Text("Eliminar")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { toDelete = null }) {
+                TextButton(onClick = { toDeleteId = null }) {
                     Text("Cancelar")
                 }
             }
