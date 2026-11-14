@@ -24,6 +24,12 @@ import kotlinx.coroutines.withContext
  * de Spotify) y solo se guarda en memoria, nunca en disco.
  */
 
+/** RONDA CAZA 2026-11-13 (P1): un 401 de api.spotify.com. No es
+ * "sin conexión": el token caducó a mitad de sesión. httpGet la
+ * lanza; withFreshToken la usa para reintentar una vez con otro
+ * token, y quien llama avisa "Sesión caducada" si sigue. */
+class SpotifyUnauthorizedException : Exception("Spotify devolvió 401")
+
 data class SpotifyPlaylist(
     val id: String,
     val name: String,
@@ -189,11 +195,40 @@ class SpotifyClient {
      */
     suspend fun fetchAccessToken(spDc: String): String? = withContext(Dispatchers.IO) {
         if (spDc.isBlank()) return@withContext null
-        val body = httpGet(
-            "https://open.spotify.com/get_access_token?reason=transport&productType=web-player",
-            mapOf("Cookie" to "sp_dc=$spDc"),
-        ) ?: return@withContext null
+        // RONDA CAZA 2026-11-13 (P1): un 401 del endpoint del token
+        // es cookie mala, no una sesión a mitad de uso: null, como
+        // antes. El 401 de api.spotify.com sí sube (ver httpGet).
+        val body = try {
+            httpGet(
+                "https://open.spotify.com/get_access_token?reason=transport&productType=web-player",
+                mapOf("Cookie" to "sp_dc=$spDc"),
+            )
+        } catch (_: SpotifyUnauthorizedException) {
+            null
+        } ?: return@withContext null
         parseSpotifyAccessToken(body)
+    }
+
+    /**
+     * Ejecuta [call] con un token fresco de [spDc]; ante un 401 de
+     * api.spotify.com pide otro token una vez y reintenta. Devuelve
+     * null solo si la llamada falló sin ser 401 (red, JSON): un
+     * null NO es sesión caducada. Lanza SpotifyUnauthorizedException
+     * si la cookie ya no da token o si el reintento también es 401,
+     * para que quien llama avise "Sesión caducada" en vez de
+     * "Sin conexión".
+     */
+    suspend fun <T> withFreshToken(
+        spDc: String,
+        call: suspend (String) -> T?,
+    ): T? {
+        val token = fetchAccessToken(spDc) ?: throw SpotifyUnauthorizedException()
+        return try {
+            call(token)
+        } catch (_: SpotifyUnauthorizedException) {
+            val token2 = fetchAccessToken(spDc) ?: throw SpotifyUnauthorizedException()
+            call(token2)
+        }
     }
 
     /** Nombre e imagen de tu cuenta (para "Cuenta e integraciones"). */
@@ -255,6 +290,12 @@ class SpotifyClient {
             conn.connectTimeout = 10000
             conn.readTimeout = 10000
             try {
+                // RONDA CAZA 2026-11-13 (P1): un 401 NO es "sin
+                // conexión": el token caducó a mitad de sesión. Sube
+                // como excepción para que quien llama pueda pedir
+                // otro token y reintentar (withFreshToken), y si
+                // sigue 401 avisar "Sesión caducada".
+                if (conn.responseCode == 401) throw SpotifyUnauthorizedException()
                 if (conn.responseCode != 200) return null
                 // Tope de 2 MB: la respuesta es JSON (KBs). Sin tope,
                 // una respuesta gigante tumba la app por memoria
@@ -263,6 +304,8 @@ class SpotifyClient {
             } finally {
                 conn.disconnect()
             }
+        } catch (e: SpotifyUnauthorizedException) {
+            throw e
         } catch (_: Exception) {
             null
         }
