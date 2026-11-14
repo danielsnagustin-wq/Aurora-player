@@ -115,6 +115,32 @@ object BackupManager {
         }
     }
 
+    /**
+     * Ruta de una canción por su id de MediaStore, sin filtro de
+     * duración ni de IS_MUSIC (RONDA 2, 2026-11-13, P1). Solo se usa
+     * para los ids que no salieron en el escaneo de la biblioteca;
+     * null si el id ya no existe o no tiene ruta.
+     */
+    private fun resolveSongPathById(context: Context, id: Long): String? {
+        return try {
+            context.contentResolver.query(
+                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                arrayOf(MediaStore.Audio.Media.DATA),
+                "${MediaStore.Audio.Media._ID} = ?",
+                arrayOf(id.toString()),
+                null,
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getString(0)?.takeIf { it.isNotBlank() }
+                } else {
+                    null
+                }
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** Recoge todo lo respaldable en un BackupData. */
     suspend fun collectBackup(context: Context): BackupData = withContext(Dispatchers.IO) {
         val appContext = context.applicationContext
@@ -122,8 +148,21 @@ object BackupManager {
         val playerSettings = PlayerSettingsStore(appContext).settingsFlow.first()
         val themeSettings = ThemeSettingsStore(appContext).settingsFlow.first()
         val library = MusicRepository(appContext).loadSongs(playerSettings.minDurationMs)
-        val pathById = library.associate { it.id to it.path }
-        val ref = { id: Long -> BackupSongRef(id, pathById[id] ?: "") }
+        val pathById = library.associate { it.id to it.path }.toMutableMap()
+        // RONDA 2 (2026-11-13, P1): la biblioteca se escanea con el
+        // filtro de duración mínima (y solo IS_MUSIC=1): una canción
+        // de una lista más corta que minDurationMs, o con IS_MUSIC=0,
+        // no estaba en el mapa y su referencia salía con ruta vacía;
+        // al restaurar, matchSongs la mandaba a ausentes aunque la
+        // canción existiera en el teléfono con el mismo id. Para los
+        // ids que faltan, la ruta se resuelve directa en MediaStore
+        // por _ID, sin filtros (son pocos: solo los que faltan).
+        val ref = { id: Long ->
+            val path = pathById[id]?.takeIf { it.isNotBlank() }
+                ?: resolveSongPathById(appContext, id)?.also { pathById[id] = it }
+                ?: ""
+            BackupSongRef(id, path)
+        }
 
         val playlists = db.playlistDao().allPlaylists().map { pl ->
             val songs = db.playlistDao().songsOf(pl.id).map { ref(it.songId) }
