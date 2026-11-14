@@ -3,6 +3,7 @@ package com.aurora.player.online
 import com.aurora.player.model.StreamQuality
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
 import java.util.Locale
 
 /**
