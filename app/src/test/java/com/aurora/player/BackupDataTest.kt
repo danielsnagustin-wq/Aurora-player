@@ -48,7 +48,7 @@ class BackupDataTest {
             index = 0,
             positionMs = 12_345L,
         ),
-        eqPresets = listOf(BackupEqPreset("Mi preset", listOf(1.5f, 0f, -2.5f))),
+        eqPresets = listOf(BackupEqPreset("Mi preset", listOf(1.5f, 0f, -2.5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f))),
     )
 
     @Test
@@ -92,6 +92,19 @@ class BackupDataTest {
         assertEquals("Mi preset", data.eqPresets[0].name)
         assertEquals(1.5f, data.eqPresets[0].levelsDb[0])
         assertEquals(-2.5f, data.eqPresets[0].levelsDb[2])
+    }
+
+    @Test
+    fun `preset de EQ con distinto de 10 bandas invalida todo el respaldo`() {
+        // RONDA CAZA 2026-11-13 (P2): el EQ tiene 10 bandas y
+        // CustomPresetStore.save descarta en silencio cualquier preset
+        // con otro tamaño; un respaldo con 3 bandas es inválido en vez
+        // de restaurarse "bien" y perder el preset sin aviso.
+        val corto = sampleData().copy(
+            eqPresets = listOf(BackupEqPreset("Corto", listOf(1.5f, 0f, -2.5f))),
+        )
+        val result = validateBackup(corto.toJsonString())
+        assertTrue(result is BackupValidation.Invalid)
     }
 
     @Test
@@ -190,14 +203,14 @@ class BackupDataTest {
         val refs = listOf(
             BackupSongRef(11, "/a/1.mp3"), // id existe con otra ruta -> por ruta (55)
             BackupSongRef(22, "/b/2.mp3"), // id existe con otra ruta, sin esa ruta -> ausente
-            BackupSongRef(33, ""), // sin ruta no se puede comprobar: vale el id
+            BackupSongRef(33, ""), // sin ruta no se puede comprobar: va a ausentes
         )
         val library = listOf(11L to "/z/otro.mp3", 22L to "/y/otro.mp3", 55L to "/a/1.mp3", 33L to "/c/3.mp3")
         val (found, missing) = matchSongs(refs, library)
-        assertEquals(2, found.size)
+        assertEquals(1, found.size)
         assertEquals(55L, found[0].first)
-        assertEquals(33L, found[1].first)
-        assertEquals(1, missing.size)
+        assertEquals(2, missing.size)
         assertEquals(22L, missing[0].id)
+        assertEquals(33L, missing[1].id)
     }
 }
