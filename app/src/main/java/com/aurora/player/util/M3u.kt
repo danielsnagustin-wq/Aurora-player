@@ -1,5 +1,7 @@
 package com.aurora.player.util
 
+import java.util.Locale
+
 /**
  * Aurora Player — M3U (Etapa 1: export; import en Etapa 1, XSPF/WPL/PLS en 1b).
  * Formato real: líneas #EXTINF:<segundos>,<artista> - <título> + ruta.
@@ -75,16 +77,19 @@ object M3u {
 
 /** Formato de duraciones y contadores. Sin inventar: 0 = "0:00". */
 object TimeFormat {
+    // RONDA CAZA 2026-11-13 (P2): String.format sin Locale usa el
+    // del teléfono y en locales con dígitos no latinos las duraciones
+    // salían con otros dígitos. Locale.ROOT siempre.
     fun formatDuration(ms: Long): String {
         val totalSeconds = (ms / 1000).coerceAtLeast(0)
         val minutes = totalSeconds / 60
         val seconds = totalSeconds % 60
-        return "%d:%02d".format(minutes, seconds)
+        return String.format(Locale.ROOT, "%d:%02d", minutes, seconds)
     }
 
     fun formatTotalListened(ms: Long): String {
         val hours = ms / 3_600_000
         val minutes = (ms % 3_600_000) / 60_000
-        return if (hours > 0) "%dh %02dmin".format(hours, minutes) else "%d min".format(minutes)
+        return if (hours > 0) String.format(Locale.ROOT, "%dh %02dmin", hours, minutes) else String.format(Locale.ROOT, "%d min", minutes)
     }
 }
