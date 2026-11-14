@@ -1685,6 +1685,10 @@ private fun AuroraApp(
         val id = mediaId.toLongOrNull() ?: return@LaunchedEffect
         lyricsOffsetMs = try {
             offsetStore.offsetFor(id)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // RONDA 2 (2026-11-13, P2): la cancelación del efecto
+            // no es "sin ajuste": se relanza.
+            throw e
         } catch (_: Exception) {
             // offsetFor devuelve Int: el 0 tiene que ser Int, no Long
             // (run #292: el 0L hacía el try de tipo Number).
