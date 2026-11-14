@@ -24,8 +24,8 @@ class DiskArtCacheTest {
     fun nombreTemporalUnicoPorEscritura() {
         // RONDA 2 (2026-11-13, P2): el temporal lleva el nanoTime
         // para que dos escrituras del mismo álbum no compartan .tmp.
-        assertEquals("123_144.1000.tmp", DiskArtCache.tmpFileName(123, 144, 1000L))
-        assertEquals("7_1024.42.tmp", DiskArtCache.tmpFileName(7, 1024, 42L))
+        assertEquals("123_144.jpg.1000.tmp", DiskArtCache.tmpFileName(123, 144, 1000L))
+        assertEquals("7_1024.jpg.42.tmp", DiskArtCache.tmpFileName(7, 1024, 42L))
         assertFalse(
             DiskArtCache.tmpFileName(123, 144, 1L) ==
                 DiskArtCache.tmpFileName(123, 144, 2L),
