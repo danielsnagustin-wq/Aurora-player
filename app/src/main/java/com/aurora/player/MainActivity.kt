@@ -97,6 +97,7 @@ import com.aurora.player.data.FolderStore
 import com.aurora.player.data.MusicRepository
 import com.aurora.player.data.NamedQueueEntity
 import com.aurora.player.data.PlayHistoryEntity
+import com.aurora.player.data.AlarmStore
 import com.aurora.player.data.IntroStore
 import com.aurora.player.data.LyricsProviderStore
 import com.aurora.player.data.PlayerSettingsStore
@@ -714,6 +715,14 @@ private fun AuroraApp(
     // porque persistQueue lo lee: Kotlin no deja usar una variable
     // declarada después.
     var queueRestored by remember { mutableStateOf(false) }
+    // RONDA 2 (2026-11-13, P1, n=899): mientras suena la alarma, la
+    // cola del reproductor es la DE LA ALARMA, no la del usuario: no
+    // se persiste (el servicio restaura la suya al apagarla, n=898).
+    // Se lee por rememberUpdatedState: el bucle de progreso capturó
+    // persistQueue al arrancar y sin esto vería siempre el primer
+    // valor (igual que appVisible, RONDA LAG).
+    val alarmActive by remember { AlarmStore(context) }.activeFlow.collectAsState(initial = false)
+    val latestAlarmActive by rememberUpdatedState(alarmActive)
     // RONDA 39: guardar la cola periódicamente mientras suena —
     // antes solo se guardaba al cambiar de pista o al pausar, así que
     // cerrar la app a la fuerza a mitad de una canción retomaba desde
@@ -727,7 +736,10 @@ private fun AuroraApp(
         // ganarle, borrando la cola que el usuario esperaba reanudar.
         // Tras restaurar (o descartar la restauración), guardar vacío
         // sí vale: es que el usuario vació la cola a propósito.
-        if (c.mediaItemCount > 0 || queueRestored) {
+        // RONDA 2 (2026-11-13, P1, n=899): con la alarma sonando, la
+        // cola del reproductor es la de la alarma: guardarla pisaría
+        // la cola del usuario.
+        if (!latestAlarmActive && (c.mediaItemCount > 0 || queueRestored)) {
             scope.launch {
                 try {
                     queueStore.save(
