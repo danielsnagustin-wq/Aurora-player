@@ -50,6 +50,7 @@ import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.model.StreamQuality
 import com.aurora.player.online.OnlineTrack
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.SpotifyUnauthorizedException
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.parseSpotifyPlaylistId
 import com.aurora.player.online.SpotifyPlaylist
@@ -158,21 +159,21 @@ fun SpotifyPlaylistsSection(
         message = null
         scope.launch {
             try {
-                val token = spotify.fetchAccessToken(cookie)
-                if (token == null) {
-                    message = "La cookie de Spotify caducó o no sirve. Vuelve a conectarla en Ajustes → Red → Spotify."
-                } else {
-                    // Ronda 34: fetchPlaylists devuelve null si
-                    // Spotify no respondió; una lista vacía de verdad
-                    // no es lo mismo que un fallo de carga.
-                    val found = spotify.fetchPlaylists(token)
-                    if (found == null) {
-                        message = "Sin conexión o Spotify no respondió."
-                    } else {
-                        playlists = found
-                        if (found.isEmpty()) message = "No tienes listas en Spotify."
-                    }
+                // RONDA CAZA 2026-11-13 (P1): withFreshToken pide otro
+                // token una vez si api.spotify.com devuelve 401 a mitad
+                // de sesión; si sigue 401, la sesión caducó (no es
+                // "sin conexión"). Null es solo fallo de red.
+                val found = spotify.withFreshToken(cookie) { token ->
+                    spotify.fetchPlaylists(token)
                 }
+                if (found == null) {
+                    message = "Sin conexión o Spotify no respondió."
+                } else {
+                    playlists = found
+                    if (found.isEmpty()) message = "No tienes listas en Spotify."
+                }
+            } catch (_: SpotifyUnauthorizedException) {
+                message = "Tu sesión de Spotify caducó. Vuelve a conectarla en Ajustes → Red → Spotify."
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
             } finally {
@@ -189,20 +190,20 @@ fun SpotifyPlaylistsSection(
         message = null
         scope.launch {
             try {
-                val token = spotify.fetchAccessToken(cookie)
-                if (token == null) {
-                    message = "La cookie de Spotify caducó o no sirve. Vuelve a conectarla en Ajustes → Red → Spotify."
-                } else {
-                    // Ronda 34: igual que las listas, null es un
-                    // fallo de carga y no una lista vacía de verdad.
-                    val found = spotify.fetchPlaylistTracks(token, playlist.id)
-                    if (found == null) {
-                        message = "Sin conexión o Spotify no respondió."
-                    } else {
-                        tracks = found
-                        if (found.isEmpty()) message = "Esa lista está vacía."
-                    }
+                // RONDA CAZA 2026-11-13 (P1): igual que las listas,
+                // reintento único con otro token ante 401; si sigue
+                // 401, la sesión caducó.
+                val found = spotify.withFreshToken(cookie) { token ->
+                    spotify.fetchPlaylistTracks(token, playlist.id)
                 }
+                if (found == null) {
+                    message = "Sin conexión o Spotify no respondió."
+                } else {
+                    tracks = found
+                    if (found.isEmpty()) message = "Esa lista está vacía."
+                }
+            } catch (_: SpotifyUnauthorizedException) {
+                message = "Tu sesión de Spotify caducó. Vuelve a conectarla en Ajustes → Red → Spotify."
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
             } finally {
