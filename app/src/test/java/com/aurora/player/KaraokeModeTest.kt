@@ -14,6 +14,15 @@ class KaraokeModeTest {
     fun parseaModosConocidos() {
         assertEquals(KaraokeMode.ALWAYS, parseKaraokeMode("ALWAYS", KaraokeMode.OFF))
         assertEquals(KaraokeMode.FULLSCREEN_ONLY, parseKaraokeMode("FULLSCREEN_ONLY", KaraokeMode.ALWAYS))
+        // RONDA 2 (2026-11-13, P2): sin distinción de mayúsculas
+        // (igual que parseGestureAction): un valor guardado en
+        // minúscula casa con su enum en vez de caer al defecto.
+        assertEquals(KaraokeMode.ALWAYS, parseKaraokeMode("always", KaraokeMode.OFF))
+        assertEquals(
+            KaraokeMode.FULLSCREEN_ONLY,
+            parseKaraokeMode("fullscreen_only", KaraokeMode.ALWAYS),
+        )
+        assertEquals(KaraokeMode.OFF, parseKaraokeMode("Off", KaraokeMode.ALWAYS))
     }
 
     @Test
