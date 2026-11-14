@@ -3,8 +3,10 @@ package com.aurora.player
 import com.aurora.player.lyrics.BinimumResult
 import com.aurora.player.lyrics.buildBinimumSearchUrl
 import com.aurora.player.lyrics.isAllowedLyricsUrl
+import com.aurora.player.lyrics.normalizeForMatch
 import com.aurora.player.lyrics.parseBinimumSearch
 import com.aurora.player.lyrics.pickBinimumResult
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -58,6 +60,23 @@ class BiniLyricsProviderTest {
             BinimumResult("Bonebreaker", "Excision", 210.0, "https://lrc.red/s/b.ttml"),
         )
         assertEquals("https://lrc.red/s/b.ttml", pickBinimumResult(results, "Bonebreaker", "Excision", 210)?.lyricsUrl)
+    }
+
+    @Test
+    fun `normalizeForMatch no depende del locale del sistema`() {
+        // RONDA 2 (2026-11-13, P2): en locale turco, lowercase()
+        // sin locale convierte "Istanbul" en "ıstanbul" (i sin
+        // punto) y la coincidencia se rompe. Con Locale.ROOT da
+        // "istanbul" en cualquier locale. Sin el arreglo, este
+        // test falla. Se restaura el locale al salir.
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale("tr", "TR"))
+            assertEquals("istanbul", normalizeForMatch("Istanbul"))
+            assertEquals("istanbul", normalizeForMatch("ISTANBUL"))
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test
