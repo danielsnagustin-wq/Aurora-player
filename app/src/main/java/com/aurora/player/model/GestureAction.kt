@@ -23,3 +23,30 @@ fun parseGestureAction(value: String?, default: GestureAction): GestureAction =
     // "favorite") y con == estricto nunca casaban con el nombre del
     // enum; solo coincidía porque el fallback era la misma acción.
     GestureAction.entries.find { it.name.equals(value, ignoreCase = true) } ?: default
+
+/**
+ * RONDA 2 (2026-11-13, P2): la acción de un gesto vive en UN solo
+ * when exhaustivo como expresión: añadir un valor al enum sin rama
+ * aquí NO compila, y cada llamador (doble toque en PlayerScreen,
+ * agitar en MainActivity) tiene que pasar las 7 lambdas. Antes cada
+ * llamador tenía su propio when como sentencia sin else: un valor
+ * nuevo se ejecutaba en silencio en uno de los dos (o en los dos).
+ */
+fun performGestureAction(
+    action: GestureAction,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onPlayPause: () -> Unit,
+    onToggleFavorite: () -> Unit,
+    onFastForward: () -> Unit,
+    onRewind: () -> Unit,
+    onToggleMute: () -> Unit,
+): Unit = when (action) {
+    GestureAction.NEXT -> onNext()
+    GestureAction.PREVIOUS -> onPrevious()
+    GestureAction.PLAY_PAUSE -> onPlayPause()
+    GestureAction.FAVORITE -> onToggleFavorite()
+    GestureAction.FAST_FORWARD -> onFastForward()
+    GestureAction.REWIND -> onRewind()
+    GestureAction.TOGGLE_MUTE -> onToggleMute()
+}
