@@ -35,15 +35,23 @@ data class DownloadRecord(
 internal fun encodeDownloadRecord(record: DownloadRecord): String {
     // Unit separator (U+001F) unlikely to appear in titles/artists
     val sep = '\u001F'
+    // RONDA 2 (2026-11-13, P2): como en DiscoveryStore (n=872): los
+    // registros se unen con "\n" y los campos con U+001F; un título
+    // con salto de línea (o con el separador) partía el registro en
+    // dos y se perdía la descarga al leerlo. Se limpian en la escritura.
+    fun clean(text: String): String = text
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replace(sep, ' ')
     val uriPart = record.uri ?: ""
     return listOf(
-        record.videoId,
-        record.title,
-        record.artist,
+        clean(record.videoId),
+        clean(record.title),
+        clean(record.artist),
         record.sizeBytes.toString(),
         record.downloadedAtMs.toString(),
         record.status.name,
-        uriPart
+        clean(uriPart)
     ).joinToString(sep.toString())
 }
 
