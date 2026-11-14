@@ -56,14 +56,27 @@ class TrackDownloader(
                 ?: return@withContext Result.failure<Uri>(Exception("Failed to obtain cached file"))
 
             // 3. Copiar a Descargas.
-            val ext = extensionForItag(resolved.itag)
+            // RONDA CAZA 2026-11-13 (P1): la extensión y el MIME
+            // salían del itag recién resuelto, pero el archivo de
+            // caché puede ser de OTRO itag (cachedFile devuelve el
+            // primero de preferredItags que exista): el archivo se
+            // llamaba .webm con m4a dentro. La fuente de verdad es
+            // el itag del nombre del archivo de caché.
+            val actualItag = itagFromCacheFileName(cachedFile.name) ?: resolved.itag
+            val ext = extensionForItag(actualItag)
             val fileName = buildDownloadFileName(artist, title, ext)
-            val mime = mimeTypeForItag(resolved.itag)
+            val mime = mimeTypeForItag(actualItag)
 
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, fileName)
                 put(MediaStore.Downloads.MIME_TYPE, mime)
                 put(MediaStore.Downloads.RELATIVE_PATH, "Download/AuroraPlayer")
+                // RONDA CAZA 2026-11-13 (P2): sin IS_PENDING, un
+                // fallo a mitad de copia dejaba un archivo parcial
+                // visible en Descargas. IS_PENDING lo esconde hasta
+                // que la copia termina; si algo falla, la entrada se
+                // borra (ver el finally de abajo).
+                put(MediaStore.Downloads.IS_PENDING, 1)
             }
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -72,11 +85,23 @@ class TrackDownloader(
                     values,
                 ) ?: return@withContext Result.failure<Uri>(Exception("Failed to create MediaStore entry"))
 
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    cachedFile.inputStream().use { it.copyTo(out) }
-                } ?: return@withContext Result.failure<Uri>(Exception("Failed to write file"))
+                var ok = false
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        cachedFile.inputStream().use { it.copyTo(out) }
+                    } ?: return@withContext Result.failure<Uri>(Exception("Failed to write file"))
 
-                Result.success(uri)
+                    context.contentResolver.update(
+                        uri,
+                        ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) },
+                        null,
+                        null,
+                    )
+                    ok = true
+                    Result.success(uri)
+                } finally {
+                    if (!ok) runCatching { context.contentResolver.delete(uri, null, null) }
+                }
             } else {
                 val dir = File(
                     context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
@@ -130,6 +155,12 @@ class TrackDownloader(
         val collapsed = cleaned.replace(Regex("\\s+"), " ").trim()
         // Limita a 200 caracteres por parte.
         return if (collapsed.length > 200) collapsed.substring(0, 200) else collapsed
+    }
+
+    /** Itag del nombre del archivo de caché ("<videoId>_<itag>.<ext>"); null si no se puede leer. El videoId puede llevar "_" así que se toma el último. */
+    internal fun itagFromCacheFileName(name: String): Int? {
+        val itag = name.substringAfterLast("_", "").substringBefore(".", "")
+        return itag.toIntOrNull()
     }
 
     /** Extensión de archivo según itag. */
