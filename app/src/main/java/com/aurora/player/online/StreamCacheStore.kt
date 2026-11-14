@@ -7,7 +7,10 @@ import java.io.File
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -119,7 +122,7 @@ class StreamCacheStore(context: Context) {
         }
     }
 
-    private fun downloadLocked(
+    private suspend fun downloadLocked(
         videoId: String,
         itag: Int,
         url: String,
@@ -147,6 +150,10 @@ class StreamCacheStore(context: Context) {
                     part.outputStream().use { output ->
                         val buf = ByteArray(8192)
                         while (!capped) {
+                            // RONDA 2 (2026-11-13, P2): la copia es un
+                            // bucle bloqueante — sin esto, cancelar la
+                            // descarga seguía copiando hasta el final.
+                            currentCoroutineContext().ensureActive()
                             val n = input.read(buf)
                             if (n <= 0) break
                             total += n
@@ -186,6 +193,12 @@ class StreamCacheStore(context: Context) {
             } finally {
                 conn.disconnect()
             }
+        } catch (e: CancellationException) {
+            // RONDA 2 (2026-11-13, P2): la cancelación no es un
+            // fallo de descarga: se borra el .part a medias y se
+            // relanza, nunca se devuelve null tragándosela.
+            runCatching { File(dir, streamCachePartFileName(videoId, itag)).delete() }
+            throw e
         } catch (_: Exception) {
             runCatching { File(dir, streamCachePartFileName(videoId, itag)).delete() }
             return null
