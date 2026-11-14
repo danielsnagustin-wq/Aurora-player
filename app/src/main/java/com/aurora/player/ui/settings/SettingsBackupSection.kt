@@ -169,7 +169,7 @@ fun SettingsBackupSection() {
     backupMessage?.let { Text(it, modifier = Modifier.padding(top = 8.dp)) }
     restoreReport?.let { report ->
         Text(
-            "Restaurado: ${report.playlistsRestored} listas, ${report.favoritesRestored} favoritos, " +
+            "Restaurado: ${report.playlistsRestored} listas, ${report.namedQueuesRestored} colas guardadas, ${report.favoritesRestored} favoritos, " +
                 "${report.historyRestored} escuchas, ${report.queueSongs} canciones en cola.",
             modifier = Modifier.padding(top = 8.dp),
         )
