@@ -12,6 +12,10 @@ import android.view.View
 import android.widget.RemoteViews
 import com.aurora.player.MainActivity
 import com.aurora.player.R
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Aurora Player — widget de inicio (idea de Auxio/Retro/Gramophone:
@@ -37,6 +41,12 @@ class AuroraWidgetProvider : AppWidgetProvider() {
 
     companion object {
         private const val PREFS = "aurora_widget"
+
+        // RONDA 2 (2026-11-13, P2): la miniatura se cargaba en el hilo
+        // principal (onUpdate / saveNowPlaying corren ahí) y
+        // loadThumbnail lee y decodifica del disco. Ahora se carga
+        // aquí, en IO, y la portada llega en una segunda pasada.
+        private val widgetScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun requestUpdate(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
@@ -104,21 +114,16 @@ class AuroraWidgetProvider : AppWidgetProvider() {
             // (API 29+; en API 26-28 no hay loadThumbnail y el hueco
             // se esconde). Es una sola lectura pequeña y solo cambia
             // de pista; si falla, no hay portada, nunca una inventada.
+            // La primera pasada pinta el widget sin portada y la
+            // miniatura llega después, en IO (ver abajo): antes se
+            // cargaba en el hilo principal y podía atascar la UI.
+            val artUri = if (style == WidgetStyle.COVER) {
+                prefs.getString("art_uri", null)?.let { android.net.Uri.parse(it) }
+            } else {
+                null
+            }
             if (style == WidgetStyle.COVER) {
-                val artUri = prefs.getString("art_uri", null)?.let { android.net.Uri.parse(it) }
-                val bitmap = if (artUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    runCatching {
-                        context.contentResolver.loadThumbnail(artUri, Size(144, 144), null)
-                    }.getOrNull()
-                } else {
-                    null
-                }
-                if (bitmap != null) {
-                    views.setViewVisibility(R.id.widget_cover, View.VISIBLE)
-                    views.setImageViewBitmap(R.id.widget_cover, bitmap)
-                } else {
-                    views.setViewVisibility(R.id.widget_cover, View.GONE)
-                }
+                views.setViewVisibility(R.id.widget_cover, View.GONE)
             }
             views.setImageViewResource(
                 R.id.widget_play,
@@ -139,6 +144,25 @@ class AuroraWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.widget_prev, action(MainActivity.ACTION_WIDGET_PREV))
             views.setOnClickPendingIntent(R.id.widget_title, action(MainActivity.ACTION_WIDGET_OPEN))
             manager.updateAppWidget(appWidgetId, views)
+            // Segunda pasada (solo Con portada): la miniatura en IO.
+            // Si al terminar ya suena otra pista (otra art_uri
+            // guardada), la miniatura vieja no se pinta.
+            if (artUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val appContext = context.applicationContext
+                val artUriString = artUri.toString()
+                widgetScope.launch {
+                    val bitmap = runCatching {
+                        appContext.contentResolver.loadThumbnail(artUri, Size(144, 144), null)
+                    }.getOrNull()
+                    if (bitmap != null &&
+                        prefs.getString("art_uri", null) == artUriString
+                    ) {
+                        views.setViewVisibility(R.id.widget_cover, View.VISIBLE)
+                        views.setImageViewBitmap(R.id.widget_cover, bitmap)
+                        manager.updateAppWidget(appWidgetId, views)
+                    }
+                }
+            }
         }
     }
 }
