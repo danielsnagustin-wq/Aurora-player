@@ -1059,8 +1059,10 @@ private fun AuroraApp(
                             db.libraryDao().addHistory(PlayHistoryEntity(id, at, finalMs))
                             // RONDA CAZA 2026-11-13 (P2): el historial
                             // crecía sin tope; se conservan las 20.000
-                            // escuchas más recientes.
-                            db.libraryDao().pruneHistory()
+                            // escuchas más recientes. RONDA 2 (P2):
+                            // pruneHistoryIfOver cuenta primero y solo
+                            // poda si se rebasa el tope + margen.
+                            db.libraryDao().pruneHistoryIfOver()
                             // RONDA 110: la inserción periódica puede
                             // aterrizar entre la actualización (0
                             // filas) y este insert (IGNORE): la fila
@@ -1104,7 +1106,7 @@ private fun AuroraApp(
             try {
                 db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
                 // RONDA CAZA 2026-11-13 (P2): poda del historial.
-                db.libraryDao().pruneHistory()
+                db.libraryDao().pruneHistoryIfOver()
                 historyDone = historyDone + id
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
@@ -1151,7 +1153,7 @@ private fun AuroraApp(
             try {
                 db.libraryDao().addHistory(PlayHistoryEntity(id, now, ms))
                 // RONDA CAZA 2026-11-13 (P2): poda del historial.
-                db.libraryDao().pruneHistory()
+                db.libraryDao().pruneHistoryIfOver()
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
                 historyFlushedId = null
