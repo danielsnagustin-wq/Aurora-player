@@ -126,6 +126,11 @@ class PlaybackService : MediaLibraryService() {
     /** Cargador de portadas de la notificación (su hilo se libera en onDestroy). */
     private var bitmapLoader: AuroraBitmapLoader? = null
     private var equalizer: EqualizerManager? = null
+    // RONDA CAZA 2026-11-13 (P2): la inicialización del EQ es una
+    // corrutina con puntos de suspensión; sin guardar su Job, una
+    // sesión nueva no podía cancelarla y escribía en el manager
+    // liberado (ver setupEqualizer).
+    private var equalizerJob: Job? = null
     private var audioOutputDirect: Boolean = false
     // Ronda USB Serie A: los sumideros de audio (principal + solape)
     // para fijarles el DAC USB como dispositivo preferido.
@@ -230,6 +235,11 @@ class PlaybackService : MediaLibraryService() {
     private var overlapEqualizerSessionId: Int = 0
     private var overlapTrackGainDb: Float? = null
     private var overlapAlbumGainDb: Float? = null
+    // RONDA CAZA 2026-11-13 (P2): el sink de B se apuntaba aquí
+    // para sacarlo de audioSinks al liberar B (antes quedaba muerto
+    // en la lista y applyUsbRouting/applyAtmosOffloadMode lo seguían
+    // recorriendo, con errores falsos de "USB"/"Atmos" en el log).
+    private var overlapAudioSink: DefaultAudioSink? = null
 
     companion object {
         const val CHANNEL_ID = "aurora_player_playback"
@@ -815,8 +825,14 @@ class PlaybackService : MediaLibraryService() {
 
     private fun setupEqualizer(sessionId: Int) {
         if (sessionId == 0 || sessionId == equalizerSessionId) return
+        // RONDA CAZA 2026-11-13 (P2): cancelar la inicialización
+        // anterior antes de liberar su manager: su corrutina podía
+        // despertar tras sus first() y escribir en un manager ya
+        // liberado por esta llamada.
+        equalizerJob?.cancel()
         equalizer?.release()
-        equalizerSessionId = sessionId
+        equalizer = null
+        equalizerSessionId = 0
         val manager = try {
             EqualizerManager(sessionId)
         } catch (e: Exception) {
@@ -826,13 +842,23 @@ class PlaybackService : MediaLibraryService() {
             null
         }
         equalizer = manager
+        // RONDA CAZA 2026-11-13 (P2): el id solo se anota cuando la
+        // creación tuvo éxito. Antes se anotaba antes de crear y un
+        // fallo dejaba la sesión marcada como "ya puesta", sin
+        // reintento posible (la guarda de arriba la rechazaba).
+        if (manager != null) equalizerSessionId = sessionId
         AudioEffects.publish(manager)
         manager?.let { eq ->
-            serviceScope.launch {
+            equalizerJob = serviceScope.launch {
                 val saved = EqStateStore(this@PlaybackService).stateFlow.first()
                 val direct = isDirectMode(
                     PlayerSettingsStore(this@PlaybackService).settingsFlow.first().audioOutputMode,
                 )
+                // RONDA CAZA 2026-11-13 (P2): si mientras se leía el
+                // estado llegó otra sesión, este manager ya está
+                // liberado: no se escribe nada en él (ni preset, ni
+                // bass boost, ni activación).
+                if (equalizer != eq) return@launch
                 audioOutputDirect = direct
                 // RONDA EQ: si el efecto no se creó o no tiene bandas,
                 // queda escrito en el registro (antes era mudo: la
@@ -1039,6 +1065,7 @@ class PlaybackService : MediaLibraryService() {
                     .setAudioProcessors(arrayOf(gainB, balanceB))
                     .build()
                 audioSinks.add(sink)
+                overlapAudioSink = sink
                 // Slice 5 paso 4: offload Atmos también en el
                 // reproductor de solape (mismo modo que el principal).
                 applyOffloadModeToSink(sink)
@@ -1172,6 +1199,8 @@ class PlaybackService : MediaLibraryService() {
     private fun releaseOverlapPlayer() {
         overlapPlayer?.release()
         overlapPlayer = null
+        overlapAudioSink?.let { audioSinks.remove(it) }
+        overlapAudioSink = null
         overlapEqualizer?.release()
         overlapEqualizer = null
         overlapEqualizerSessionId = 0
