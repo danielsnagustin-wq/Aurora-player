@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -281,6 +282,13 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
                 OutlinedButton(
                     onClick = { showYear = true },
                     modifier = Modifier.weight(1f).height(48.dp),
+                    // RONDA CAZA 2026-11-13 (P1): el texto iba en el
+                    // color del acento y los acentos oscuros no se
+                    // leían sobre negro. Texto claro siempre, como
+                    // los chips (n=828).
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Text("Tu año")
                 }
@@ -296,6 +304,9 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
                     },
                     enabled = data != null && data.totalPlays > 0,
                     modifier = Modifier.weight(1f).height(48.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) {
                     Text("Exportar CSV")
                 }
@@ -324,6 +335,9 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
                     OutlinedButton(
                         onClick = { viewModel.refresh(hasAudioPermission) },
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
                     ) {
                         Text("Reintentar")
                     }
@@ -440,7 +454,10 @@ fun StatsScreen(hasAudioPermission: Boolean, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(top = 16.dp),
             )
         }
-        itemsIndexed(data.mostPlayed) { index, (song, count) ->
+        // RONDA CAZA 2026-11-13 (P2): clave estable por canción (sin
+        // ella, al reordenarse la lista Compose reutilizaba la fila
+        // equivocada: portada y contador de otra canción).
+        itemsIndexed(data.mostPlayed, key = { _, (song, _) -> song.id }) { index, (song, count) ->
             ListItem(
                 leadingContent = {
                     AlbumCover(song, size = 56.dp)
