@@ -1122,6 +1122,10 @@ class InnerTubeClient(
         quality: StreamQuality = StreamQuality.HIGH,
     ): ResolvedStream? = withContext(Dispatchers.IO) {
         for (client in PLAYER_CLIENTS) {
+            // RONDA 2 (2026-11-13, P2): cancelar la resolución no
+            // prueba el siguiente cliente de la escalera (4 POST
+            // de 10 s cada uno): se para en el acto.
+            ensureActive()
             val url = "https://${client.host}/youtubei/v1/player?prettyPrint=false"
             val body = postJson(url, buildPlayerBody(client, videoId), client) ?: continue
             val formats = parsePlayerFormats(body) ?: continue
@@ -1145,6 +1149,9 @@ class InnerTubeClient(
      */
     suspend fun resolveVideo(videoId: String): ResolvedVideo? = withContext(Dispatchers.IO) {
         for (client in PLAYER_CLIENTS) {
+            // RONDA 2 (2026-11-13, P2): igual que resolveStream —
+            // la cancelación para la escalera, no prueba otro cliente.
+            ensureActive()
             val url = "https://${client.host}/youtubei/v1/player?prettyPrint=false"
             val body = postJson(url, buildPlayerBody(client, videoId), client) ?: continue
             val video = parsePlayerVideoFormats(body)?.let { selectVideoFormat(it) } ?: continue
