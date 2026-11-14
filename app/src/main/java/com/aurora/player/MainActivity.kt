@@ -67,6 +67,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.lifecycle.Lifecycle
@@ -590,17 +592,62 @@ private fun AuroraApp(
     appVisible: Boolean = true,
 ) {
     val context = LocalContext.current
-    var tab by remember { mutableStateOf(Tab.LIBRARY) }
-    var artistProfile by remember { mutableStateOf<String?>(null) }
-    var showDownloads by remember { mutableStateOf(false) }
+    // RONDA CAZA 2026-11-13 (P1): girar el teléfono perdía la
+    // navegación entera (remember no sobrevive a la rotación). Los
+    // estados de navegación pasan a rememberSaveable; los enums van
+    // por su nombre con Saver explícito y el vídeo por sus campos.
+    var tab by rememberSaveable(
+        saver = Saver<androidx.compose.runtime.MutableState<Tab>, String>(
+            save = { it.value.name },
+            restore = {
+                mutableStateOf(runCatching { Tab.valueOf(it) }.getOrDefault(Tab.LIBRARY))
+            },
+        ),
+    ) { mutableStateOf(Tab.LIBRARY) }
+    var artistProfile by rememberSaveable { mutableStateOf<String?>(null) }
+    var showDownloads by rememberSaveable { mutableStateOf(false) }
     // Ronda 7 (Gemini): sección de Ajustes que se abre directo
     // (p. ej. Red, desde la pestaña Online con el modo apagado).
-    var settingsSection by remember { mutableStateOf<SettingsSection?>(null) }
-    var showPlayer by remember { mutableStateOf(false) }
-    var showEq by remember { mutableStateOf(false) }
+    var settingsSection by rememberSaveable(
+        saver = Saver<androidx.compose.runtime.MutableState<SettingsSection?>, String>(
+            save = { it.value?.name },
+            restore = {
+                mutableStateOf(runCatching { SettingsSection.valueOf(it) }.getOrNull())
+            },
+        ),
+    ) { mutableStateOf<SettingsSection?>(null) }
+    var showPlayer by rememberSaveable { mutableStateOf(false) }
+    var showEq by rememberSaveable { mutableStateOf(false) }
     // Fase 2 app — YouTube con vídeo: el vídeo que se está viendo
     // (null = no hay vídeo en pantalla) y sus subtítulos.
-    var videoTrack by remember { mutableStateOf<OnlineTrack?>(null) }
+    var videoTrack by rememberSaveable(
+        saver = Saver<androidx.compose.runtime.MutableState<OnlineTrack?>, List<String>>(
+            save = { state ->
+                state.value?.let {
+                    listOf(
+                        it.videoId,
+                        it.title,
+                        it.artist,
+                        it.album ?: "",
+                        it.durationSec?.toString() ?: "",
+                        it.thumbnailUrl ?: "",
+                    )
+                }
+            },
+            restore = { parts ->
+                mutableStateOf(
+                    OnlineTrack(
+                        videoId = parts[0],
+                        title = parts[1],
+                        artist = parts[2],
+                        album = parts[3].ifEmpty { null },
+                        durationSec = parts[4].toLongOrNull(),
+                        thumbnailUrl = parts[5].ifEmpty { null },
+                    ),
+                )
+            },
+        ),
+    ) { mutableStateOf<OnlineTrack?>(null) }
     var videoCaptions by remember { mutableStateOf<List<LrcLine>>(emptyList()) }
 
     var controller by remember { mutableStateOf<MediaController?>(null) }
@@ -985,6 +1032,10 @@ private fun AuroraApp(
                         val updated = db.libraryDao().updateHistoryDuration(id, at, finalMs)
                         if (updated == 0) {
                             db.libraryDao().addHistory(PlayHistoryEntity(id, at, finalMs))
+                            // RONDA CAZA 2026-11-13 (P2): el historial
+                            // crecía sin tope; se conservan las 20.000
+                            // escuchas más recientes.
+                            db.libraryDao().pruneHistory()
                             // RONDA 110: la inserción periódica puede
                             // aterrizar entre la actualización (0
                             // filas) y este insert (IGNORE): la fila
@@ -1027,6 +1078,8 @@ private fun AuroraApp(
         scope.launch(Dispatchers.IO) {
             try {
                 db.libraryDao().addHistory(PlayHistoryEntity(id, System.currentTimeMillis(), ms))
+                // RONDA CAZA 2026-11-13 (P2): poda del historial.
+                db.libraryDao().pruneHistory()
                 historyDone = historyDone + id
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
@@ -1072,6 +1125,8 @@ private fun AuroraApp(
         scope.launch(Dispatchers.IO) {
             try {
                 db.libraryDao().addHistory(PlayHistoryEntity(id, now, ms))
+                // RONDA CAZA 2026-11-13 (P2): poda del historial.
+                db.libraryDao().pruneHistory()
             } catch (e: Exception) {
                 ErrorLog.log(context, "Historial", e)
                 historyFlushedId = null
@@ -2800,7 +2855,32 @@ private fun AuroraApp(
                 onShareErrorLog = { shareErrorLog() },
                 ytMusicConnected = ytMusicCookies.isNotBlank() || ytMusicToken.isNotBlank(),
                 onConnectYouTubeMusic = { cookies ->
-                    scope.launch { ytMusicStore.setCookies(cookies) }
+                    scope.launch {
+                        // RONDA CAZA 2026-11-13 (P1): antes las cookies
+                        // se guardaban sin validar y el usuario veía
+                        // "Conectado" hasta que la primera búsqueda
+                        // fallaba. Se prueban con una búsqueda ligera
+                        // ANTES de guardar; si falla, no se guarda nada
+                        // (la sesión vieja, si la había, queda intacta)
+                        // y se avisa. El cliente de prueba lleva los
+                        // callbacks a null a propósito: un 401 suyo no
+                        // debe borrar la sesión guardada.
+                        val probe = InnerTubeClient(cookies)
+                        val ok = try {
+                            probe.search("música") != null
+                        } catch (_: Exception) {
+                            false
+                        }
+                        if (ok) {
+                            ytMusicStore.setCookies(cookies)
+                        } else {
+                            Toast.makeText(
+                                context,
+                                "La sesión no es válida. Vuelve a iniciar sesión.",
+                                Toast.LENGTH_LONG,
+                            ).show()
+                        }
+                    }
                 },
                 onDisconnectYouTubeMusic = {
                     scope.launch { ytMusicStore.clear() }
