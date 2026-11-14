@@ -83,4 +83,29 @@ class SpotifyDownloadMarkTest {
     fun emptyRecords_neverMarks() {
         assertFalse(isTrackDownloaded("Midnight City", "M83", emptyList()))
     }
+
+    // RONDA 2 (2026-11-13, P2): la regla se endureció — un título
+    // que contiene al otro ya no marca, y sin artista no hay marca.
+    @Test
+    fun substringTitle_doesNotMatch() {
+        assertFalse(isTrackDownloaded("Love", "Artist", listOf(record("Lovely", "Artist"))))
+        assertFalse(isTrackDownloaded("Lovely", "Artist", listOf(record("Love", "Artist"))))
+    }
+
+    @Test
+    fun dashSuffixTitle_stillMatches() {
+        assertTrue(
+            isTrackDownloaded(
+                "Midnight City",
+                "M83",
+                listOf(record("Midnight City - Remastered", "M83")),
+            ),
+        )
+    }
+
+    @Test
+    fun blankArtist_neverMarks() {
+        assertFalse(isTrackDownloaded("Midnight City", "", listOf(record("Midnight City", "M83"))))
+        assertFalse(isTrackDownloaded("Midnight City", "M83", listOf(record("Midnight City", ""))))
+    }
 }
