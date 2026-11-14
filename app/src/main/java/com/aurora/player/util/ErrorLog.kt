@@ -22,6 +22,13 @@ object ErrorLog {
     private const val MAX_BYTES = 128 * 1024L
     private const val SEPARATOR = "---"
 
+    // RONDA CAZA 2026-11-13 (P2): log() y trimIfOver() no estaban
+    // sincronizados: dos hilos escribiendo a la vez podían pisarse
+    // (recortar mientras el otro añade) y perder entradas o dejar el
+    // archivo por encima del tope. Todo el ciclo recortar→añadir→
+    // recortar va bajo un solo candado.
+    private val lock = Any()
+
     fun file(context: Context): File = File(context.cacheDir, FILE_NAME)
 
     /** Recorta el archivo a la mitad si pasa de ~128 KB. */
@@ -38,34 +45,36 @@ object ErrorLog {
     /** Escribe una entrada sanitizada; nunca lanza. */
     fun log(context: Context, tag: String, throwable: Throwable?) {
         try {
-            val f = file(context)
-            trimIfOver(f)
-            val time = java.text.SimpleDateFormat(
-                "yyyy-MM-dd HH:mm:ss",
-                java.util.Locale.getDefault(),
-            ).format(java.util.Date())
-            val entry = buildString {
-                appendLine(SEPARATOR)
-                appendLine("[$time] $tag")
-                if (throwable != null) {
-                    appendLine("${throwable.javaClass.name}: ${throwable.message ?: ""}")
-                    throwable.stackTrace.take(12).forEach { appendLine("    at $it") }
-                    var cause = throwable.cause
-                    var depth = 0
-                    while (cause != null && depth < 3) {
-                        appendLine("Caused by: ${cause.javaClass.name}: ${cause.message ?: ""}")
-                        cause = cause.cause
-                        depth++
+            synchronized(lock) {
+                val f = file(context)
+                trimIfOver(f)
+                val time = java.text.SimpleDateFormat(
+                    "yyyy-MM-dd HH:mm:ss",
+                    java.util.Locale.ROOT,
+                ).format(java.util.Date())
+                val entry = buildString {
+                    appendLine(SEPARATOR)
+                    appendLine("[$time] $tag")
+                    if (throwable != null) {
+                        appendLine("${throwable.javaClass.name}: ${throwable.message ?: ""}")
+                        throwable.stackTrace.take(12).forEach { appendLine("    at $it") }
+                        var cause = throwable.cause
+                        var depth = 0
+                        while (cause != null && depth < 3) {
+                            appendLine("Caused by: ${cause.javaClass.name}: ${cause.message ?: ""}")
+                            cause = cause.cause
+                            depth++
+                        }
+                    } else {
+                        appendLine("(sin detalle)")
                     }
-                } else {
-                    appendLine("(sin detalle)")
                 }
+                f.appendText(BugReport.sanitize(entry))
+                // El tope se vuelve a comprobar DESPUÉS de añadir: una
+                // entrada muy larga dejaba el archivo por encima de 128 KB
+                // hasta la siguiente escritura (ronda 11).
+                trimIfOver(f)
             }
-            f.appendText(BugReport.sanitize(entry))
-            // El tope se vuelve a comprobar DESPUÉS de añadir: una
-            // entrada muy larga dejaba el archivo por encima de 128 KB
-            // hasta la siguiente escritura (ronda 11).
-            trimIfOver(f)
         } catch (_: Exception) {
             // El registro nunca puede romper la app.
         }
