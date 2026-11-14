@@ -9,7 +9,6 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.aurora.player.audio.EqualizerManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.eqPresetDataStore by preferencesDataStore(
@@ -39,14 +38,23 @@ class CustomPresetStore(context: Context) {
     suspend fun save(name: String, levelsDb: List<Float>) {
         val clean = name.trim().take(40)
         if (clean.isEmpty() || levelsDb.size != 10) return
-        val current = presetsFlow.first().filter { it.name != clean }
-        val updated = current + EqualizerManager.Preset(clean, levelsDb.map { it.coerceIn(-15f, 15f) })
-        dataStore.edit { it[PRESETS_KEY] = encode(updated) }
+        // RONDA 2 (2026-11-13, P1): leer la lista FUERA de edit {}
+        // y escribir dentro es una carrera: dos guardados a la vez
+        // leen la misma lista y uno pisa al otro (se pierde un preset).
+        // La lectura va DENTRO de edit {}: DataStore la ejecuta bajo
+        // su propio Mutex, así cada guardado ve el último valor.
+        dataStore.edit { prefs ->
+            val current = decode(prefs[PRESETS_KEY] ?: "").filter { it.name != clean }
+            val updated = current + EqualizerManager.Preset(clean, levelsDb.map { it.coerceIn(-15f, 15f) })
+            prefs[PRESETS_KEY] = encode(updated)
+        }
     }
 
     suspend fun delete(name: String) {
-        val updated = presetsFlow.first().filter { it.name != name }
-        dataStore.edit { it[PRESETS_KEY] = encode(updated) }
+        dataStore.edit { prefs ->
+            val updated = decode(prefs[PRESETS_KEY] ?: "").filter { it.name != name }
+            prefs[PRESETS_KEY] = encode(updated)
+        }
     }
 
     private fun encode(presets: List<EqualizerManager.Preset>): String {
