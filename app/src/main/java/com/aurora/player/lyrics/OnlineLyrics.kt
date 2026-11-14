@@ -212,6 +212,13 @@ suspend fun fetchLyricsFirst(
                         (!r.syncedLrc.isNullOrBlank() || !r.plainText.isNullOrBlank())
                     ) {
                         result = r
+                        // RONDA 2 (2026-11-13, P1, n=904): con el
+                        // primer resultado, los demás ya no hacen
+                        // falta: se cancelan. Antes coroutineScope
+                        // esperaba al más lento (hasta ~18 s) aunque
+                        // la letra ya estuviera en pantalla.
+                        pending.forEach { it.cancel() }
+                        pending.clear()
                     }
                 }
             }
