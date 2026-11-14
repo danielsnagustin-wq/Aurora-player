@@ -77,7 +77,15 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun EqScreen(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    // RONDA 2 (2026-11-13, P1, n=900): con Chromecast el audio se
+    // procesa en el televisor: el Equalizer local no lo toca. Sin
+    // este aviso, el interruptor y el diagnóstico fingían un EQ que
+    // no sonaba.
+    castConnected: Boolean = false,
+) {
     val context = LocalContext.current
     val manager = AudioEffects.equalizerManager
     val scope = rememberCoroutineScope()
@@ -423,6 +431,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         ) {
             Text("Ecualizador activado")
             Switch(
+                // RONDA 2 (2026-11-13, P1, n=900): con Chromecast el
+                // interruptor no hace nada (el audio se procesa en el
+                // televisor): se desactiva para no fingir.
+                enabled = !castConnected,
                 // RONDA CAZA 2026-11-13 (P1): el interruptor leía el
                 // estado local, que puede quedar desincronizado si el
                 // servicio apaga el efecto real; con sesión, manda el
@@ -447,6 +459,10 @@ fun EqScreen(onClose: () -> Unit, modifier: Modifier = Modifier) {
         // saber si el EQ está vivo o no (la pantalla antes no decía
         // en qué sesión estaba ni cuántas bandas tenía el teléfono).
         val eqStatus = when {
+            // RONDA 2 (2026-11-13, P1, n=900): con Chromecast el
+            // diagnóstico de la sesión local mentía: decía "activo"
+            // con un EQ que el televisor no oía.
+            castConnected -> "El EQ no afecta al audio del Chromecast: el sonido se procesa en el televisor."
             manager == null -> "Sin sesión todavía: suena una canción y aparece."
             !manager.isAvailable -> "No disponible en este teléfono."
             else -> "Sesión ${manager.sessionId} · ${manager.getBandCount()} bandas · " +
