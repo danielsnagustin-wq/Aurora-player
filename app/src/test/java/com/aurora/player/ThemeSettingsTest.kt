@@ -1,5 +1,6 @@
 package com.aurora.player
 
+import com.aurora.player.model.PlayerSettings
 import com.aurora.player.model.ThemeSettings
 import com.aurora.player.ui.theme.parseHexOrNull
 import org.junit.Assert.assertEquals
@@ -9,6 +10,17 @@ import org.junit.Test
 
 /** Aurora Player — tests de personalización (Etapa 1, lógica pura). */
 class ThemeSettingsTest {
+
+    @Test
+    fun `gestos por defecto usan el nombre del enum`() {
+        // RONDA 2 (2026-11-13, P2): pin de n=882 — los valores por
+        // defecto son GestureAction.NEXT.name / FAVORITE.name, no
+        // "next" / "favorite" en minúscula: el desplegable compara
+        // contra it.name y con el valor viejo no marcaba ninguna
+        // opción en una instalación nueva.
+        assertEquals("NEXT", PlayerSettings.DEFAULT.shakeAction)
+        assertEquals("FAVORITE", PlayerSettings.DEFAULT.doubleTapAction)
+    }
 
     @Test
     fun `por defecto es AMOLED negro puro`() {
