@@ -49,6 +49,20 @@ class BackupDataTest {
             positionMs = 12_345L,
         ),
         eqPresets = listOf(BackupEqPreset("Mi preset", listOf(1.5f, 0f, -2.5f, 0f, 0f, 0f, 0f, 0f, 0f, 0f))),
+        // RONDA 2 (2026-11-13, P2): las colas con nombre (n=853)
+        // no tenían test de ida y vuelta: se perdían al reinstalar
+        // y nada lo cazaba. Una cola con dos canciones.
+        namedQueues = listOf(
+            BackupPlaylist(
+                "Cola del viaje",
+                1_699_100_000_000L,
+                1_699_200_000_000L,
+                listOf(
+                    BackupSongRef(11, "/Music/rock/canción 1.mp3"),
+                    BackupSongRef(22, "/Music/pop/canción\\2.flac"),
+                ),
+            ),
+        ),
     )
 
     @Test
@@ -92,6 +106,45 @@ class BackupDataTest {
         assertEquals("Mi preset", data.eqPresets[0].name)
         assertEquals(1.5f, data.eqPresets[0].levelsDb[0])
         assertEquals(-2.5f, data.eqPresets[0].levelsDb[2])
+        assertEquals(1, data.namedQueues.size)
+        assertEquals("Cola del viaje", data.namedQueues[0].name)
+        assertEquals(1_699_100_000_000L, data.namedQueues[0].createdAt)
+        assertEquals(22L, data.namedQueues[0].songs[1].id)
+        assertEquals("/Music/pop/canción\\2.flac", data.namedQueues[0].songs[1].path)
+    }
+
+    @Test
+    fun `cola con nombre danada invalida todo el respaldo`() {
+        // RONDA 2 (2026-11-13, P2): como las listas (ronda 36),
+        // una entrada de namedQueues sin nombre invalida el archivo
+        // entero en vez de descartarse en silencio.
+        val parsed = JsonParser.parse(sampleData().toJsonString()) as JsonValue.Obj
+        val damaged = JsonValue.Obj(
+            linkedMapOf(
+                "createdAt" to JsonValue.Num(1_699_100_000_000.0),
+                "updatedAt" to JsonValue.Num(1_699_200_000_000.0),
+                "songs" to JsonValue.Arr(emptyList()),
+            ),
+        )
+        val withDamaged = JsonValue.Obj(
+            LinkedHashMap(parsed.map).apply {
+                put("namedQueues", JsonValue.Arr(listOf(damaged)))
+            },
+        )
+        val result = validateBackup(withDamaged.toJsonString())
+        assertTrue(result is BackupValidation.Invalid)
+    }
+
+    @Test
+    fun `respaldo viejo sin namedQueues sigue valiendo`() {
+        // RONDA 2 (2026-11-13, P2): la clave es nueva (P1, caza
+        // 2026-11-13); un respaldo anterior no la trae y debe
+        // seguir validando, con las colas vacías.
+        val parsed = JsonParser.parse(sampleData().toJsonString()) as JsonValue.Obj
+        val without = JsonValue.Obj(LinkedHashMap(parsed.map).apply { remove("namedQueues") })
+        val result = validateBackup(without.toJsonString())
+        assertTrue(result is BackupValidation.Valid)
+        assertTrue((result as BackupValidation.Valid).data.namedQueues.isEmpty())
     }
 
     @Test
