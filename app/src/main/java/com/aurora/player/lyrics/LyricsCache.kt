@@ -2,6 +2,7 @@ package com.aurora.player.lyrics
 
 import android.content.Context
 import java.io.File
+import java.util.Locale
 
 /**
  * RONDA 7 P2: caché de letras online, en el almacenamiento privado
@@ -28,7 +29,7 @@ object LyricsCache {
         val hash = try {
             java.security.MessageDigest.getInstance("SHA-256")
                 .digest(key.toByteArray(Charsets.UTF_8))
-                .take(6).joinToString("") { "%02x".format(it) }
+                .take(6).joinToString("") { "%02x".format(Locale.ROOT, it) }
         } catch (_: Exception) {
             key.hashCode().toUInt().toString(16)
         }
