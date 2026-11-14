@@ -1062,7 +1062,11 @@ fun PlayerScreen(
         }
         if (showQueue && queueTitles.isNotEmpty()) {
             LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
-                itemsIndexed(queueTitles) { index, queueTitle ->
+                // RONDA CAZA 2026-11-13 (P2): clave estable por fila
+                // (índice + título: la cola puede repetir la misma
+                // canción). Sin ella, al quitar una pista la marca de
+                // "sonando" se quedaba en la fila equivocada.
+                itemsIndexed(queueTitles, key = { index, queueTitle -> "$index:$queueTitle" }) { index, queueTitle ->
                     val isCurrent = index == queueIndex
                     ListItem(
                         headlineContent = {
@@ -1243,7 +1247,10 @@ private fun SavedQueuesDialog(
                     )
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
-                        itemsIndexed(savedQueues) { _, item ->
+                        // RONDA CAZA 2026-11-13 (P2): clave estable por
+                        // id de la cola guardada (dos colas pueden
+                        // llamarse igual).
+                        itemsIndexed(savedQueues, key = { _, item -> item.queue.id }) { _, item ->
                             ListItem(
                                 headlineContent = { Text(item.queue.name) },
                                 supportingContent = {
