@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,7 +121,12 @@ fun OnlineScreen(
     val context = LocalContext.current
     val cacheStore = remember { StreamCacheStore(context) }
     val scope = rememberCoroutineScope()
-    var query by remember { mutableStateOf("") }
+    // RONDA 2 (2026-11-13, P2): la búsqueda y los chips de sección
+    // se perdían al girar (remember plano): query y flags ahora son
+    // rememberSaveable; los resultados NO se guardan (OnlineTrack no
+    // es Parcelable) — se vuelven a buscar al restaurar (efecto de
+    // abajo).
+    var query by rememberSaveable { mutableStateOf("") }
     // Fase 2 — Para ti: los charts se cargan una sola vez por
     // entrada a la pestaña; si YouTube no responde, se dice claro.
     var charts by remember { mutableStateOf<ChartsResult?>(null) }
@@ -134,12 +140,12 @@ fun OnlineScreen(
     // Fase 2 — Fuentes: la sección de listas de Spotify se puede
     // ocultar (solo tiene sentido conectada) y el chip de YouTube
     // pone el foco en la búsqueda con el teclado abierto.
-    var spotifySectionVisible by remember { mutableStateOf(true) }
+    var spotifySectionVisible by rememberSaveable { mutableStateOf(true) }
     // RONDA CAZA 2026-11-13 (P2): igual que Spotify: el chip de
     // SoundCloud muestra u oculta sus lanzamientos (antes era un
     // "Próximamente" muerto aunque el inicio de sesión y el
     // descubrimiento de SoundCloud ya existían).
-    var soundCloudSectionVisible by remember { mutableStateOf(true) }
+    var soundCloudSectionVisible by rememberSaveable { mutableStateOf(true) }
     val searchFocus = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var results by remember { mutableStateOf<List<OnlineTrack>?>(null) }
@@ -188,6 +194,13 @@ fun OnlineScreen(
                 searching = false
             }
         }
+    }
+
+    // RONDA 2 (2026-11-13, P2): al restaurar (giro, volver a la
+    // pestaña), la query sobrevive pero los resultados no: si hay
+    // query y no hay resultados, la búsqueda se vuelve a lanzar sola.
+    LaunchedEffect(Unit) {
+        if (query.isNotBlank() && results == null && !searching) doSearch()
     }
 
     LaunchedEffect(onlineMode, chartsRetry) {
