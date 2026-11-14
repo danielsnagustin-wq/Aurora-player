@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,6 +56,7 @@ import com.aurora.player.tags.SongTags
 import com.aurora.player.tags.TagIO
 import com.aurora.player.tags.TagWriter
 import java.io.File
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -93,24 +95,41 @@ fun TagEditorDialog(
     var loadError by remember { mutableStateOf<String?>(null) }
     var coverBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var coverFile by remember { mutableStateOf<File?>(null) }
+    // RONDA 2 (2026-11-13, P1): la portada elegida sin guardar se
+    // perdía al girar: el File/Bitmap no sobreviven a la rotación.
+    // Se guarda la RUTA (String, sí guardable) y al restaurar se
+    // re-decodifica; el archivo en cacheDir sigue ahí (nombre fijo
+    // "tagedit-cover-<id>").
+    var coverPath by rememberSaveable { mutableStateOf<String?>(null) }
     var saving by remember { mutableStateOf(false) }
     var committed by remember { mutableStateOf(false) }
     var pendingAlbum by remember { mutableStateOf<List<Pair<File, Song>>>(emptyList()) }
-    var saveError by remember { mutableStateOf<String?>(null) }
+    // RONDA 2 (2026-11-13, P1): lo mismo para la escritura pendiente
+    // del permiso: si se giraba con el diálogo del sistema abierto,
+    // pendingAlbum se vaciaba y el callback llamaba onSaved() sin
+    // escribir nada. Se guardan "ruta|id" (Strings) y se resuelven.
+    var pendingAlbumPaths by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var saveError by rememberSaveable { mutableStateOf<String?>(null) }
 
-    var title by remember { mutableStateOf("") }
-    var artist by remember { mutableStateOf("") }
-    var albumArtist by remember { mutableStateOf("") }
-    var album by remember { mutableStateOf("") }
-    var composer by remember { mutableStateOf("") }
-    var genre by remember { mutableStateOf("") }
-    var year by remember { mutableStateOf("") }
-    var track by remember { mutableStateOf("") }
-    var disc by remember { mutableStateOf("") }
-    var lyricist by remember { mutableStateOf("") }
-    var comment by remember { mutableStateOf("") }
-    var renameFile by remember { mutableStateOf(false) }
-    var applyToAlbum by remember { mutableStateOf(false) }
+    // RONDA 2 (2026-11-13, P1): lo tecleado sin guardar se perdía al
+    // girar: los campos eran remember plano e initial volvía a null,
+    // así que el LaunchedEffect rellenaba todo con lo del disco.
+    // Ahora los campos son rememberSaveable y el rellenado solo corre
+    // una vez (fieldsLoaded).
+    var fieldsLoaded by rememberSaveable { mutableStateOf(false) }
+    var title by rememberSaveable { mutableStateOf("") }
+    var artist by rememberSaveable { mutableStateOf("") }
+    var albumArtist by rememberSaveable { mutableStateOf("") }
+    var album by rememberSaveable { mutableStateOf("") }
+    var composer by rememberSaveable { mutableStateOf("") }
+    var genre by rememberSaveable { mutableStateOf("") }
+    var year by rememberSaveable { mutableStateOf("") }
+    var track by rememberSaveable { mutableStateOf("") }
+    var disc by rememberSaveable { mutableStateOf("") }
+    var lyricist by rememberSaveable { mutableStateOf("") }
+    var comment by rememberSaveable { mutableStateOf("") }
+    var renameFile by rememberSaveable { mutableStateOf(false) }
+    var applyToAlbum by rememberSaveable { mutableStateOf(false) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
     var candidates by remember { mutableStateOf<List<TagCandidate>>(emptyList()) }
@@ -123,8 +142,10 @@ fun TagEditorDialog(
                 // jaudiotagger elige el lector por la EXTENSIÓN: el
                 // temporal tiene que terminar en la extensión real
                 // de la canción, si no TagIO.read/write fallan
-                // (run 43359629777: TagWriterTest:49).
-                val ext = song.path.substringAfterLast('.', "").lowercase()
+                // (run 43359629777: TagWriterTest:49). Locale.ROOT:
+                // en turco ".AIFF".lowercase() da ".aıff" y el lector
+                // no reconoce la extensión (RONDA 2, 2026-11-13).
+                val ext = song.path.substringAfterLast('.', "").lowercase(Locale.ROOT)
                 val tempName = if (ext.isNotEmpty()) "tagedit-${song.id}.$ext" else "tagedit-${song.id}.tmp"
                 val temp = File(context.cacheDir, tempName)
                 context.contentResolver.openInputStream(song.uri)?.use { input ->
@@ -140,8 +161,19 @@ fun TagEditorDialog(
         } else {
             tempFile = prepared.first
             initial = prepared.second
+            // RONDA 2 (2026-11-13, P1): al girar, la portada elegida
+            // sin guardar se restaura desde coverPath (la ruta
+            // sobrevive; el bitmap no). Sin portada elegida, la
+            // incrustada en el archivo, como antes.
+            coverFile = coverPath?.let { File(it) }?.takeIf { it.exists() }
             coverBitmap = withContext(Dispatchers.IO) {
-                try {
+                coverFile?.let { f ->
+                    try {
+                        BitmapFactory.decodeFile(f.absolutePath)
+                    } catch (_: Exception) {
+                        null
+                    }
+                } ?: try {
                     TagIO.readCover(prepared.first)?.let { bytes ->
                         BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
                     }
@@ -155,6 +187,11 @@ fun TagEditorDialog(
     // Rellenar los campos cuando llegan las etiquetas (una sola vez).
     LaunchedEffect(initial) {
         val tags = initial ?: return@LaunchedEffect
+        // RONDA 2 (2026-11-13, P1): al girar, initial vuelve a null y
+        // se relee del disco; sin esta guarda, lo tecleado sin guardar
+        // se sobrescribía con lo del disco. Solo se rellena la primera
+        // vez; después mandan los campos guardados (rememberSaveable).
+        if (fieldsLoaded) return@LaunchedEffect
         title = tags.title.orEmpty()
         artist = tags.artist.orEmpty()
         albumArtist = tags.albumArtist.orEmpty()
@@ -166,6 +203,7 @@ fun TagEditorDialog(
         disc = tags.disc?.toString().orEmpty()
         lyricist = tags.lyricist.orEmpty()
         comment = tags.comment.orEmpty()
+        fieldsLoaded = true
     }
 
     // Al cerrar sin guardar, el temporal se borra (salvo que ya se
@@ -226,10 +264,27 @@ fun TagEditorDialog(
             }
             if (bitmap != null) {
                 coverFile = copied
+                coverPath = copied.absolutePath
                 coverBitmap = bitmap
             } else {
                 copied.delete()
             }
+        }
+    }
+
+    // Escritura pendiente tras el permiso: se resuelve desde la
+    // lista en memoria, o desde las rutas guardadas si la rotación
+    // la vació (RONDA 2, 2026-11-13, P1).
+    fun resolvePendingAlbum(): List<Pair<File, Song>> {
+        if (pendingAlbum.isNotEmpty()) return pendingAlbum
+        val allSongs = listOf(song) + albumSongs
+        return pendingAlbumPaths.mapNotNull { encoded ->
+            val path = encoded.substringBeforeLast("|")
+            val id = encoded.substringAfterLast("|").toLongOrNull()
+                ?: return@mapNotNull null
+            val file = File(path).takeIf { it.exists() } ?: return@mapNotNull null
+            val target = allSongs.firstOrNull { it.id == id } ?: return@mapNotNull null
+            file to target
         }
     }
 
@@ -244,7 +299,7 @@ fun TagEditorDialog(
             return@rememberLauncherForActivityResult
         }
         scope.launch {
-            val pending = pendingAlbum
+            val pending = resolvePendingAlbum()
             var anyFail = false
             for ((temp, tgtSong) in pending) {
                 val ok = withContext(Dispatchers.IO) {
@@ -263,6 +318,8 @@ fun TagEditorDialog(
                 }
                 TagWriter.discard(temp)
             }
+            pendingAlbum = emptyList()
+            pendingAlbumPaths = emptyList()
             coverFile?.delete()
             if (anyFail) {
                 saveError = "No se pudo escribir en algún archivo del álbum."
@@ -302,8 +359,11 @@ fun TagEditorDialog(
                 } else {
                     withContext(Dispatchers.IO) {
                         try {
+                            // Locale.ROOT: en turco ".AIFF" da ".aıff"
+                            // y jaudiotagger no reconoce la extensión
+                            // (RONDA 2, 2026-11-13, igual que :127).
                             val ext = targetSong.path.substringAfterLast('.', "")
-                                .lowercase().takeIf { it.isNotBlank() } ?: "tmp"
+                                .lowercase(Locale.ROOT).takeIf { it.isNotBlank() } ?: "tmp"
                             val out = File(context.cacheDir, "tagedit-${targetSong.id}.$ext")
                             context.contentResolver.openInputStream(targetSong.uri)?.use { input ->
                                 out.outputStream().use { input.copyTo(it) }
@@ -363,6 +423,9 @@ fun TagEditorDialog(
                         pending.map { it.second.uri },
                     )
                     pendingAlbum = pending
+                    // RONDA 2 (2026-11-13, P1): las rutas guardadas
+                    // sobreviven a la rotación; la lista en memoria no.
+                    pendingAlbumPaths = pending.map { "${it.first.absolutePath}|${it.second.id}" }
                     writeLauncher.launch(
                         IntentSenderRequest.Builder(request.intentSender).build(),
                     )
@@ -426,6 +489,7 @@ fun TagEditorDialog(
                                 val file = File(context.cacheDir, "tagedit-cover-${song.id}")
                                 file.outputStream().use { it.write(bytes) }
                                 coverFile = file
+                                coverPath = file.absolutePath
                                 coverBitmap = bitmap
                             }
                         }
