@@ -4,6 +4,7 @@ import android.content.Context
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.TrackDownloader
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 import org.mockito.Mockito.mock
 
@@ -63,5 +64,19 @@ class TrackDownloaderTest {
         assertEquals("audio/mp4", d.mimeTypeForItag(139))
         assertEquals("audio/webm", d.mimeTypeForItag(251))
         assertEquals("application/octet-stream", d.mimeTypeForItag(999))
+    }
+
+    @Test
+    fun itagDelArchivoDeCache() {
+        // RONDA CAZA 2026-11-13 (P1): la ext/MIME de la descarga se
+        // deriva del itag del archivo de caché real, no del itag
+        // pedido (cachedFile puede devolver otro itag). El videoId
+        // puede llevar "_" y el nombre puede no tener punto.
+        val d = downloader()
+        assertEquals(140, d.itagFromCacheFileName("dQw4w9WgXcQ_140.m4a"))
+        assertEquals(251, d.itagFromCacheFileName("abc_def_251.webm"))
+        assertEquals(140, d.itagFromCacheFileName("dQw4w9WgXcQ_140"))
+        assertNull(d.itagFromCacheFileName("sin_itag.m4a"))
+        assertNull(d.itagFromCacheFileName("video123.m4a"))
     }
 }
