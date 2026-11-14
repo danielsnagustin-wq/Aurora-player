@@ -1437,6 +1437,13 @@ internal object LargeArtCache {
         cache.evictAll()
     }
 
+    // RONDA 2 (2026-11-13, P2): cargas en vuelo compartidas (espejo
+    // de AlbumArtCache.load): sin esto, dos pantallas pidiendo la
+    // misma portada grande a la vez la decodificaban dos veces.
+    private val loadScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val inFlight = HashMap<Long, Deferred<Bitmap?>>()
+    private val inFlightMutex = Mutex()
+
     /** Carga la portada grande de un álbum y la guarda. */
     suspend fun loadLarge(context: Context, albumId: Long): Bitmap? {
         get(albumId)?.let { return it }
@@ -1446,22 +1453,39 @@ internal object LargeArtCache {
             put(albumId, it)
             return it
         }
-        val loaded = withContext(Dispatchers.IO) {
-            try {
-                context.contentResolver.loadThumbnail(
-                    albumArtUri(albumId),
-                    Size(1024, 1024),
-                    null,
-                )
-            } catch (_: Exception) {
-                null
+        val deferred = inFlightMutex.withLock {
+            get(albumId)?.let { return it }
+            inFlight.getOrPut(albumId) {
+                loadScope.async {
+                    try {
+                        context.contentResolver.loadThumbnail(
+                            albumArtUri(albumId),
+                            Size(1024, 1024),
+                            null,
+                        )
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
             }
         }
-        if (loaded != null) {
-            put(albumId, loaded)
-            DiskArtCache.write(context, albumId, DiskArtCache.LARGE_PX, loaded)
+        val bitmap = try {
+            deferred.await()
+        } catch (_: CancellationException) {
+            null
         }
-        return loaded
+        // Sacar de en-vuelo pase lo que pase (sin cancelar: si quien
+        // esperaba se fue, la carga ya terminó o terminó sola).
+        withContext(NonCancellable) {
+            inFlightMutex.withLock {
+                if (inFlight[albumId] === deferred) inFlight.remove(albumId)
+            }
+        }
+        if (bitmap != null) {
+            put(albumId, bitmap)
+            DiskArtCache.write(context, albumId, DiskArtCache.LARGE_PX, bitmap)
+        }
+        return bitmap
     }
 }
 
