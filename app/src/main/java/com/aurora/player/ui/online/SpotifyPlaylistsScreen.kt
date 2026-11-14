@@ -55,6 +55,7 @@ import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.parseSpotifyPlaylistId
 import com.aurora.player.online.SpotifyPlaylist
 import com.aurora.player.online.SpotifyTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.text.Normalizer
@@ -78,10 +79,14 @@ import java.util.Locale
  * registro de descargas (DownloadStore) guarda el título y el
  * artista de YouTube; la lista de Spotify trae los suyos. La
  * comparación normaliza ambos lados (minúsculas, sin acentos,
- * espacios colapsados) y acepta que el título de YouTube traiga
- * un sufijo ("(Official Video)"), siempre que el artista
- * coincida: sin el artista, dos canciones homónimas marcarían
- * mal. Solo cuentan las descargas READY (lista permanente).
+ * espacios colapsados). RONDA 2 (2026-11-13, P2): la regla era
+ * demasiado laxa — un título que CONTENGA al otro ("Love" en
+ * "Lovely") marcaba, y un artista en blanco en cualquier lado
+ * contaba como coincidencia. Ahora el título es exacto o con
+ * sufijo de YouTube (" (Official Video)", " - Remastered") y el
+ * artista tiene que venir en los dos lados y coincidir exacto:
+ * sin artista no hay marca. Solo cuentan las descargas READY
+ * (lista permanente).
  */
 internal fun normalizeDownloadTitle(value: String): String {
     val noAccents = Normalizer.normalize(value, Normalizer.Form.NFD)
@@ -96,17 +101,16 @@ internal fun isTrackDownloaded(
 ): Boolean {
     val name = normalizeDownloadTitle(trackName)
     val artist = normalizeDownloadTitle(trackArtist)
-    if (name.isEmpty()) return false
+    if (name.isEmpty() || artist.isEmpty()) return false
     return records.any { record ->
         if (record.status != DownloadStatus.READY) return@any false
         val recordName = normalizeDownloadTitle(record.title)
         val recordArtist = normalizeDownloadTitle(record.artist)
+        if (recordArtist.isEmpty()) return@any false
         val titleMatches = recordName == name ||
-            recordName.contains(name) || name.contains(recordName)
-        val artistMatches = artist.isEmpty() || recordArtist.isEmpty() ||
-            recordArtist == artist ||
-            recordArtist.contains(artist) || artist.contains(recordArtist)
-        titleMatches && artistMatches
+            recordName.startsWith("$name (") ||
+            recordName.startsWith("$name -")
+        titleMatches && recordArtist == artist
     }
 }
 
@@ -174,6 +178,10 @@ fun SpotifyPlaylistsSection(
                 }
             } catch (_: SpotifyUnauthorizedException) {
                 message = "Tu sesión de Spotify caducó. Vuelve a conectarla en Ajustes → Red → Spotify."
+            } catch (e: CancellationException) {
+                // RONDA 2 (2026-11-13, P2): cancelar la carga no es
+                // "sin conexión": se relanza.
+                throw e
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
             } finally {
@@ -204,6 +212,10 @@ fun SpotifyPlaylistsSection(
                 }
             } catch (_: SpotifyUnauthorizedException) {
                 message = "Tu sesión de Spotify caducó. Vuelve a conectarla en Ajustes → Red → Spotify."
+            } catch (e: CancellationException) {
+                // RONDA 2 (2026-11-13, P2): cancelar la carga no es
+                // "sin conexión": se relanza.
+                throw e
             } catch (_: Exception) {
                 message = "Sin conexión o Spotify no respondió."
             } finally {
@@ -246,6 +258,11 @@ fun SpotifyPlaylistsSection(
                     // nunca se contaba (ronda 34, sin efecto).
                     val searched = try {
                         tube.search("${track.artist} ${track.name}")
+                    } catch (e: CancellationException) {
+                        // RONDA 2 (2026-11-13, P2): cancelar la
+                        // importación no es un fallo de búsqueda: se
+                        // relanza en vez de seguir con la siguiente.
+                        throw e
                     } catch (_: Exception) {
                         null
                     }
@@ -274,6 +291,11 @@ fun SpotifyPlaylistsSection(
                                             cacheStore.download(it.videoId, resolved.itag, resolved.url, quality)
                                         }
                                     }?.url
+                                } catch (e: CancellationException) {
+                                    // RONDA 2 (2026-11-13, P2): igual
+                                    // que la búsqueda: la cancelación
+                                    // se relanza, no se traga.
+                                    throw e
                                 } catch (_: Exception) {
                                     null
                                 }
