@@ -42,6 +42,15 @@ class CastManager(context: Context) {
 
     private var castContext: CastContext? = null
 
+    // RONDA 176: start() no era idempotente — llamarlo dos veces
+    // sin stop() suscribía el MISMO listener dos veces (el SDK no
+    // deduplica) y onSessionStarted se disparaba doble (doble
+    // transferencia al Chromecast); stop() solo lo quitaba una vez
+    // y la suscripción que quedaba podía volver a poner "Conectado"
+    // tras el stop. Hoy solo lo llama un DisposableEffect (par
+    // equilibrado), pero la API no debe depender de eso.
+    private var started = false
+
     private var onSessionStarted: (() -> Unit)? = null
     private var onSessionEnded: (() -> Unit)? = null
 
@@ -77,7 +86,16 @@ class CastManager(context: Context) {
 
         override fun onSessionResuming(session: CastSession, sessionId: String) {}
         override fun onSessionResumeFailed(session: CastSession, error: Int) {}
-        override fun onSessionSuspended(session: CastSession, reason: Int) {}
+
+        override fun onSessionSuspended(session: CastSession, reason: Int) {
+            // RONDA 2 (2026-11-13, P2): la sesión suspendida no es
+            // una sesión conectada — antes la UI seguía diciendo
+            // "Conectado" y el EQ seguía desactivado. Solo cambia
+            // el estado (sin onSessionEnded): si se reanuda,
+            // onSessionResumed vuelve a poner Conectado y reenvía
+            // la pista.
+            _state.value = CastState.Disconnected
+        }
     }
 
     fun start(onSessionStarted: () -> Unit, onSessionEnded: () -> Unit = {}) {
@@ -90,23 +108,32 @@ class CastManager(context: Context) {
         } ?: return
         castContext = ctx
         try {
-            ctx.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
-            ctx.sessionManager.currentCastSession?.let {
-                val name = try {
-                    it.castDevice?.friendlyName
-                } catch (e: Exception) {
-                    null
-                } ?: "Chromecast"
-                _state.value = CastState.Connected(name)
-                // RONDA 71: la sesión ya estaba activa cuando se
-                // recreó la pantalla (rotación, vuelta a la app):
-                // el listener no vuelve a disparar onSessionStarted,
-                // así que sin esto la canción no pasaba al Chromecast
-                // aunque la app dijera "Conectado".
-                onSessionStarted?.invoke()
+            if (!started) {
+                ctx.sessionManager.addSessionManagerListener(listener, CastSession::class.java)
+                started = true
             }
+            notifyCurrentSession()
         } catch (e: Exception) {
+            started = false
             castContext = null
+        }
+    }
+
+    /**
+     * RONDA 71: la sesión ya estaba activa cuando se recreó la
+     * pantalla (rotación, vuelta a la app): el listener no vuelve
+     * a disparar onSessionStarted, así que sin esto la canción no
+     * pasaba al Chromecast aunque la app dijera "Conectado".
+     */
+    private fun notifyCurrentSession() {
+        castContext?.sessionManager?.currentCastSession?.let {
+            val name = try {
+                it.castDevice?.friendlyName
+            } catch (e: Exception) {
+                null
+            } ?: "Chromecast"
+            _state.value = CastState.Connected(name)
+            onSessionStarted?.invoke()
         }
     }
 
@@ -117,6 +144,7 @@ class CastManager(context: Context) {
         } catch (e: Exception) {
             // Al cerrar, un fallo al desuscribirse no importa.
         }
+        started = false
         castContext = null
         onSessionStarted = null
         onSessionEnded = null
@@ -124,8 +152,14 @@ class CastManager(context: Context) {
 
     /**
      * Envía una pista online al receptor. Devuelve false sin sesión
-     * activa, sin cliente remoto o si el envío falla: el llamador
-     * decide entonces (seguir en local / avisar).
+     * activa, sin cliente remoto o si el envío no se pudo lanzar: el
+     * llamador decide entonces (seguir en local / avisar).
+     * RONDA 2 (2026-11-13, P2): client.load() es asíncrono — antes
+     * se devolvía true sin mirar el resultado y, si el receptor lo
+     * rechazaba, el teléfono ya se había silenciado (el llamador
+     * pausa el audio local cuando sent == true). Ahora el
+     * PendingResult se comprueba: si el receptor rechaza la carga,
+     * se registra y [onLoadFailed] avisa para volver a sonar en local.
      */
     fun loadOnlineTrack(
         streamUrl: String,
@@ -133,6 +167,7 @@ class CastManager(context: Context) {
         artist: String,
         durationMs: Long = 0L,
         coverUrl: String? = null,
+        onLoadFailed: () -> Unit = {},
     ): Boolean {
         val client = try {
             castContext?.sessionManager?.currentCastSession?.remoteMediaClient
@@ -151,7 +186,18 @@ class CastManager(context: Context) {
                 .setMetadata(metadata)
             if (durationMs > 0L) infoBuilder.setStreamDuration(durationMs)
             val options = MediaLoadOptions.Builder().setAutoplay(true).build()
-            client.load(infoBuilder.build(), options)
+            client.load(infoBuilder.build(), options).setResultCallback { result ->
+                if (!result.status.isSuccess) {
+                    com.aurora.player.util.ErrorLog.log(
+                        appContext,
+                        "CAST-LOAD",
+                        RuntimeException(
+                            "El receptor rechazó la carga (status=${result.status})",
+                        ),
+                    )
+                    onLoadFailed()
+                }
+            }
             true
         } catch (e: Exception) {
             false
