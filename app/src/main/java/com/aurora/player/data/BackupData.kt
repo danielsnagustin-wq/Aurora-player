@@ -431,8 +431,14 @@ fun matchSongs(
         // RONDA CAZA 2026-11-13 (P2): sin ruta NO se puede comprobar
         // nada, así que una referencia sin ruta va a ausentes (antes
         // el id valía solo y podía restaurar en la canción equivocada).
+        // RONDA 2 (2026-11-13, P2): el chequeo es EXPLÍCITO y va
+        // ANTES de mirar byPath: hoy byPath[""] solo es null porque
+        // ninguna ruta de la biblioteca está en blanco; si alguna lo
+        // estuviera, la referencia emparejaría con esa canción.
         val byIdHit = byId[ref.id]
-        val hit = if (byIdHit != null && ref.path.isNotBlank() && byIdHit.second == ref.path) {
+        val hit = if (ref.path.isBlank()) {
+            null
+        } else if (byIdHit != null && byIdHit.second == ref.path) {
             byIdHit
         } else {
             byPath[ref.path]
