@@ -18,4 +18,8 @@ enum class GestureAction(val label: String) {
 
 /** Lee una acción guardada como texto; un valor desconocido o vacío usa el defecto. */
 fun parseGestureAction(value: String?, default: GestureAction): GestureAction =
-    GestureAction.entries.find { it.name == value } ?: default
+    // RONDA CAZA 2026-11-13 (P2): sin distinción de mayúsculas: los
+    // valores por defecto viejos se guardaron en minúscula ("next",
+    // "favorite") y con == estricto nunca casaban con el nombre del
+    // enum; solo coincidía porque el fallback era la misma acción.
+    GestureAction.entries.find { it.name.equals(value, ignoreCase = true) } ?: default
