@@ -71,7 +71,12 @@ suspend fun fetchCaptions(baseUrl: String): List<LrcLine> = withContext(Dispatch
             if (conn.responseCode != java.net.HttpURLConnection.HTTP_OK) {
                 return@withContext emptyList()
             }
-            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            // RONDA 2 (2026-11-13, P1, n=918): el cuerpo se leía sin
+            // tope (readText): un servidor que devolviera gigas
+            // reventaba la memoria. readCappedText (SpotifyAuth.kt,
+            // mismo paquete) devuelve null si supera 2 MB: en ese
+            // caso no hay subtítulos, como en cualquier otro fallo.
+            val text = readCappedText(conn.inputStream) ?: return@withContext emptyList()
             parseTimedText(text)
         } finally {
             conn.disconnect()
