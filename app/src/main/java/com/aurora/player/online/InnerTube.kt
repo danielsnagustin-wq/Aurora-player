@@ -161,7 +161,11 @@ fun jsonEscape(value: String): String {
             '\t' -> sb.append("\\t")
             '\b' -> sb.append("\\b")
             '\u000C' -> sb.append("\\f")
-            else -> if (ch < ' ') sb.append("\\u%04x".format(ch.code)) else sb.append(ch)
+            // RONDA 2 (2026-11-13, P1, n=922): "%04x" con el locale
+            // por defecto escribe dígitos NO latinos en locales como
+            // ar-EG: el escape \uXXXX salía inválido y YouTube
+            // rechazaba el cuerpo. Locale.ROOT siempre.
+            else -> if (ch < ' ') sb.append("\\u%04x".format(Locale.ROOT, ch.code)) else sb.append(ch)
         }
     }
     return sb.toString()
