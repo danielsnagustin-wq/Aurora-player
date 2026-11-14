@@ -246,6 +246,21 @@ interface LibraryDao {
     @Query("DELETE FROM play_history WHERE rowid NOT IN (SELECT rowid FROM play_history ORDER BY playedAt DESC LIMIT :keep)")
     suspend fun pruneHistory(keep: Int = 20_000)
 
+    @Query("SELECT COUNT(*) FROM play_history")
+    suspend fun historyCount(): Long
+
+    /**
+     * RONDA 2 (2026-11-13, P2): pruneHistory() corría su DELETE con
+     * subconsulta en CADA inserción de historial (3 sitios), aunque
+     * la tabla tuviera 50 filas. Esta variante cuenta primero y solo
+     * poda si se supera keep + margen: con el margen, una vez podado
+     * a `keep` no se vuelve a podar hasta rebasar el margen (sin
+     * margen, cada inserción por encima del tope pagaría un DELETE).
+     */
+    suspend fun pruneHistoryIfOver(keep: Int = 20_000, margin: Int = 1_000) {
+        if (historyCount() > keep + margin) pruneHistory(keep)
+    }
+
     @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")
     suspend fun mostPlayed(): List<PlayCount>
 
