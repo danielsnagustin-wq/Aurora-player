@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.OndemandVideo
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -46,6 +48,7 @@ import com.aurora.player.online.ChartsResult
 import com.aurora.player.online.InnerTubeClient
 import com.aurora.player.online.QuickPick
 import com.aurora.player.online.SpotifyClient
+import com.aurora.player.online.SpotifyUnauthorizedException
 import com.aurora.player.online.StreamCacheStore
 import com.aurora.player.online.fetchSoundCloudStream
 import com.aurora.player.online.fetchSoundCloudWebClientId
@@ -102,6 +105,12 @@ fun OnlineScreen(
             OutlinedButton(
                 onClick = onOpenSettings,
                 modifier = Modifier.padding(top = 16.dp),
+                // RONDA CAZA 2026-11-13 (P1): el texto iba en el color
+                // del acento y los acentos oscuros no se leían sobre
+                // negro. Texto claro siempre, como los chips (n=828).
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             ) { Text("Activar el modo online") }
         }
         return
@@ -126,6 +135,11 @@ fun OnlineScreen(
     // ocultar (solo tiene sentido conectada) y el chip de YouTube
     // pone el foco en la búsqueda con el teclado abierto.
     var spotifySectionVisible by remember { mutableStateOf(true) }
+    // RONDA CAZA 2026-11-13 (P2): igual que Spotify: el chip de
+    // SoundCloud muestra u oculta sus lanzamientos (antes era un
+    // "Próximamente" muerto aunque el inicio de sesión y el
+    // descubrimiento de SoundCloud ya existían).
+    var soundCloudSectionVisible by remember { mutableStateOf(true) }
     val searchFocus = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     var results by remember { mutableStateOf<List<OnlineTrack>?>(null) }
@@ -291,26 +305,39 @@ fun OnlineScreen(
                     }
                 }
                 if (spotifyConnected && spCookie.isNotBlank()) {
-                    val token = spotify.fetchAccessToken(spCookie)
-                    if (token != null) {
-                        val followed = spotify.fetchFollowedArtists(token) ?: emptyList()
-                        val fresh = spotify.fetchNewReleases(token) ?: emptyList()
-                        val mine = filterSpotifyReleasesByFollowed(
-                            fresh,
-                            followed.map { it.id }.toSet(),
-                        )
-                        all += mine.map {
-                            NewReleaseItem(
-                                source = "Spotify",
-                                title = it.name,
-                                artist = it.artistName,
-                                dateText = it.releaseDate,
-                                kind = null,
-                                imageUrl = it.imageUrl,
-                                browseId = null,
-                                trackId = null,
+                    // RONDA CAZA 2026-11-13 (P1): un 401 a mitad de
+                    // sesión reintenta una vez con otro token; si
+                    // sigue 401, solo caen los lanzamientos de
+                    // Spotify (YouTube y SoundCloud cargan igual y el
+                    // panel no se queda vacío sin aviso).
+                    try {
+                        val mine = spotify.withFreshToken(spCookie) { token ->
+                            val followed = spotify.fetchFollowedArtists(token)
+                                ?: return@withFreshToken null
+                            val fresh = spotify.fetchNewReleases(token)
+                                ?: return@withFreshToken null
+                            filterSpotifyReleasesByFollowed(
+                                fresh,
+                                followed.map { it.id }.toSet(),
                             )
                         }
+                        if (mine != null) {
+                            all += mine.map {
+                                NewReleaseItem(
+                                    source = "Spotify",
+                                    title = it.name,
+                                    artist = it.artistName,
+                                    dateText = it.releaseDate,
+                                    kind = null,
+                                    imageUrl = it.imageUrl,
+                                    browseId = null,
+                                    trackId = null,
+                                )
+                            }
+                        }
+                    } catch (_: SpotifyUnauthorizedException) {
+                        // Sesión caducada: la pantalla de Cuenta ya
+                        // avisa; aquí solo se pierden los de Spotify.
                     }
                 }
                 if (scConnected && scToken.isNotBlank()) {
@@ -393,12 +420,15 @@ fun OnlineScreen(
                 ytMusicConnected = !ytMusicCookies.isNullOrBlank(),
                 spotifyConnected = spotifyConnected,
                 spotifySectionVisible = spotifySectionVisible,
+                soundCloudConnected = scConnected,
+                soundCloudSectionVisible = soundCloudSectionVisible,
                 onShowLocal = onShowLocal,
                 onFocusSearch = {
                     searchFocus.requestFocus()
                     keyboardController?.show()
                 },
                 onToggleSpotify = { spotifySectionVisible = !spotifySectionVisible },
+                onToggleSoundCloud = { soundCloudSectionVisible = !soundCloudSectionVisible },
             )
         }
         item {
@@ -418,11 +448,17 @@ fun OnlineScreen(
                 OutlinedButton(
                     onClick = { doSearch() },
                     enabled = query.isNotBlank() && !searching,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.onSurface,
+                    ),
                 ) { Text("Buscar") }
                 if (list != null || error != null) {
                     OutlinedButton(
                         onClick = { results = null; error = null },
                         modifier = Modifier.padding(start = 8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
                     ) { Text("Limpiar") }
                 }
             }
@@ -446,7 +482,11 @@ fun OnlineScreen(
                 ) { CircularProgressIndicator() }
             }
         } else if (list != null) {
-            items(list, key = { it.videoId }) { track ->
+            // RONDA CAZA 2026-11-13 (P1): la clave era solo el videoId
+            // y YouTube repite vídeos entre secciones: dos iguales
+            // tumbaban la búsqueda (key already used). El índice la
+            // hace única siempre.
+            itemsIndexed(list, key = { index, it -> "$index|${it.videoId}" }) { _, track ->
                 val subtitle = listOfNotNull(
                     track.artist.takeIf { it.isNotBlank() },
                     track.album,
@@ -486,7 +526,8 @@ fun OnlineScreen(
             if (onlineMode && hasAnyLogin) {
                 item {
                     NewReleasesSection(
-                        items = savedReleases,
+                        items = if (soundCloudSectionVisible) savedReleases
+                        else savedReleases.filter { it.source != "SoundCloud" },
                         updatedAtMs = releasesUpdatedAt,
                         loading = releasesLoading,
                         onRefresh = { refreshReleases() },
