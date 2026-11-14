@@ -38,6 +38,32 @@ class DiscoveryTest {
     }
 
     @Test
+    fun tituloConSaltosYSeparador_noSePierde() {
+        // RONDA 2 (2026-11-13, P2): pin de n=872 — un título con
+        // salto de línea o con el separador U+001F partía el registro
+        // en dos y el lanzamiento se perdía al leerlo. Ahora se
+        // limpian en la escritura y el lanzamiento vuelve (con
+        // espacios en lugar de los caracteres peligrosos).
+        val item = NewReleaseItem(
+            source = "Spotify",
+            title = "Disco\nnuevo\u001Fcon sorpresas",
+            artist = "Artista\rUno",
+            dateText = "2026-11-10",
+            kind = "Album",
+            imageUrl = "https://i.scdn.co/image/x",
+            browseId = null,
+            trackId = null,
+        )
+        val back = decodeNewReleaseItem(encodeNewReleaseItem(item))
+        assertEquals("Disco nuevo con sorpresas", back?.title)
+        assertEquals("Artista Uno", back?.artist)
+        assertEquals(
+            item.copy(title = "Disco nuevo con sorpresas", artist = "Artista Uno"),
+            back,
+        )
+    }
+
+    @Test
     fun lineaRotaDaNull() {
         assertNull(decodeNewReleaseItem("solo"))
         assertNull(decodeNewReleaseItem("a\u001Fb\u001Fc"))
