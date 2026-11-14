@@ -852,11 +852,11 @@ private fun FoldersTab(
     // así que se guarda su ruta y se resuelve contra las carpetas
     // visibles al volver.
     var excludeTargetPath by rememberSaveable { mutableStateOf<String?>(null) }
-    val excludeTarget = remember(excludeTargetPath, folders) {
-        folders.firstOrNull { it.path == excludeTargetPath }
-    }
     val folders = remember(songs, current) {
         childFolders(songs.map { it.path }, current)
+    }
+    val excludeTarget = remember(excludeTargetPath, folders) {
+        folders.firstOrNull { it.path == excludeTargetPath }
     }
     val here = remember(songs, current) {
         songs.filter { isDirectlyInFolder(it.path, current) }
