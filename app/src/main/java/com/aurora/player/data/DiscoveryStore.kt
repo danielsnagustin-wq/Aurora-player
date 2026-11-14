@@ -36,14 +36,22 @@ data class NewReleaseItem(
 internal fun encodeNewReleaseItem(item: NewReleaseItem): String {
     // Unit separator (U+001F) unlikely to appear in titles/artists
     val sep = '\u001F'
+    // RONDA CAZA 2026-11-13 (P2): los registros se unen con "\n" y
+    // los campos con U+001F; un título con salto de línea (o con el
+    // separador) partía el registro en dos y se perdía el
+    // lanzamiento al leerlo. Se limpian en la escritura.
+    fun clean(text: String): String = text
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replace(sep, ' ')
     return listOf(
-        item.source,
-        item.title,
-        item.artist,
-        item.dateText ?: "",
-        item.kind ?: "",
-        item.imageUrl ?: "",
-        item.browseId ?: "",
+        clean(item.source),
+        clean(item.title),
+        clean(item.artist),
+        clean(item.dateText ?: ""),
+        clean(item.kind ?: ""),
+        clean(item.imageUrl ?: ""),
+        clean(item.browseId ?: ""),
         item.trackId?.toString() ?: "",
     ).joinToString(sep.toString())
 }
