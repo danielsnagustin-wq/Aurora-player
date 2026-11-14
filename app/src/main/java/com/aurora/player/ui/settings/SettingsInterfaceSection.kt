@@ -230,6 +230,12 @@ fun SettingsInterfaceSection(
             OutlinedButton(
                 onClick = { onPreviewModeChange(0) },
                 modifier = Modifier.weight(1f),
+                // RONDA CAZA 2026-11-13 (P1): el texto iba en el color
+                // del acento y los acentos oscuros no se leían sobre
+                // negro. Texto claro siempre, como los chips (n=828).
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             ) { Text("Biblioteca") }
         }
         if (previewMode == 1) {
@@ -242,6 +248,9 @@ fun SettingsInterfaceSection(
             OutlinedButton(
                 onClick = { onPreviewModeChange(1) },
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
             ) { Text("Reproductor") }
         }
     }
@@ -325,7 +334,12 @@ fun SettingsInterfaceSection(
             },
             colors = auroraButtonColors(),
         ) { Text("Exportar tema actual") }
-        OutlinedButton(onClick = { pickSkin.launch(arrayOf("application/json")) }) {
+        OutlinedButton(
+            onClick = { pickSkin.launch(arrayOf("application/json")) },
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.onSurface,
+            ),
+        ) {
             Text("Importar tema…")
         }
     }
