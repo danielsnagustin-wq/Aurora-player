@@ -261,7 +261,12 @@ interface LibraryDao {
         if (historyCount() > keep + margin) pruneHistory(keep)
     }
 
-    @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC")
+    // RONDA 2 (2026-11-13, P2): LIMIT 100 — los dos llamadores solo
+    // usan la cabeza (.take(25) en PlaylistsViewModel, .take(10) en
+    // StatsScreen) y sin límite la consulta devolvía una fila por
+    // canción escuchada (miles). statsPerSongFlow NO lleva límite:
+    // las listas inteligentes lo usan completo.
+    @Query("SELECT songId, COUNT(*) AS c FROM play_history WHERE durationListenedMs >= 30000 GROUP BY songId ORDER BY c DESC LIMIT 100")
     suspend fun mostPlayed(): List<PlayCount>
 
     /** Estadísticas por canción (Fase 1b: exportar CSV). */
