@@ -105,8 +105,10 @@ class LiriqoLyricsProvider : LyricsProvider {
     }
 
     // RONDA 153: un error de red NO es "sin letra": se propaga (el
-    // que busca cuenta los fallos) y solo un código distinto de 200
-    // devuelve null.
+    // que busca cuenta los fallos) y solo un 404 devuelve null.
+    // RONDA 2 (2026-11-13, P1, n=908): igual que LRCLIB (n=905): un
+    // 429 (límite) o un 5xx (servidor caído) se propaga como
+    // LyricsProviderHttpException.
     private fun httpGet(url: String): String? {
         val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "GET"
@@ -115,8 +117,12 @@ class LiriqoLyricsProvider : LyricsProvider {
         conn.connectTimeout = 6000
         conn.readTimeout = 6000
         try {
-            if (conn.responseCode != 200) return null
-            return conn.inputStream.bufferedReader().use { it.readText() }
+            return when (val code = conn.responseCode) {
+                200 -> conn.inputStream.bufferedReader().use { it.readText() }
+                404 -> null
+                429, in 500..599 -> throw LyricsProviderHttpException(code)
+                else -> null
+            }
         } finally {
             conn.disconnect()
         }
