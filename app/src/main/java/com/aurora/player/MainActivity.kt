@@ -847,6 +847,18 @@ private fun AuroraApp(
                 sleepTimer = option
                 sleepAtSongEnd = saved.atSongEnd
                 sleepUntilMs = if (option == SleepTimerOption.END_OF_SONG) null else saved.untilMs
+            } else if (saved.untilMs != null) {
+                // RONDA 2 (2026-11-13, P1, n=896): el plazo ya venció
+                // pero la música puede seguir sonando (la actividad
+                // murió y el servicio siguió): antes se borraba en
+                // silencio y la música no se apagaba nunca. Se
+                // restaura el estado y el bucle de progreso decide
+                // al conectar el controlador: si suena, pausa; si
+                // está en pausa, lo borra sin resucitarlo. Aquí no
+                // se puede pausar: el controlador aún no existe.
+                sleepTimer = option
+                sleepAtSongEnd = saved.atSongEnd
+                sleepUntilMs = saved.untilMs
             } else {
                 sleepTimerStore.clear()
             }
@@ -1553,16 +1565,27 @@ private fun AuroraApp(
                 val until = sleepUntilMs
                 if (until != null) {
                     if (!c.isPlaying) {
-                        // En pausa el temporizador no corre: el plazo se
-                        // desplaza lo mismo que duró la pausa.
-                        sleepUntilMs = until + tickDelta
-                        // RONDA 143: el plazo guardado se quedaba viejo
-                        // en pausa: al girar el teléfono a mitad de una
-                        // pausa, el temporizador restaurado contaba ese
-                        // tiempo. Se re-guarda como mucho cada 10 s.
-                        if (tickNow - lastSleepSaveMs >= 10_000L) {
-                            lastSleepSaveMs = tickNow
+                        if (SystemClock.elapsedRealtime() >= until) {
+                            // RONDA 2 (2026-11-13, P1, n=896): plazo ya
+                            // vencido con la música parada: no hay nada
+                            // que parar; se borra sin desplazarlo (el
+                            // desplazamiento resucitaría un temporizador
+                            // ya vencido).
+                            sleepUntilMs = null
+                            sleepTimer = SleepTimerOption.OFF
                             persistSleepTimer()
+                        } else {
+                            // En pausa el temporizador no corre: el plazo se
+                            // desplaza lo mismo que duró la pausa.
+                            sleepUntilMs = until + tickDelta
+                            // RONDA 143: el plazo guardado se quedaba viejo
+                            // en pausa: al girar el teléfono a mitad de una
+                            // pausa, el temporizador restaurado contaba ese
+                            // tiempo. Se re-guarda como mucho cada 10 s.
+                            if (tickNow - lastSleepSaveMs >= 10_000L) {
+                                lastSleepSaveMs = tickNow
+                                persistSleepTimer()
+                            }
                         }
                     } else if (SystemClock.elapsedRealtime() >= until) {
                         c.pause()
