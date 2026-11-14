@@ -188,6 +188,8 @@ fun OnlineScreen(
                     results = found
                     if (found.isEmpty()) error = "Sin resultados para \"$q\"."
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 error = "Sin conexión o YouTube no respondió. Revisa internet e inténtalo otra vez."
             } finally {
@@ -217,6 +219,8 @@ fun OnlineScreen(
             if (loaded.videoPlaylists.isEmpty() && loaded.artists.isEmpty()) {
                 chartsError = "No se pudieron cargar los charts de YouTube Music."
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             chartsError = "Sin conexión o YouTube Music no respondió. Revisa internet e inténtalo otra vez."
             chartsLoaded = false
@@ -228,6 +232,8 @@ fun OnlineScreen(
         // error de red por algo que no impide escuchar.
         try {
             quickPicks = client.getQuickPicks()
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             quickPicks = emptyList()
         }
@@ -262,6 +268,8 @@ fun OnlineScreen(
                 } else {
                     error = "YouTube no devolvió audio para \"${track.title}\". Prueba con otro resultado."
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 error = "Sin conexión o YouTube no respondió."
             } finally {
@@ -284,6 +292,8 @@ fun OnlineScreen(
                 } else {
                     error = "YouTube no devolvió vídeo para \"${track.title}\". Prueba con otro resultado."
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 error = "Sin conexión o YouTube no respondió."
             } finally {
@@ -399,6 +409,8 @@ fun OnlineScreen(
                 if (all.isNotEmpty()) {
                     discoveryStore.save(all)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // Sin red: el panel enseña lo último guardado.
             } finally {
@@ -426,6 +438,8 @@ fun OnlineScreen(
                     } else {
                         error = "Sin conexión o YouTube no respondió."
                     }
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (_: Exception) {
                     error = "Sin conexión o YouTube no respondió."
                 }
